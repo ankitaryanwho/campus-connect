@@ -1,22 +1,35 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: CampusConnect API specification
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Authentication operations
+  - name: posts
+    description: Social feed operations
+  - name: chat
+    description: Chat operations
+  - name: wallet
+    description: Wallet operations
+  - name: services
+    description: Services marketplace operations
+  - name: users
+    description: User operations
+  - name: notifications
+    description: Notification operations
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,7 +37,807 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # Auth
+  /auth/register:
+    post:
+      operationId: register
+      tags: [auth]
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: User registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current user
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  # Posts
+  /posts:
+    get:
+      operationId: getPosts
+      tags: [posts]
+      summary: Get social feed posts
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: cursor
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Posts list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PostsResponse"
+
+    post:
+      operationId: createPost
+      tags: [posts]
+      summary: Create a new post
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePostRequest"
+      responses:
+        "201":
+          description: Post created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Post"
+
+  /posts/{postId}:
+    get:
+      operationId: getPost
+      tags: [posts]
+      summary: Get a single post
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: postId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Post
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Post"
+
+    delete:
+      operationId: deletePost
+      tags: [posts]
+      summary: Delete a post
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: postId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /posts/{postId}/like:
+    post:
+      operationId: likePost
+      tags: [posts]
+      summary: Like or unlike a post
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: postId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Like toggled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LikeResponse"
+
+  /posts/{postId}/comments:
+    get:
+      operationId: getComments
+      tags: [posts]
+      summary: Get comments for a post
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: postId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Comments list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommentsResponse"
+
+    post:
+      operationId: createComment
+      tags: [posts]
+      summary: Create a comment
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: postId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCommentRequest"
+      responses:
+        "201":
+          description: Comment created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Comment"
+
+  # Users
+  /users/{userId}:
+    get:
+      operationId: getUserProfile
+      tags: [users]
+      summary: Get user profile
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+
+  /users/{userId}/follow:
+    post:
+      operationId: followUser
+      tags: [users]
+      summary: Follow or unfollow a user
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Follow toggled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FollowResponse"
+
+  /users/{userId}/posts:
+    get:
+      operationId: getUserPosts
+      tags: [users]
+      summary: Get posts by user
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: User posts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PostsResponse"
+
+  /users/me/profile:
+    put:
+      operationId: updateProfile
+      tags: [users]
+      summary: Update current user profile
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProfileRequest"
+      responses:
+        "200":
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  # Chat
+  /chat/conversations:
+    get:
+      operationId: getConversations
+      tags: [chat]
+      summary: Get user conversations
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Conversations list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationsResponse"
+
+    post:
+      operationId: createConversation
+      tags: [chat]
+      summary: Create or get a direct conversation
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateConversationRequest"
+      responses:
+        "200":
+          description: Conversation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Conversation"
+
+  /chat/conversations/{conversationId}/messages:
+    get:
+      operationId: getMessages
+      tags: [chat]
+      summary: Get messages in a conversation
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Messages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessagesResponse"
+
+    post:
+      operationId: sendMessage
+      tags: [chat]
+      summary: Send a message
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendMessageRequest"
+      responses:
+        "201":
+          description: Message sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+
+  /chat/chatrooms:
+    get:
+      operationId: getChatrooms
+      tags: [chat]
+      summary: Get public chatrooms
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Chatrooms list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatroomsResponse"
+
+  /chat/chatrooms/{chatroomId}/messages:
+    get:
+      operationId: getChatroomMessages
+      tags: [chat]
+      summary: Get chatroom messages
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: chatroomId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Messages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessagesResponse"
+
+    post:
+      operationId: sendChatroomMessage
+      tags: [chat]
+      summary: Send a chatroom message
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: chatroomId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendMessageRequest"
+      responses:
+        "201":
+          description: Message sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+
+  # Wallet
+  /wallet:
+    get:
+      operationId: getWallet
+      tags: [wallet]
+      summary: Get wallet balance and info
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Wallet info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Wallet"
+
+  /wallet/transactions:
+    get:
+      operationId: getTransactions
+      tags: [wallet]
+      summary: Get transaction history
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Transactions list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionsResponse"
+
+  /wallet/add-money:
+    post:
+      operationId: addMoney
+      tags: [wallet]
+      summary: Add money to wallet
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddMoneyRequest"
+      responses:
+        "200":
+          description: Money added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Wallet"
+
+  /wallet/transfer:
+    post:
+      operationId: transferMoney
+      tags: [wallet]
+      summary: Transfer money to another user
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransferRequest"
+      responses:
+        "200":
+          description: Transfer completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Wallet"
+
+  # Services - Assignments
+  /services/assignments:
+    get:
+      operationId: getAssignments
+      tags: [services]
+      summary: Get assignments list
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Assignments list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssignmentsResponse"
+
+    post:
+      operationId: createAssignment
+      tags: [services]
+      summary: Create assignment request
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAssignmentRequest"
+      responses:
+        "201":
+          description: Assignment created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Assignment"
+
+  /services/assignments/{assignmentId}/accept:
+    post:
+      operationId: acceptAssignment
+      tags: [services]
+      summary: Accept an assignment
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: assignmentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Assignment accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Assignment"
+
+  # Services - Coaching
+  /services/coaching:
+    get:
+      operationId: getCoachingSessions
+      tags: [services]
+      summary: Get coaching sessions
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Sessions list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachingSessionsResponse"
+
+    post:
+      operationId: createCoachingSession
+      tags: [services]
+      summary: Create coaching session
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCoachingSessionRequest"
+      responses:
+        "201":
+          description: Session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachingSession"
+
+  /services/coaching/{sessionId}/book:
+    post:
+      operationId: bookCoachingSession
+      tags: [services]
+      summary: Book a coaching session
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Session booked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachingSession"
+
+  # Services - Delivery
+  /services/deliveries:
+    get:
+      operationId: getDeliveries
+      tags: [services]
+      summary: Get delivery requests
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Deliveries list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveriesResponse"
+
+    post:
+      operationId: createDelivery
+      tags: [services]
+      summary: Create delivery request
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDeliveryRequest"
+      responses:
+        "201":
+          description: Delivery created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Delivery"
+
+  /services/deliveries/{deliveryId}/accept:
+    post:
+      operationId: acceptDelivery
+      tags: [services]
+      summary: Accept a delivery
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: deliveryId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Delivery accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Delivery"
+
+  # Services - Tasks
+  /services/tasks:
+    get:
+      operationId: getTasks
+      tags: [services]
+      summary: Get task listings
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Tasks list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TasksResponse"
+
+    post:
+      operationId: createTask
+      tags: [services]
+      summary: Post a task
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTaskRequest"
+      responses:
+        "201":
+          description: Task created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+
+  /services/tasks/{taskId}/apply:
+    post:
+      operationId: applyForTask
+      tags: [services]
+      summary: Apply for a task
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Application submitted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+
+  # Notifications
+  /notifications:
+    get:
+      operationId: getNotifications
+      tags: [notifications]
+      summary: Get user notifications
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Notifications list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationsResponse"
+
+  /notifications/{notificationId}/read:
+    post:
+      operationId: markNotificationRead
+      tags: [notifications]
+      summary: Mark notification as read
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: notificationId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Notification marked read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
   schemas:
     HealthStatus:
       type: object
@@ -34,3 +847,809 @@ components:
       required:
         - status
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+      required:
+        - error
+
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+      required:
+        - success
+
+    # Auth schemas
+    RegisterRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 6
+        role:
+          type: string
+          enum: [student, provider]
+          default: student
+        college:
+          type: string
+        program:
+          type: string
+      required:
+        - name
+        - email
+        - password
+
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+      required:
+        - email
+        - password
+
+    AuthResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        user:
+          $ref: "#/components/schemas/User"
+      required:
+        - token
+        - user
+
+    # User schemas
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        avatar:
+          type: string
+          nullable: true
+        bio:
+          type: string
+          nullable: true
+        college:
+          type: string
+          nullable: true
+        program:
+          type: string
+          nullable: true
+        role:
+          type: string
+          enum: [student, provider, admin]
+        followersCount:
+          type: integer
+        followingCount:
+          type: integer
+        postsCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - email
+        - role
+        - followersCount
+        - followingCount
+        - postsCount
+        - createdAt
+
+    UserProfile:
+      allOf:
+        - $ref: "#/components/schemas/User"
+        - type: object
+          properties:
+            isFollowing:
+              type: boolean
+          required:
+            - isFollowing
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        bio:
+          type: string
+        college:
+          type: string
+        program:
+          type: string
+        avatar:
+          type: string
+
+    FollowResponse:
+      type: object
+      properties:
+        following:
+          type: boolean
+        followersCount:
+          type: integer
+      required:
+        - following
+        - followersCount
+
+    # Post schemas
+    Post:
+      type: object
+      properties:
+        id:
+          type: string
+        content:
+          type: string
+        mediaUrls:
+          type: array
+          items:
+            type: string
+        author:
+          $ref: "#/components/schemas/User"
+        likesCount:
+          type: integer
+        commentsCount:
+          type: integer
+        isLiked:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - content
+        - mediaUrls
+        - author
+        - likesCount
+        - commentsCount
+        - isLiked
+        - createdAt
+
+    PostsResponse:
+      type: object
+      properties:
+        posts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Post"
+        nextCursor:
+          type: string
+          nullable: true
+      required:
+        - posts
+
+    CreatePostRequest:
+      type: object
+      properties:
+        content:
+          type: string
+        mediaUrls:
+          type: array
+          items:
+            type: string
+      required:
+        - content
+
+    LikeResponse:
+      type: object
+      properties:
+        liked:
+          type: boolean
+        likesCount:
+          type: integer
+      required:
+        - liked
+        - likesCount
+
+    Comment:
+      type: object
+      properties:
+        id:
+          type: string
+        content:
+          type: string
+        author:
+          $ref: "#/components/schemas/User"
+        postId:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - content
+        - author
+        - postId
+        - createdAt
+
+    CommentsResponse:
+      type: object
+      properties:
+        comments:
+          type: array
+          items:
+            $ref: "#/components/schemas/Comment"
+      required:
+        - comments
+
+    CreateCommentRequest:
+      type: object
+      properties:
+        content:
+          type: string
+      required:
+        - content
+
+    # Chat schemas
+    Conversation:
+      type: object
+      properties:
+        id:
+          type: string
+        participants:
+          type: array
+          items:
+            $ref: "#/components/schemas/User"
+        lastMessage:
+          $ref: "#/components/schemas/Message"
+          nullable: true
+        unreadCount:
+          type: integer
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - participants
+        - unreadCount
+        - updatedAt
+
+    ConversationsResponse:
+      type: object
+      properties:
+        conversations:
+          type: array
+          items:
+            $ref: "#/components/schemas/Conversation"
+      required:
+        - conversations
+
+    CreateConversationRequest:
+      type: object
+      properties:
+        participantId:
+          type: string
+      required:
+        - participantId
+
+    Message:
+      type: object
+      properties:
+        id:
+          type: string
+        content:
+          type: string
+        senderId:
+          type: string
+        senderName:
+          type: string
+        senderAvatar:
+          type: string
+          nullable: true
+        conversationId:
+          type: string
+          nullable: true
+        chatroomId:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - content
+        - senderId
+        - senderName
+        - createdAt
+
+    MessagesResponse:
+      type: object
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/Message"
+        nextCursor:
+          type: string
+          nullable: true
+      required:
+        - messages
+
+    SendMessageRequest:
+      type: object
+      properties:
+        content:
+          type: string
+      required:
+        - content
+
+    Chatroom:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        category:
+          type: string
+        memberCount:
+          type: integer
+        lastMessage:
+          $ref: "#/components/schemas/Message"
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - category
+        - memberCount
+        - updatedAt
+
+    ChatroomsResponse:
+      type: object
+      properties:
+        chatrooms:
+          type: array
+          items:
+            $ref: "#/components/schemas/Chatroom"
+      required:
+        - chatrooms
+
+    # Wallet schemas
+    Wallet:
+      type: object
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        balance:
+          type: number
+        currency:
+          type: string
+          default: INR
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - userId
+        - balance
+        - currency
+        - updatedAt
+
+    Transaction:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [credit, debit, transfer]
+        amount:
+          type: number
+        description:
+          type: string
+        status:
+          type: string
+          enum: [pending, completed, failed]
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - type
+        - amount
+        - description
+        - status
+        - createdAt
+
+    TransactionsResponse:
+      type: object
+      properties:
+        transactions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Transaction"
+      required:
+        - transactions
+
+    AddMoneyRequest:
+      type: object
+      properties:
+        amount:
+          type: number
+          minimum: 1
+        method:
+          type: string
+          enum: [upi, card, netbanking]
+      required:
+        - amount
+        - method
+
+    TransferRequest:
+      type: object
+      properties:
+        recipientId:
+          type: string
+        amount:
+          type: number
+          minimum: 1
+        note:
+          type: string
+      required:
+        - recipientId
+        - amount
+
+    # Service schemas
+    Assignment:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+        deliveryMode:
+          type: string
+          enum: [pdf, zip, physical]
+        status:
+          type: string
+          enum: [open, accepted, completed, cancelled]
+        poster:
+          $ref: "#/components/schemas/User"
+        acceptedBy:
+          $ref: "#/components/schemas/User"
+          nullable: true
+        subject:
+          type: string
+          nullable: true
+        deadline:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - title
+        - description
+        - price
+        - deliveryMode
+        - status
+        - poster
+        - createdAt
+
+    AssignmentsResponse:
+      type: object
+      properties:
+        assignments:
+          type: array
+          items:
+            $ref: "#/components/schemas/Assignment"
+      required:
+        - assignments
+
+    CreateAssignmentRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+        deliveryMode:
+          type: string
+          enum: [pdf, zip, physical]
+        subject:
+          type: string
+        deadline:
+          type: string
+          format: date-time
+      required:
+        - title
+        - description
+        - price
+        - deliveryMode
+
+    CoachingSession:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+        sessionType:
+          type: string
+          enum: [one_on_one, group]
+        subject:
+          type: string
+        mentor:
+          $ref: "#/components/schemas/User"
+        bookedBy:
+          $ref: "#/components/schemas/User"
+          nullable: true
+        scheduledAt:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+          enum: [available, booked, completed]
+        maxStudents:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - title
+        - description
+        - price
+        - sessionType
+        - subject
+        - mentor
+        - status
+        - maxStudents
+        - createdAt
+
+    CoachingSessionsResponse:
+      type: object
+      properties:
+        sessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/CoachingSession"
+      required:
+        - sessions
+
+    CreateCoachingSessionRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+        sessionType:
+          type: string
+          enum: [one_on_one, group]
+        subject:
+          type: string
+        scheduledAt:
+          type: string
+          format: date-time
+        maxStudents:
+          type: integer
+      required:
+        - title
+        - description
+        - price
+        - sessionType
+        - subject
+        - maxStudents
+
+    Delivery:
+      type: object
+      properties:
+        id:
+          type: string
+        pickupLocation:
+          type: string
+        dropLocation:
+          type: string
+        item:
+          type: string
+        status:
+          type: string
+          enum: [pending, accepted, picked_up, delivered, cancelled]
+        requester:
+          $ref: "#/components/schemas/User"
+        deliveryAgent:
+          $ref: "#/components/schemas/User"
+          nullable: true
+        fee:
+          type: number
+          default: 20
+        notes:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - pickupLocation
+        - dropLocation
+        - item
+        - status
+        - requester
+        - fee
+        - createdAt
+
+    DeliveriesResponse:
+      type: object
+      properties:
+        deliveries:
+          type: array
+          items:
+            $ref: "#/components/schemas/Delivery"
+      required:
+        - deliveries
+
+    CreateDeliveryRequest:
+      type: object
+      properties:
+        pickupLocation:
+          type: string
+        dropLocation:
+          type: string
+        item:
+          type: string
+        notes:
+          type: string
+      required:
+        - pickupLocation
+        - dropLocation
+        - item
+
+    Task:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        budget:
+          type: number
+        category:
+          type: string
+        status:
+          type: string
+          enum: [open, in_progress, completed, cancelled]
+        poster:
+          $ref: "#/components/schemas/User"
+        assignedTo:
+          $ref: "#/components/schemas/User"
+          nullable: true
+        applicantsCount:
+          type: integer
+        deadline:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - title
+        - description
+        - budget
+        - category
+        - status
+        - poster
+        - applicantsCount
+        - createdAt
+
+    TasksResponse:
+      type: object
+      properties:
+        tasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/Task"
+      required:
+        - tasks
+
+    CreateTaskRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        budget:
+          type: number
+        category:
+          type: string
+        deadline:
+          type: string
+          format: date-time
+      required:
+        - title
+        - description
+        - budget
+        - category
+
+    # Notification schemas
+    Notification:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [like, comment, follow, message, service, wallet]
+        title:
+          type: string
+        body:
+          type: string
+        isRead:
+          type: boolean
+        data:
+          type: object
+          additionalProperties: true
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - type
+        - title
+        - body
+        - isRead
+        - createdAt
+
+    NotificationsResponse:
+      type: object
+      properties:
+        notifications:
+          type: array
+          items:
+            $ref: "#/components/schemas/Notification"
+        unreadCount:
+          type: integer
+      required:
+        - notifications
+        - unreadCount

@@ -1,0 +1,133 @@
+import React, { useState } from "react";
+import {
+  View, Text, TextInput, Pressable, StyleSheet,
+  useColorScheme, ActivityIndicator, Alert, Platform,
+} from "react-native";
+import { router } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Feather } from "@expo/vector-icons";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+import Colors from "@/constants/colors";
+import { useAuth } from "@/contexts/AuthContext";
+
+export default function NewPostScreen() {
+  const insets = useSafeAreaInsets();
+  const colorScheme = useColorScheme();
+  const C = Colors[colorScheme === "dark" ? "dark" : "light"];
+  const { apiRequest, user } = useAuth();
+  const queryClient = useQueryClient();
+  const [content, setContent] = useState("");
+  const isWeb = Platform.OS === "web";
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("/posts", {
+        method: "POST",
+        body: JSON.stringify({ content: content.trim(), mediaUrls: [] }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to create post");
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["posts"] });
+      router.back();
+    },
+    onError: (err: any) => Alert.alert("Error", err.message),
+  });
+
+  const canPost = content.trim().length > 0;
+
+  return (
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding" keyboardVerticalOffset={0}>
+      <View style={[styles.container, { backgroundColor: C.background, paddingTop: isWeb ? 67 : insets.top + 10 }]}>
+        {/* Header */}
+        <View style={[styles.header, { borderBottomColor: C.border }]}>
+          <Pressable onPress={() => router.back()} style={styles.cancelBtn}>
+            <Text style={[styles.cancelText, { color: C.textSecondary, fontFamily: "Inter_400Regular" }]}>Cancel</Text>
+          </Pressable>
+          <Text style={[styles.headerTitle, { color: C.text, fontFamily: "Inter_600SemiBold" }]}>New Post</Text>
+          <Pressable
+            style={[styles.postBtn, { backgroundColor: canPost ? C.primary : C.backgroundSecondary }, createMutation.isPending && { opacity: 0.7 }]}
+            onPress={() => createMutation.mutate()}
+            disabled={!canPost || createMutation.isPending}
+          >
+            {createMutation.isPending ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <Text style={[styles.postBtnText, { color: canPost ? "#fff" : C.textTertiary, fontFamily: "Inter_600SemiBold" }]}>Post</Text>
+            )}
+          </Pressable>
+        </View>
+
+        {/* User Info */}
+        <View style={styles.userRow}>
+          <View style={[styles.userAvatar, { backgroundColor: C.primary }]}>
+            <Text style={[styles.userAvatarText, { fontFamily: "Inter_700Bold" }]}>
+              {user?.name?.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2) || "?"}
+            </Text>
+          </View>
+          <View>
+            <Text style={[styles.userName, { color: C.text, fontFamily: "Inter_600SemiBold" }]}>{user?.name}</Text>
+            <Text style={[styles.userProgram, { color: C.textSecondary, fontFamily: "Inter_400Regular" }]}>
+              {user?.program || user?.college || "Student"}
+            </Text>
+          </View>
+        </View>
+
+        {/* Content Input */}
+        <TextInput
+          style={[styles.textInput, { color: C.text, fontFamily: "Inter_400Regular" }]}
+          placeholder="What's on your mind? Share updates, ask questions, find study partners..."
+          placeholderTextColor={C.textTertiary}
+          multiline
+          value={content}
+          onChangeText={setContent}
+          autoFocus
+          textAlignVertical="top"
+        />
+
+        {/* Character count */}
+        <Text style={[styles.charCount, { color: content.length > 400 ? C.error : C.textTertiary, fontFamily: "Inter_400Regular" }]}>
+          {content.length}/500
+        </Text>
+
+        {/* Actions */}
+        <View style={[styles.actions, { borderTopColor: C.border, paddingBottom: isWeb ? 34 : insets.bottom + 10 }]}>
+          <Pressable style={styles.actionItem}>
+            <Feather name="image" size={22} color={C.primary} />
+          </Pressable>
+          <Pressable style={styles.actionItem}>
+            <Feather name="paperclip" size={22} color={C.primary} />
+          </Pressable>
+          <Pressable style={styles.actionItem}>
+            <Feather name="at-sign" size={22} color={C.primary} />
+          </Pressable>
+          <Pressable style={styles.actionItem}>
+            <Feather name="hash" size={22} color={C.primary} />
+          </Pressable>
+        </View>
+      </View>
+    </KeyboardAvoidingView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 0.5 },
+  cancelBtn: { paddingHorizontal: 4, paddingVertical: 4 },
+  cancelText: { fontSize: 16 },
+  headerTitle: { fontSize: 16 },
+  postBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
+  postBtnText: { fontSize: 14 },
+  userRow: { flexDirection: "row", alignItems: "center", gap: 12, padding: 16 },
+  userAvatar: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
+  userAvatarText: { color: "#fff", fontSize: 16 },
+  userName: { fontSize: 15 },
+  userProgram: { fontSize: 12, marginTop: 2 },
+  textInput: { flex: 1, fontSize: 17, lineHeight: 26, paddingHorizontal: 16, paddingBottom: 16 },
+  charCount: { paddingHorizontal: 16, paddingBottom: 8, fontSize: 12, textAlign: "right" },
+  actions: { flexDirection: "row", borderTopWidth: 0.5, paddingHorizontal: 16, paddingTop: 14, gap: 20 },
+  actionItem: { padding: 4 },
+});

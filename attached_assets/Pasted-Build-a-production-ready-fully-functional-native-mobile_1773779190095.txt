@@ -1,0 +1,408 @@
+Build a production-ready, fully functional native mobile application (NOT a prototype, NOT a PWA, NOT a web app).
+
+The app must compile successfully into:
+
+Android APK
+
+iOS IPA
+
+Use React Native (Expo EAS or bare workflow) for frontend and Node.js + Express + MongoDB backend.
+
+🔥 CORE REQUIREMENTS (VERY STRICT)
+
+This MUST be a complete working app, not a UI mock.
+
+Every button, feature, and screen MUST be fully functional.
+
+No disabled inputs, no placeholder components.
+
+Fix ALL common bugs:
+
+Chat input must work (typing + sending messages)
+
+Profile editing must work (including image upload)
+
+Posting must work (text + media upload)
+
+Wallet transactions must work
+
+Navigation must not break
+
+Provide proper API integration for every feature.
+
+No fake data — use real backend APIs.
+
+Proper error handling everywhere.
+
+Clean, modern UI (like Zomato, Reddit, Discord).
+
+App must be scalable and modular.
+
+🧠 APP OVERVIEW
+
+An all-in-one college student ecosystem app with:
+
+Services marketplace
+
+Social feed
+
+Chat system
+
+Wallet system
+
+Admin panel
+
+📱 UI/UX REQUIREMENTS
+
+Modern, minimalist, smooth UI
+
+Inspired by:
+
+Zomato (cards + listings)
+
+Reddit (feed)
+
+Discord (chat)
+
+Bottom tab navigation
+
+Smooth animations
+
+Fast loading
+
+Fully responsive (mobile-first)
+
+🏠 HOME SCREEN (IMPORTANT CHANGE)
+
+Replace current homepage with:
+
+👉 SOCIAL FEED (DEFAULT HOME)
+
+Features:
+
+Users can post:
+
+Text
+
+Images
+
+Files
+
+Like, comment, share
+
+Follow/connect users
+
+View profiles
+
+Download posts
+
+Infinite scroll
+
+💬 CHAT SYSTEM (FIX THIS PROPERLY)
+
+Use Socket.IO
+
+Requirements:
+
+Real-time messaging
+
+Chat input MUST be enabled
+
+Send/receive messages instantly
+
+Typing indicator
+
+Media sharing
+
+Chat list screen
+
+Individual chat screen
+
+👤 PROFILE SYSTEM
+
+Must include:
+
+Edit profile (WORKING)
+
+Upload profile picture (AWS S3)
+
+View other profiles
+
+Follow/connect system
+
+User posts visible
+
+💰 WALLET SYSTEM
+
+Add money (Razorpay/UPI)
+
+Wallet balance
+
+Transaction history
+
+Withdraw for service providers
+
+Commission logic:
+
+20% platform commission
+
+🧾 SERVICES MODULES
+1️⃣ PAID ASSIGNMENTS
+
+Two types:
+
+A. Student Posts Requirement
+
+Others accept and complete
+
+B. Toppers List Assignments (NEW FEATURE)
+
+Fields:
+
+Title
+
+Description
+
+Price
+
+Delivery Mode:
+
+PDF
+
+ZIP
+
+Physical Notebook
+
+If physical selected → add notebook cost dynamically
+
+2️⃣ PRIVATE COACHING
+
+Mentors list sessions
+
+1:1 or group booking
+
+Calendar scheduling
+
+3️⃣ INTRA-CAMPUS DELIVERY
+
+Request pickup
+
+Delivery agent accepts
+
+₹20 earning per delivery
+
+Features:
+
+Live status tracking
+
+Selfie upload at pickup & delivery
+
+Timestamp proof
+
+4️⃣ PAID TASK HIRING
+
+Post task
+
+Providers apply
+
+Completion tracking
+
+💬 CHATROOM SYSTEM
+
+Public chatrooms (#coding, #buy-sell)
+
+Program-based chatrooms (BCA, BTech, etc.)
+
+Email-based verification
+
+Real-time messages
+
+🔐 AUTHENTICATION
+
+JWT authentication
+
+Email OTP verification
+
+Role-based access:
+
+Student
+
+Service provider
+
+📸 IMAGE STORAGE
+
+Use AWS S3 for:
+
+Profile images
+
+Post media
+
+Selfie verification
+
+🔔 NOTIFICATIONS
+
+Push notifications (Firebase)
+
+Events:
+
+Messages
+
+Orders
+
+Requests
+
+🧑‍💼 ADMIN PANEL (VERY IMPORTANT)
+
+Create a separate web-based admin dashboard (React.js)
+
+Features:
+
+User management
+
+Approve/reject providers
+
+View all services
+
+Track revenue
+
+Graphs & analytics
+
+Transaction monitoring
+
+Content moderation (posts/chat)
+
+Add/manage shops/outlets
+
+🗄️ BACKEND STRUCTURE
+
+Use:
+
+Node.js + Express
+
+MongoDB (Mongoose)
+
+Modules:
+
+Auth
+
+Users
+
+Posts
+
+Chat
+
+Wallet
+
+Services
+
+Notifications
+
+Admin
+
+Use clean MVC architecture.
+
+🧱 DATABASE MODELS
+
+Include:
+
+User
+
+Profile
+
+Post
+
+Comment
+
+Message
+
+ChatRoom
+
+Assignment
+
+CoachingSession
+
+Delivery
+
+Task
+
+Wallet
+
+Transaction
+
+⚠️ FIX ALL THESE ISSUES (MANDATORY)
+
+Previously observed problems that MUST NOT happen:
+
+Chat input disabled → FIX
+
+Unable to send messages → FIX
+
+Cannot post → FIX
+
+Feed not loading → FIX
+
+Profile edit not working → FIX
+
+Buttons not clickable → FIX
+
+App looks like prototype → FIX UI
+
+Missing admin panel → MUST BUILD
+
+Media upload not working → FIX
+
+Navigation issues → FIX
+
+API not connected → FIX
+
+🧪 TESTING REQUIREMENTS
+
+Before completion:
+
+Test ALL flows:
+
+Register → Login
+
+Post → Like → Comment
+
+Chat send/receive
+
+Wallet payment
+
+Service booking
+
+Profile edit
+
+No crashes
+
+No console errors
+
+📦 FINAL OUTPUT
+
+Provide:
+
+Full source code (frontend + backend + admin)
+
+APK build instructions
+
+IPA build instructions
+
+Environment setup guide
+
+API documentation
+
+Sample test users
+
+🚫 DO NOT
+
+Do NOT leave placeholders
+
+Do NOT disable features
+
+Do NOT skip backend logic
+
+Do NOT create dummy UI only
+
+✅ GOAL
+
+Deliver a fully working, production-ready mobile app that can be directly deployed to Play Store and App Store.
