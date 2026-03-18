@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import {
   View, Text, TextInput, Pressable, StyleSheet,
-  ActivityIndicator, Alert, useColorScheme, Platform,
+  ActivityIndicator, useColorScheme, Platform,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -24,22 +24,24 @@ export default function RegisterScreen() {
   const [program, setProgram] = useState("BCA");
   const [role, setRole] = useState<"student" | "provider">("student");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
   const isWeb = Platform.OS === "web";
 
   const handleRegister = async () => {
+    setError("");
     if (!name.trim() || !email.trim() || !password.trim()) {
-      Alert.alert("Error", "Please fill in all required fields");
+      setError("Please fill in your name, email and password");
       return;
     }
     if (password.length < 6) {
-      Alert.alert("Error", "Password must be at least 6 characters");
+      setError("Password must be at least 6 characters");
       return;
     }
     setLoading(true);
     try {
       await register({ name: name.trim(), email: email.trim().toLowerCase(), password, role, college: college.trim(), program });
     } catch (err: any) {
-      Alert.alert("Registration Failed", err.message || "Could not create account");
+      setError(err.message || "Could not create account. Try again.");
     } finally {
       setLoading(false);
     }
@@ -67,7 +69,6 @@ export default function RegisterScreen() {
         Join thousands of students on campus
       </Text>
 
-      {/* Role Toggle */}
       <View style={[styles.roleToggle, { backgroundColor: C.backgroundSecondary, borderColor: C.border }]}>
         <Pressable
           style={[styles.roleBtn, role === "student" && { backgroundColor: C.primary }]}
@@ -101,7 +102,7 @@ export default function RegisterScreen() {
                 placeholder={field.placeholder}
                 placeholderTextColor={C.textTertiary}
                 value={field.value}
-                onChangeText={field.onChange}
+                onChangeText={v => { field.onChange(v); setError(""); }}
                 keyboardType={field.keyboard}
                 secureTextEntry={field.secure}
                 autoCapitalize={field.keyboard === "email-address" || field.secure ? "none" : "words"}
@@ -123,6 +124,13 @@ export default function RegisterScreen() {
           ))}
         </View>
       </View>
+
+      {error ? (
+        <View style={[styles.errorBox, { backgroundColor: C.errorLight }]}>
+          <Feather name="alert-circle" size={14} color={C.error} />
+          <Text style={[styles.errorText, { color: C.error, fontFamily: "Inter_400Regular" }]}>{error}</Text>
+        </View>
+      ) : null}
 
       <Pressable
         style={[styles.registerBtn, { backgroundColor: C.primary }, loading && { opacity: 0.7 }]}
@@ -153,9 +161,7 @@ const styles = StyleSheet.create({
   topBar: { flexDirection: "row", marginBottom: 24 },
   title: { fontSize: 28, marginBottom: 8 },
   subtitle: { fontSize: 15, marginBottom: 28 },
-  roleToggle: {
-    flexDirection: "row", borderRadius: 14, borderWidth: 1, padding: 4, marginBottom: 24, gap: 4,
-  },
+  roleToggle: { flexDirection: "row", borderRadius: 14, borderWidth: 1, padding: 4, marginBottom: 24, gap: 4 },
   roleBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10, borderRadius: 10 },
   roleBtnText: { fontSize: 14 },
   form: { gap: 16 },
@@ -168,9 +174,11 @@ const styles = StyleSheet.create({
   programsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   programChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
   programChipText: { fontSize: 13 },
+  errorBox: { flexDirection: "row", alignItems: "center", gap: 8, padding: 12, borderRadius: 10, marginTop: 16 },
+  errorText: { flex: 1, fontSize: 13 },
   registerBtn: {
     paddingVertical: 16, borderRadius: 14, alignItems: "center",
-    marginTop: 24, marginBottom: 20,
+    marginTop: 20, marginBottom: 20,
     shadowColor: "#5B4FE8", shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3, shadowRadius: 8, elevation: 4,
   },

@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import {
   View, Text, TextInput, Pressable, StyleSheet,
-  ActivityIndicator, Alert, useColorScheme, Platform,
+  ActivityIndicator, useColorScheme, Platform,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -19,17 +19,19 @@ export default function LoginScreen() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState("");
 
   const handleLogin = async () => {
+    setError("");
     if (!email.trim() || !password.trim()) {
-      Alert.alert("Error", "Please enter your email and password");
+      setError("Please enter your email and password");
       return;
     }
     setLoading(true);
     try {
       await login(email.trim().toLowerCase(), password);
     } catch (err: any) {
-      Alert.alert("Login Failed", err.message || "Invalid credentials");
+      setError(err.message || "Invalid email or password");
     } finally {
       setLoading(false);
     }
@@ -70,7 +72,7 @@ export default function LoginScreen() {
             keyboardType="email-address"
             autoCapitalize="none"
             value={email}
-            onChangeText={setEmail}
+            onChangeText={v => { setEmail(v); setError(""); }}
           />
         </View>
 
@@ -83,12 +85,19 @@ export default function LoginScreen() {
             placeholderTextColor={C.textTertiary}
             secureTextEntry={!showPassword}
             value={password}
-            onChangeText={setPassword}
+            onChangeText={v => { setPassword(v); setError(""); }}
           />
           <Pressable onPress={() => setShowPassword(!showPassword)} hitSlop={8}>
             <Feather name={showPassword ? "eye-off" : "eye"} size={18} color={C.textTertiary} />
           </Pressable>
         </View>
+
+        {error ? (
+          <View style={[styles.errorBox, { backgroundColor: C.errorLight }]}>
+            <Feather name="alert-circle" size={14} color={C.error} />
+            <Text style={[styles.errorText, { color: C.error, fontFamily: "Inter_400Regular" }]}>{error}</Text>
+          </View>
+        ) : null}
 
         <Pressable
           style={[styles.loginBtn, { backgroundColor: C.primary }, loading && { opacity: 0.7 }]}
@@ -110,7 +119,7 @@ export default function LoginScreen() {
 
         <Pressable
           style={[styles.demoBtn, { borderColor: C.border, backgroundColor: C.backgroundSecondary }]}
-          onPress={() => { setEmail("priya@campus.edu"); setPassword("password123"); }}
+          onPress={() => { setEmail("priya@campus.edu"); setPassword("password123"); setError(""); }}
         >
           <Feather name="zap" size={16} color={C.primary} />
           <Text style={[styles.demoBtnText, { color: C.primary, fontFamily: "Inter_500Medium" }]}>Use demo account</Text>
@@ -143,9 +152,11 @@ const styles = StyleSheet.create({
     borderRadius: 14, borderWidth: 1, marginBottom: 4,
   },
   input: { flex: 1, fontSize: 16 },
+  errorBox: { flexDirection: "row", alignItems: "center", gap: 8, padding: 12, borderRadius: 10, marginTop: 10 },
+  errorText: { flex: 1, fontSize: 13 },
   loginBtn: {
     paddingVertical: 16, borderRadius: 14, alignItems: "center",
-    marginTop: 24, shadowColor: "#5B4FE8", shadowOffset: { width: 0, height: 4 },
+    marginTop: 20, shadowColor: "#5B4FE8", shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3, shadowRadius: 8, elevation: 4,
   },
   loginBtnText: { color: "#fff", fontSize: 16 },
