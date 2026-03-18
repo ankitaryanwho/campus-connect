@@ -7,6 +7,7 @@ import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import * as ImagePicker from "expo-image-picker";
 import Colors from "@/constants/colors";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -82,6 +83,37 @@ export default function ProfileScreen() {
     );
   };
 
+  const pickAvatar = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.7,
+        base64: true,
+      });
+      if (!result.canceled && result.assets[0]) {
+        const asset = result.assets[0];
+        const avatarData = asset.base64
+          ? `data:image/jpeg;base64,${asset.base64}`
+          : asset.uri;
+        const res = await apiRequest("/users/me/profile", {
+          method: "PUT",
+          body: JSON.stringify({ avatar: avatarData }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          updateUser(data);
+          Alert.alert("Done", "Profile picture updated!");
+        } else {
+          Alert.alert("Error", "Failed to update profile picture.");
+        }
+      }
+    } catch {
+      Alert.alert("Error", "Could not open image picker.");
+    }
+  };
+
   if (!user) return null;
 
   const posts = postsQuery.data?.posts || [];
@@ -126,7 +158,7 @@ export default function ProfileScreen() {
                 <Text style={[styles.avatarText, { fontFamily: "Inter_700Bold" }]}>{getInitials(user.name)}</Text>
               </View>
             )}
-            <Pressable style={[styles.editAvatarBtn, { backgroundColor: C.primary }]}>
+            <Pressable style={[styles.editAvatarBtn, { backgroundColor: C.primary }]} onPress={pickAvatar}>
               <Feather name="camera" size={14} color="#fff" />
             </Pressable>
           </View>

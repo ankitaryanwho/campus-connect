@@ -2,12 +2,14 @@ import React, { useState } from "react";
 import {
   View, Text, TextInput, Pressable, StyleSheet,
   useColorScheme, ActivityIndicator, Alert, Platform,
+  Image, ScrollView,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+import * as ImagePicker from "expo-image-picker";
 import Colors from "@/constants/colors";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -18,13 +20,38 @@ export default function NewPostScreen() {
   const { apiRequest, user } = useAuth();
   const queryClient = useQueryClient();
   const [content, setContent] = useState("");
+  const [mediaUris, setMediaUris] = useState<string[]>([]);
   const isWeb = Platform.OS === "web";
+
+  const pickImage = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsMultipleSelection: true,
+        quality: 0.8,
+        base64: true,
+        selectionLimit: 4,
+      });
+      if (!result.canceled && result.assets.length > 0) {
+        const uris = result.assets.map(a =>
+          a.base64 ? `data:image/jpeg;base64,${a.base64}` : a.uri
+        );
+        setMediaUris(prev => [...prev, ...uris].slice(0, 4));
+      }
+    } catch {
+      Alert.alert("Error", "Could not open image picker.");
+    }
+  };
+
+  const removeMedia = (idx: number) => {
+    setMediaUris(prev => prev.filter((_, i) => i !== idx));
+  };
 
   const createMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("/posts", {
         method: "POST",
-        body: JSON.stringify({ content: content.trim(), mediaUrls: [] }),
+        body: JSON.stringify({ content: content.trim(), mediaUrls: mediaUris }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to create post");
@@ -37,7 +64,7 @@ export default function NewPostScreen() {
     onError: (err: any) => Alert.alert("Error", err.message),
   });
 
-  const canPost = content.trim().length > 0;
+  const canPost = content.trim().length > 0 || mediaUris.length > 0;
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding" keyboardVerticalOffset={0}>
@@ -61,52 +88,88 @@ export default function NewPostScreen() {
           </Pressable>
         </View>
 
-        {/* User Info */}
-        <View style={styles.userRow}>
-          <View style={[styles.userAvatar, { backgroundColor: C.primary }]}>
-            <Text style={[styles.userAvatarText, { fontFamily: "Inter_700Bold" }]}>
-              {user?.name?.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2) || "?"}
-            </Text>
+        <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          {/* User Info */}
+          <View style={styles.userRow}>
+            <View style={[styles.userAvatar, { backgroundColor: C.primary }]}>
+              <Text style={[styles.userAvatarText, { fontFamily: "Inter_700Bold" }]}>
+                {user?.name?.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2) || "?"}
+              </Text>
+            </View>
+            <View>
+              <Text style={[styles.userName, { color: C.text, fontFamily: "Inter_600SemiBold" }]}>{user?.name}</Text>
+              <Text style={[styles.userProgram, { color: C.textSecondary, fontFamily: "Inter_400Regular" }]}>
+                {user?.program || user?.college || "Student"}
+              </Text>
+            </View>
           </View>
-          <View>
-            <Text style={[styles.userName, { color: C.text, fontFamily: "Inter_600SemiBold" }]}>{user?.name}</Text>
-            <Text style={[styles.userProgram, { color: C.textSecondary, fontFamily: "Inter_400Regular" }]}>
-              {user?.program || user?.college || "Student"}
-            </Text>
-          </View>
-        </View>
 
-        {/* Content Input */}
-        <TextInput
-          style={[styles.textInput, { color: C.text, fontFamily: "Inter_400Regular" }]}
-          placeholder="What's on your mind? Share updates, ask questions, find study partners..."
-          placeholderTextColor={C.textTertiary}
-          multiline
-          value={content}
-          onChangeText={setContent}
-          autoFocus
-          textAlignVertical="top"
-        />
+          {/* Content Input */}
+          <TextInput
+            style={[styles.textInput, { color: C.text, fontFamily: "Inter_400Regular" }]}
+            placeholder="What's on your mind? Share updates, ask questions, find study partners..."
+            placeholderTextColor={C.textTertiary}
+            multiline
+            value={content}
+            onChangeText={setContent}
+            autoFocus
+            textAlignVertical="top"
+          />
 
-        {/* Character count */}
-        <Text style={[styles.charCount, { color: content.length > 400 ? C.error : C.textTertiary, fontFamily: "Inter_400Regular" }]}>
-          {content.length}/500
-        </Text>
+          {/* Character count */}
+          <Text style={[styles.charCount, { color: content.length > 450 ? C.error : C.textTertiary, fontFamily: "Inter_400Regular" }]}>
+            {content.length}/500
+          </Text>
 
-        {/* Actions */}
-        <View style={[styles.actions, { borderTopColor: C.border, paddingBottom: isWeb ? 34 : insets.bottom + 10 }]}>
-          <Pressable style={styles.actionItem}>
+          {/* Selected images preview */}
+          {mediaUris.length > 0 && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.mediaRow}>
+              {mediaUris.map((uri, idx) => (
+                <View key={idx} style={styles.mediaThumbWrap}>
+                  <Image source={{ uri }} style={styles.mediaThumb} />
+                  <Pressable style={[styles.removeMediaBtn, { backgroundColor: C.error }]} onPress={() => removeMedia(idx)}>
+                    <Feather name="x" size={12} color="#fff" />
+                  </Pressable>
+                </View>
+              ))}
+              {mediaUris.length < 4 && (
+                <Pressable style={[styles.addMoreMedia, { backgroundColor: C.backgroundSecondary, borderColor: C.border }]} onPress={pickImage}>
+                  <Feather name="plus" size={24} color={C.primary} />
+                </Pressable>
+              )}
+            </ScrollView>
+          )}
+        </ScrollView>
+
+        {/* Actions toolbar */}
+        <View style={[styles.actions, { borderTopColor: C.border, paddingBottom: isWeb ? 34 : insets.bottom + 10, backgroundColor: C.background }]}>
+          <Pressable style={styles.actionItem} onPress={pickImage}>
             <Feather name="image" size={22} color={C.primary} />
+            <Text style={[styles.actionLabel, { color: C.primary, fontFamily: "Inter_500Medium" }]}>Photo</Text>
           </Pressable>
-          <Pressable style={styles.actionItem}>
-            <Feather name="paperclip" size={22} color={C.primary} />
+          <Pressable style={styles.actionItem} onPress={pickImage}>
+            <Feather name="paperclip" size={22} color={C.textSecondary} />
+            <Text style={[styles.actionLabel, { color: C.textSecondary, fontFamily: "Inter_500Medium" }]}>File</Text>
           </Pressable>
-          <Pressable style={styles.actionItem}>
-            <Feather name="at-sign" size={22} color={C.primary} />
+          <Pressable
+            style={styles.actionItem}
+            onPress={() => setContent(prev => prev + " @")}
+          >
+            <Feather name="at-sign" size={22} color={C.textSecondary} />
+            <Text style={[styles.actionLabel, { color: C.textSecondary, fontFamily: "Inter_500Medium" }]}>Mention</Text>
           </Pressable>
-          <Pressable style={styles.actionItem}>
-            <Feather name="hash" size={22} color={C.primary} />
+          <Pressable
+            style={styles.actionItem}
+            onPress={() => setContent(prev => prev + " #")}
+          >
+            <Feather name="hash" size={22} color={C.textSecondary} />
+            <Text style={[styles.actionLabel, { color: C.textSecondary, fontFamily: "Inter_500Medium" }]}>Tag</Text>
           </Pressable>
+          {mediaUris.length > 0 && (
+            <View style={[styles.mediaCount, { backgroundColor: C.primary }]}>
+              <Text style={[styles.mediaCountText, { fontFamily: "Inter_700Bold" }]}>{mediaUris.length}/4</Text>
+            </View>
+          )}
         </View>
       </View>
     </KeyboardAvoidingView>
@@ -126,8 +189,16 @@ const styles = StyleSheet.create({
   userAvatarText: { color: "#fff", fontSize: 16 },
   userName: { fontSize: 15 },
   userProgram: { fontSize: 12, marginTop: 2 },
-  textInput: { flex: 1, fontSize: 17, lineHeight: 26, paddingHorizontal: 16, paddingBottom: 16 },
+  textInput: { minHeight: 120, fontSize: 17, lineHeight: 26, paddingHorizontal: 16, paddingBottom: 16 },
   charCount: { paddingHorizontal: 16, paddingBottom: 8, fontSize: 12, textAlign: "right" },
-  actions: { flexDirection: "row", borderTopWidth: 0.5, paddingHorizontal: 16, paddingTop: 14, gap: 20 },
-  actionItem: { padding: 4 },
+  mediaRow: { paddingHorizontal: 16, paddingBottom: 16, gap: 10 },
+  mediaThumbWrap: { position: "relative" },
+  mediaThumb: { width: 90, height: 90, borderRadius: 12 },
+  removeMediaBtn: { position: "absolute", top: -6, right: -6, width: 22, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center" },
+  addMoreMedia: { width: 90, height: 90, borderRadius: 12, borderWidth: 1.5, borderStyle: "dashed", alignItems: "center", justifyContent: "center" },
+  actions: { flexDirection: "row", borderTopWidth: 0.5, paddingHorizontal: 16, paddingTop: 14, gap: 20, alignItems: "center" },
+  actionItem: { alignItems: "center", gap: 4 },
+  actionLabel: { fontSize: 10 },
+  mediaCount: { marginLeft: "auto", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+  mediaCountText: { color: "#fff", fontSize: 12 },
 });

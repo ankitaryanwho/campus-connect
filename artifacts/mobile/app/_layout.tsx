@@ -40,7 +40,7 @@ function RootLayoutNav() {
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="(auth)" options={{ presentation: "modal", headerShown: false }} />
+      <Stack.Screen name="(auth)" options={{ headerShown: false }} />
       <Stack.Screen name="post/[id]" options={{ presentation: "card", headerShown: false }} />
       <Stack.Screen name="profile/[id]" options={{ presentation: "card", headerShown: false }} />
       <Stack.Screen name="chat/[id]" options={{ presentation: "card", headerShown: false }} />

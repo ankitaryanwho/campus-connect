@@ -75,7 +75,27 @@ function PostCard({ post, C, onLike, onComment, onPress }: any) {
         <Feather name="more-horizontal" size={20} color={C.textTertiary} />
       </View>
 
-      <Text style={[styles.postContent, { color: C.text, fontFamily: "Inter_400Regular" }]}>{post.content}</Text>
+      {post.content ? (
+        <Text style={[styles.postContent, { color: C.text, fontFamily: "Inter_400Regular" }]}>{post.content}</Text>
+      ) : null}
+
+      {post.mediaUrls?.length > 0 && (
+        <View style={styles.mediaGrid}>
+          {post.mediaUrls.slice(0, 4).map((uri: string, i: number) => (
+            <Image
+              key={i}
+              source={{ uri }}
+              style={[
+                styles.mediaImg,
+                post.mediaUrls.length === 1 && { width: "100%", height: 220 },
+                post.mediaUrls.length === 2 && { width: "49%", height: 160 },
+                post.mediaUrls.length >= 3 && { width: "49%", height: 120 },
+              ]}
+              resizeMode="cover"
+            />
+          ))}
+        </View>
+      )}
 
       <View style={[styles.postActions, { borderTopColor: C.borderLight }]}>
         <Pressable style={styles.actionBtn} onPress={handleLike}>
@@ -229,6 +249,8 @@ const styles = StyleSheet.create({
   authorName: { fontSize: 14 },
   postMeta: { fontSize: 12, marginTop: 1 },
   postContent: { fontSize: 15, lineHeight: 22, paddingHorizontal: 14, paddingBottom: 12 },
+  mediaGrid: { flexDirection: "row", flexWrap: "wrap", gap: 4, paddingHorizontal: 14, paddingBottom: 12 },
+  mediaImg: { borderRadius: 10 },
   postActions: { flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 10, borderTopWidth: 0.5, gap: 4 },
   actionBtn: { flexDirection: "row", alignItems: "center", gap: 5, paddingVertical: 4, paddingHorizontal: 8, borderRadius: 8 },
   actionCount: { fontSize: 13 },
