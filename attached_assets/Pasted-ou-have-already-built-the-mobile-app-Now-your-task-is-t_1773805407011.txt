@@ -1,0 +1,420 @@
+ou have already built the mobile app. Now your task is to act as a Senior QA Engineer + Developer and perform FULL END-TO-END TESTING + AUTO FIXING of the entire app.
+
+⚠️ IMPORTANT:
+Do NOT assume anything works.
+You MUST test every feature programmatically and fix all issues.
+
+🎯 GOAL
+
+Ensure that:
+
+Every button is clickable
+
+Every feature works
+
+No UI element is broken
+
+No API fails
+
+No empty responses
+
+No disabled inputs
+
+App behaves like a real production app
+
+🧪 TESTING STRATEGY
+
+You must simulate REAL USERS and test complete flows:
+
+Create multiple test users:
+
+Student User A
+
+Student User B
+
+Service Provider (Assignment Solver)
+
+Mentor
+
+Delivery Agent
+
+Admin
+
+🔐 AUTH TESTING
+
+Test complete flow:
+
+Registration (with validation)
+
+Email OTP verification
+
+Login
+
+Logout
+
+Session persistence
+
+Fix:
+
+Any login failure
+
+Token issues
+
+Validation errors
+
+👤 PROFILE TESTING
+
+Edit profile (name, program, etc.)
+
+Upload profile picture
+
+Save changes
+
+View own profile
+
+View other user profiles
+
+Check:
+
+Profile updates reflect instantly
+
+Image upload works (S3)
+
+No broken UI
+
+🏠 SOCIAL FEED TESTING (VERY IMPORTANT)
+
+Test:
+
+User A:
+
+Create post (text)
+
+Create post (image)
+
+Create post (file)
+
+Edit post
+
+Delete post
+
+User B:
+
+View feed
+
+Like post
+
+Comment on post
+
+Reply to comment
+
+Delete own comment
+
+Share post
+
+Download media
+
+Check:
+
+Feed loads automatically on homepage
+
+Infinite scroll works
+
+Posts visible to all users
+
+Realtime updates (if implemented)
+
+Fix:
+
+Posting issues
+
+Media upload failures
+
+Like/comment not updating
+
+💬 CHAT TESTING (CRITICAL ISSUE)
+
+Test:
+
+User A ↔ User B:
+
+Open chat
+
+Type message
+
+Send message
+
+Receive message
+
+Check:
+
+Input box is ENABLED
+
+Messages are delivered instantly
+
+No delay or failure
+
+Also test:
+
+Media messages
+
+Chat list loading
+
+Fix:
+
+Disabled input box
+
+Socket connection issues
+
+Messages not sending
+
+👥 FOLLOW / CONNECTION SYSTEM
+
+User A sends follow request to User B
+
+User B accepts
+
+Both can view each other’s profile
+
+Start chat
+
+Check:
+
+Relationship stored in DB
+
+UI updates correctly
+
+💰 WALLET SYSTEM
+
+Test:
+
+User A:
+
+Add money (mock or real gateway)
+
+Check wallet balance
+
+Pay for service
+
+Service Provider:
+
+Receive earnings
+
+Check balance
+
+Withdraw money
+
+Check:
+
+Commission (20%) applied correctly
+
+Transactions saved in DB
+
+No mismatch in balance
+
+📦 ASSIGNMENT SERVICE
+
+Test both flows:
+
+Flow 1:
+
+User A posts assignment
+User B accepts
+User B completes
+User A marks complete
+
+Flow 2 (Toppers listing):
+
+Mentor lists assignment
+
+User purchases
+
+Check:
+
+Pricing correct
+
+Delivery mode works:
+
+PDF
+
+ZIP
+
+Physical (extra cost added)
+
+🎓 COACHING SYSTEM
+
+Mentor creates session
+
+Student books session
+
+Payment done
+
+Session appears in dashboard
+
+🚚 DELIVERY SYSTEM
+
+User places delivery request
+
+Delivery agent accepts
+
+Upload selfie at pickup
+
+Upload selfie at delivery
+
+Check:
+
+Status updates (pending → picked → delivered)
+
+₹20 earnings added
+
+🧾 TASK HIRING
+
+User posts task
+
+Provider applies
+
+Task assigned
+
+Task completed
+
+💬 CHATROOM TESTING
+
+Join public chatroom
+
+Send message
+
+Join program-based chatroom
+
+Verify access restriction
+
+Check:
+
+Messages visible to all users
+
+Realtime updates working
+
+🔔 NOTIFICATIONS
+
+Trigger:
+
+New message
+
+New order
+
+New comment
+
+Check:
+
+Notifications received
+
+Correct content
+
+🧑‍💼 ADMIN PANEL TESTING
+
+Login as Admin:
+
+Test:
+
+View all users
+
+Approve/reject providers
+
+View posts
+
+Delete posts
+
+Monitor transactions
+
+View analytics (charts)
+
+Manage services
+
+Fix:
+
+Missing panels
+
+Non-working buttons
+
+Data not loading
+
+🔍 BUTTON & UI TESTING (GLOBAL)
+
+For EVERY screen:
+
+Click ALL buttons
+
+Open ALL menus
+
+Submit ALL forms
+
+Check:
+
+No button is dead
+
+No navigation breaks
+
+No blank screens
+
+🧠 ERROR HANDLING
+
+Check:
+
+API failures
+
+Network errors
+
+Invalid inputs
+
+Fix:
+
+Add proper error messages
+
+Prevent crashes
+
+🧪 FINAL VALIDATION
+
+Ensure:
+
+No console errors
+
+No API errors
+
+No undefined/null crashes
+
+All features usable by real users
+
+🔁 AUTO FIX RULE
+
+For every issue found:
+
+Identify root cause
+
+Fix backend or frontend
+
+Retest
+
+Confirm working
+
+Repeat until ZERO bugs remain
+
+📦 OUTPUT REQUIRED
+
+List of all bugs found
+
+Fixes applied
+
+Updated working code
+
+Confirmation that ALL features are functional
+
+🚫 DO NOT
+
+Do NOT skip any feature
+
+Do NOT assume something works
+
+Do NOT leave partial fixes
+
+✅ FINAL GOAL
+
+Deliver a fully working, bug-free, production-ready app where every feature works perfectly end-to-end.

@@ -64,10 +64,22 @@ export default function ProfileScreen() {
   });
 
   const handleLogout = () => {
-    Alert.alert("Sign Out", "Are you sure you want to sign out?", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Sign Out", style: "destructive", onPress: logout },
-    ]);
+    Alert.alert(
+      "Sign Out",
+      "Are you sure you want to sign out?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Sign Out",
+          style: "destructive",
+          onPress: async () => {
+            await logout();
+            queryClient.clear();
+            router.replace("/(auth)/login");
+          },
+        },
+      ]
+    );
   };
 
   if (!user) return null;
@@ -80,10 +92,19 @@ export default function ProfileScreen() {
       <View style={[styles.header, { paddingTop: isWeb ? 67 : insets.top + 8, backgroundColor: C.background, borderBottomColor: C.border }]}>
         <Text style={[styles.headerTitle, { color: C.text, fontFamily: "Inter_700Bold" }]}>Profile</Text>
         <View style={styles.headerActions}>
-          <Pressable onPress={() => setEditing(true)} style={[styles.headerBtn, { backgroundColor: C.backgroundSecondary }]}>
+          <Pressable
+            onPress={() => {
+              setName(user.name);
+              setBio(user.bio || "");
+              setCollege(user.college || "");
+              setProgram(user.program || "");
+              setEditing(true);
+            }}
+            style={[styles.headerBtn, { backgroundColor: C.backgroundSecondary }]}
+          >
             <Feather name="edit-2" size={18} color={C.text} />
           </Pressable>
-          <Pressable onPress={handleLogout} style={[styles.headerBtn, { backgroundColor: C.backgroundSecondary }]}>
+          <Pressable onPress={handleLogout} style={[styles.headerBtn, { backgroundColor: C.errorLight }]}>
             <Feather name="log-out" size={18} color={C.error} />
           </Pressable>
         </View>
@@ -120,8 +141,12 @@ export default function ProfileScreen() {
               </View>
             </View>
             <Text style={[styles.userEmail, { color: C.textSecondary, fontFamily: "Inter_400Regular" }]}>{user.email}</Text>
-            {user.bio && (
+            {user.bio ? (
               <Text style={[styles.userBio, { color: C.text, fontFamily: "Inter_400Regular" }]}>{user.bio}</Text>
+            ) : (
+              <Pressable onPress={() => setEditing(true)}>
+                <Text style={[styles.addBio, { color: C.primary, fontFamily: "Inter_400Regular" }]}>+ Add bio</Text>
+              </Pressable>
             )}
             <View style={styles.metaRow}>
               {user.college && (
@@ -149,17 +174,23 @@ export default function ProfileScreen() {
           <StatBlock value={user.followingCount} label="Following" C={C} />
         </View>
 
-        {/* Posts Grid */}
+        {/* Posts */}
         <View style={styles.postsSection}>
-          <Text style={[styles.sectionTitle, { color: C.text, fontFamily: "Inter_700Bold" }]}>Posts</Text>
+          <Text style={[styles.sectionTitle, { color: C.text, fontFamily: "Inter_700Bold" }]}>My Posts</Text>
           {postsQuery.isLoading ? (
             <ActivityIndicator color={C.primary} style={{ marginTop: 20 }} />
           ) : posts.length === 0 ? (
             <View style={styles.emptyPosts}>
-              <Feather name="image" size={36} color={C.textTertiary} />
+              <Feather name="edit" size={36} color={C.textTertiary} />
               <Text style={[styles.emptyPostsText, { color: C.textSecondary, fontFamily: "Inter_400Regular" }]}>
                 No posts yet
               </Text>
+              <Pressable
+                style={[styles.createPostBtn, { backgroundColor: C.primaryLight }]}
+                onPress={() => router.push("/new-post")}
+              >
+                <Text style={[styles.createPostBtnText, { color: C.primary, fontFamily: "Inter_600SemiBold" }]}>Create first post</Text>
+              </Pressable>
             </View>
           ) : (
             posts.map(post => (
@@ -193,48 +224,50 @@ export default function ProfileScreen() {
       {/* Edit Profile Modal */}
       <Modal visible={editing} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalSheet, { backgroundColor: C.surface }]}>
-            <View style={styles.modalHandle} />
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: C.text, fontFamily: "Inter_700Bold" }]}>Edit Profile</Text>
-              <Pressable onPress={() => setEditing(false)}>
-                <Feather name="x" size={22} color={C.text} />
+          <ScrollView>
+            <View style={[styles.modalSheet, { backgroundColor: C.surface }]}>
+              <View style={styles.modalHandle} />
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: C.text, fontFamily: "Inter_700Bold" }]}>Edit Profile</Text>
+                <Pressable onPress={() => setEditing(false)}>
+                  <Feather name="x" size={22} color={C.text} />
+                </Pressable>
+              </View>
+
+              {[
+                { label: "Name", value: name, onChange: setName, placeholder: "Your name" },
+                { label: "Bio", value: bio, onChange: setBio, placeholder: "Tell your story...", multiline: true },
+                { label: "College", value: college, onChange: setCollege, placeholder: "Your college" },
+                { label: "Program", value: program, onChange: setProgram, placeholder: "e.g. BCA" },
+              ].map(field => (
+                <View key={field.label} style={{ marginBottom: 14 }}>
+                  <Text style={[styles.fieldLabel, { color: C.textSecondary, fontFamily: "Inter_500Medium" }]}>{field.label}</Text>
+                  <View style={[styles.fieldInput, { backgroundColor: C.backgroundSecondary, borderColor: C.border }]}>
+                    <TextInput
+                      style={[styles.fieldInputText, { color: C.text, fontFamily: "Inter_400Regular" }, field.multiline && { minHeight: 80, textAlignVertical: "top" }]}
+                      value={field.value}
+                      onChangeText={field.onChange}
+                      placeholder={field.placeholder}
+                      placeholderTextColor={C.textTertiary}
+                      multiline={field.multiline}
+                    />
+                  </View>
+                </View>
+              ))}
+
+              <Pressable
+                style={[styles.saveBtn, { backgroundColor: C.primary }, updateMutation.isPending && { opacity: 0.7 }]}
+                onPress={() => updateMutation.mutate()}
+                disabled={updateMutation.isPending}
+              >
+                {updateMutation.isPending ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={[styles.saveBtnText, { fontFamily: "Inter_600SemiBold" }]}>Save Changes</Text>
+                )}
               </Pressable>
             </View>
-
-            {[
-              { label: "Name", value: name, onChange: setName, placeholder: "Your name" },
-              { label: "Bio", value: bio, onChange: setBio, placeholder: "Tell your story..." },
-              { label: "College", value: college, onChange: setCollege, placeholder: "Your college" },
-              { label: "Program", value: program, onChange: setProgram, placeholder: "e.g. BCA" },
-            ].map(field => (
-              <View key={field.label}>
-                <Text style={[styles.fieldLabel, { color: C.textSecondary, fontFamily: "Inter_500Medium" }]}>{field.label}</Text>
-                <View style={[styles.fieldInput, { backgroundColor: C.backgroundSecondary, borderColor: C.border }]}>
-                  <TextInput
-                    style={[styles.fieldInputText, { color: C.text, fontFamily: "Inter_400Regular" }]}
-                    value={field.value}
-                    onChangeText={field.onChange}
-                    placeholder={field.placeholder}
-                    placeholderTextColor={C.textTertiary}
-                    multiline={field.label === "Bio"}
-                  />
-                </View>
-              </View>
-            ))}
-
-            <Pressable
-              style={[styles.saveBtn, { backgroundColor: C.primary }, updateMutation.isPending && { opacity: 0.7 }]}
-              onPress={() => updateMutation.mutate()}
-              disabled={updateMutation.isPending}
-            >
-              {updateMutation.isPending ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={[styles.saveBtnText, { fontFamily: "Inter_600SemiBold" }]}>Save Changes</Text>
-              )}
-            </Pressable>
-          </View>
+          </ScrollView>
         </View>
       </Modal>
     </View>
@@ -264,6 +297,7 @@ const styles = StyleSheet.create({
   roleBadgeText: { fontSize: 12 },
   userEmail: { fontSize: 13 },
   userBio: { fontSize: 14, lineHeight: 20 },
+  addBio: { fontSize: 14 },
   metaRow: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginTop: 4 },
   metaItem: { flexDirection: "row", alignItems: "center", gap: 4 },
   metaText: { fontSize: 13 },
@@ -280,16 +314,18 @@ const styles = StyleSheet.create({
   postMetaItem: { flexDirection: "row", alignItems: "center", gap: 4 },
   postMetaText: { fontSize: 12 },
   postDate: { marginLeft: "auto", fontSize: 12 },
-  emptyPosts: { alignItems: "center", paddingVertical: 40, gap: 10 },
+  emptyPosts: { alignItems: "center", paddingVertical: 40, gap: 14 },
   emptyPostsText: { fontSize: 14 },
+  createPostBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20 },
+  createPostBtnText: { fontSize: 14 },
   modalOverlay: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.5)" },
-  modalSheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40, maxHeight: "85%" },
+  modalSheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 50 },
   modalHandle: { width: 40, height: 4, backgroundColor: "#ccc", borderRadius: 2, alignSelf: "center", marginBottom: 20 },
   modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 },
   modalTitle: { fontSize: 20 },
-  fieldLabel: { fontSize: 13, marginBottom: 6, marginTop: 12 },
+  fieldLabel: { fontSize: 13, marginBottom: 8 },
   fieldInput: { borderRadius: 12, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 12 },
   fieldInputText: { fontSize: 15 },
-  saveBtn: { marginTop: 24, paddingVertical: 16, borderRadius: 14, alignItems: "center" },
+  saveBtn: { marginTop: 8, paddingVertical: 16, borderRadius: 14, alignItems: "center" },
   saveBtnText: { color: "#fff", fontSize: 16 },
 });
