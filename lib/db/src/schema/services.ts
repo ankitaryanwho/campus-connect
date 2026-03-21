@@ -1,18 +1,20 @@
-import { pgTable, text, numeric, integer, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, numeric, integer, timestamp, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { usersTable } from "./users";
 
+// ─── Assignments ─────────────────────────────────────────────────────────────
 export const assignmentsTable = pgTable("assignments", {
   id: text("id").primaryKey(),
   title: text("title").notNull(),
   description: text("description").notNull(),
   price: numeric("price", { precision: 10, scale: 2 }).notNull(),
-  deliveryMode: text("delivery_mode").notNull().default("pdf"),
+  subject: text("subject").notNull(),
+  program: text("program").notNull(),
+  targetYear: integer("target_year").notNull(),
   status: text("status").notNull().default("open"),
   posterId: text("poster_id").notNull().references(() => usersTable.id),
-  acceptedById: text("accepted_by_id").references(() => usersTable.id),
-  subject: text("subject"),
+  bookedById: text("booked_by_id").references(() => usersTable.id),
   deadline: timestamp("deadline"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
@@ -21,35 +23,61 @@ export const insertAssignmentSchema = createInsertSchema(assignmentsTable).omit(
 export type InsertAssignment = z.infer<typeof insertAssignmentSchema>;
 export type Assignment = typeof assignmentsTable.$inferSelect;
 
-export const coachingSessionsTable = pgTable("coaching_sessions", {
+// ─── Certifications ──────────────────────────────────────────────────────────
+export const certificationsTable = pgTable("certifications", {
   id: text("id").primaryKey(),
   title: text("title").notNull(),
   description: text("description").notNull(),
   price: numeric("price", { precision: 10, scale: 2 }).notNull(),
-  sessionType: text("session_type").notNull().default("one_on_one"),
   subject: text("subject").notNull(),
-  mentorId: text("mentor_id").notNull().references(() => usersTable.id),
+  program: text("program").notNull(),
+  targetYear: integer("target_year").notNull(),
+  status: text("status").notNull().default("open"),
+  posterId: text("poster_id").notNull().references(() => usersTable.id),
   bookedById: text("booked_by_id").references(() => usersTable.id),
-  scheduledAt: timestamp("scheduled_at"),
-  status: text("status").notNull().default("available"),
-  maxStudents: integer("max_students").notNull().default(1),
+  deadline: timestamp("deadline"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-export const insertCoachingSessionSchema = createInsertSchema(coachingSessionsTable).omit({ createdAt: true, status: true });
-export type InsertCoachingSession = z.infer<typeof insertCoachingSessionSchema>;
-export type CoachingSession = typeof coachingSessionsTable.$inferSelect;
+export const insertCertificationSchema = createInsertSchema(certificationsTable).omit({ createdAt: true, status: true });
+export type InsertCertification = z.infer<typeof insertCertificationSchema>;
+export type Certification = typeof certificationsTable.$inferSelect;
 
+// ─── Deliveries ───────────────────────────────────────────────────────────────
+// Pickup types: "gate" (parcel pickup from Gate 1/3) or "outlet" (food order from campus restaurants)
+// Status flow: pending → accepted → payment_marked → payment_confirmed → in_progress → completed | cancelled
 export const deliveriesTable = pgTable("deliveries", {
   id: text("id").primaryKey(),
-  pickupLocation: text("pickup_location").notNull(),
-  dropLocation: text("drop_location").notNull(),
-  item: text("item").notNull(),
-  status: text("status").notNull().default("pending"),
   requesterId: text("requester_id").notNull().references(() => usersTable.id),
   deliveryAgentId: text("delivery_agent_id").references(() => usersTable.id),
-  fee: numeric("fee", { precision: 10, scale: 2 }).notNull().default("20"),
-  notes: text("notes"),
+
+  pickupType: text("pickup_type").notNull(),
+  pickupLocation: text("pickup_location").notNull(),
+  dropLocation: text("drop_location").notNull(),
+
+  // Gate-specific
+  websiteName: text("website_name"),
+  courierCompany: text("courier_company"),
+  orderCustomerName: text("order_customer_name"),
+  orderId: text("order_id_ref"),
+  orderMobile: text("order_mobile"),
+
+  // Outlet-specific
+  foodItems: text("food_items"),
+  subtotal: numeric("subtotal", { precision: 10, scale: 2 }),
+  deliveryFee: numeric("delivery_fee", { precision: 10, scale: 2 }).notNull().default("30"),
+
+  status: text("status").notNull().default("pending"),
+
+  paymentTimerStartedAt: timestamp("payment_timer_started_at"),
+  paymentMarkedAt: timestamp("payment_marked_at"),
+
+  // Rating by student after completion
+  ratingHappiness: integer("rating_happiness"),
+  ratingHandling: integer("rating_handling"),
+  ratingOnTime: integer("rating_on_time"),
+  ratingComment: text("rating_comment"),
+
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -57,6 +85,19 @@ export const insertDeliverySchema = createInsertSchema(deliveriesTable).omit({ c
 export type InsertDelivery = z.infer<typeof insertDeliverySchema>;
 export type Delivery = typeof deliveriesTable.$inferSelect;
 
+// ─── Outlet Items (admin-managed menus) ──────────────────────────────────────
+export const outletItemsTable = pgTable("outlet_items", {
+  id: text("id").primaryKey(),
+  outletName: text("outlet_name").notNull(),
+  name: text("name").notNull(),
+  price: numeric("price", { precision: 10, scale: 2 }).notNull(),
+  available: boolean("available").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type OutletItem = typeof outletItemsTable.$inferSelect;
+
+// ─── Tasks ────────────────────────────────────────────────────────────────────
 export const tasksTable = pgTable("tasks", {
   id: text("id").primaryKey(),
   title: text("title").notNull(),
@@ -79,5 +120,21 @@ export const taskApplicationsTable = pgTable("task_applications", {
   id: text("id").primaryKey(),
   taskId: text("task_id").notNull().references(() => tasksTable.id),
   applicantId: text("applicant_id").notNull().references(() => usersTable.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// Keep for backward compat — not used in new UI
+export const coachingSessionsTable = pgTable("coaching_sessions", {
+  id: text("id").primaryKey(),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  price: numeric("price", { precision: 10, scale: 2 }).notNull(),
+  sessionType: text("session_type").notNull().default("one_on_one"),
+  subject: text("subject").notNull(),
+  mentorId: text("mentor_id").notNull().references(() => usersTable.id),
+  bookedById: text("booked_by_id").references(() => usersTable.id),
+  scheduledAt: timestamp("scheduled_at"),
+  status: text("status").notNull().default("available"),
+  maxStudents: integer("max_students").notNull().default(1),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

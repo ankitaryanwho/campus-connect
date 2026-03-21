@@ -16,10 +16,17 @@ const API_BASE = process.env.EXPO_PUBLIC_API_URL || "/api";
 const PROGRAMS = ["BCA", "BTech", "MBA", "MTech", "BSc", "BCom", "BA", "Other"];
 
 const ALL_SERVICES = [
-  { id: "assignments", label: "Assignments", icon: "file-text", desc: "Help students with academic work" },
-  { id: "coaching", label: "Coaching", icon: "users", desc: "Teach & mentor other students" },
-  { id: "deliveries", label: "Deliveries", icon: "truck", desc: "Campus delivery runs" },
+  { id: "assignments", label: "Assignments", icon: "file-text", desc: "Help students with assignment work" },
+  { id: "certifications", label: "Certifications", icon: "award", desc: "Help with certification projects" },
+  { id: "deliveries", label: "Deliveries", icon: "truck", desc: "Campus delivery & pickup runs" },
   { id: "tasks", label: "Tasks & Gigs", icon: "clipboard", desc: "Freelance tasks for students" },
+];
+
+const YEARS = [
+  { value: 1, label: "1st Year" },
+  { value: 2, label: "2nd Year" },
+  { value: 3, label: "3rd Year" },
+  { value: 4, label: "4th Year" },
 ];
 
 interface College {
@@ -42,6 +49,8 @@ export default function RegisterScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [program, setProgram] = useState("BCA");
+  const [year, setYear] = useState(1);
+  const [phone, setPhone] = useState("");
   const [selectedCollege, setSelectedCollege] = useState<College | null>(null);
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
 
@@ -160,6 +169,8 @@ export default function RegisterScreen() {
         college: selectedCollege!.name,
         collegeId: selectedCollege!.id,
         program,
+        year,
+        phone: phone.trim() || undefined,
         services: role === "provider" ? selectedServices : [],
         verificationToken: token,
       });
@@ -389,6 +400,39 @@ export default function RegisterScreen() {
                 </Pressable>
               ))}
             </View>
+          </View>
+
+          <View>
+            <Text style={[S.label, { color: C.textSecondary }]}>Academic Year *</Text>
+            <View style={S.chipsRow}>
+              {YEARS.map(y => (
+                <Pressable
+                  key={y.value}
+                  style={[S.chip, { borderColor: C.border, backgroundColor: year === y.value ? C.primary : C.backgroundSecondary }]}
+                  onPress={() => setYear(y.value)}
+                >
+                  <Text style={[S.chipText, { color: year === y.value ? "#fff" : C.textSecondary, fontFamily: "Inter_500Medium" }]}>{y.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+
+          <View>
+            <Text style={[S.label, { color: C.textSecondary }]}>Phone Number <Text style={{ color: C.textTertiary, fontFamily: "Inter_400Regular" }}>(optional)</Text></Text>
+            <View style={[S.inputWrapper, { backgroundColor: C.backgroundSecondary, borderColor: C.border }]}>
+              <Feather name="phone" size={17} color={C.textTertiary} />
+              <TextInput
+                style={[S.input, { color: C.text, fontFamily: "Inter_400Regular" }]}
+                placeholder="+91 XXXXX XXXXX"
+                placeholderTextColor={C.textTertiary}
+                value={phone}
+                onChangeText={v => { setPhone(v); setError(""); }}
+                keyboardType="phone-pad"
+              />
+            </View>
+            <Text style={{ color: C.textTertiary, fontSize: 11, marginTop: 4, fontFamily: "Inter_400Regular" }}>
+              Used for delivery coordination. Shared only when needed.
+            </Text>
           </View>
 
           {role === "provider" && (

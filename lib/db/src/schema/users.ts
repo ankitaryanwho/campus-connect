@@ -11,6 +11,8 @@ export const usersTable = pgTable("users", {
   bio: text("bio"),
   college: text("college"),
   program: text("program"),
+  year: integer("year"),
+  phone: text("phone"),
   role: text("role").notNull().default("student"),
   services: text("services"),
   emailVerified: boolean("email_verified").notNull().default(false),

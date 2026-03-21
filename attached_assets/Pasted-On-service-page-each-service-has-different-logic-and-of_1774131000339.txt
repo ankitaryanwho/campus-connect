@@ -1,0 +1,90 @@
+On service page each service has different logic and offering;
+
+Add these services :
+Assignment 
+Certification 
+Delivery 
+Task
+
+Each service has different option, posting access:
+Assignment:
+To student profiles, only assignments available for their course and their course year will be shown , with booking button , and price button , not any option to post any assignment.
+
+To service providers, they will have access to post assignment offer with their pricing, subject name , assignment subject year , ..
+
+Also implement logic, a first year student can only post assignment offer for first year, none can post offer for higher year course, they can post for lower year, like a 2nd year guy can post assignment offer for first year and second year subject of his course but not third year course .
+Also assignment service provider can only post assignment offers for their program only, if he's in bca he can't post for btech.
+
+Certification:
+Tu student profile: only certifications available for their course and their course year will be shown , with booking button , and price button , not any option to post any project. 
+
+To service provider:
+they will have access to post certification offer with their pricing, subject name , assignment subject year , ..
+
+Any year guy can post offer for any year program.
+
+
+Project:
+To student :
+only project available for their course and their course year will be shown , with booking button , and price button , not any option to post any project.
+
+To project service provider:
+they will have access to post assignment offer with their pricing, subject name , assignment subject year , ..
+
+Any year service provider can post for any year program project offer.
+
+Delivery:
+To student profiles:
+Student can post their request: 
+While posting, they will have to select pickup from and drop to.
+In pickup from , there should be a drop-down box with campus places names, mention following:
+
+Gate No 3 (prepaid only)
+Gate No 1 (prepaid only)
+Southern Stories 
+Hotspot 
+Snapeats
+Kathi Junction 
+Dominos 
+Subway
+
+Here gate no 3 and gate no 1 is parcel collection gate where students collects their parcel for their orders from websites like amazon Flipkart.
+When students selects pickup from gate no 3/1 then they have to enter website name , and courier company name , courier company name will have drop-down with following names: 
+EKart Logistics 
+BlueDart
+Amazon Shipping
+ShadowFax
+Express news
+SafeXpress
+
+Order customer name:
+Order Id field: 
+Order linked Mobile Number field :
+On bottom Request Pickup button 
+When any delivery service provider accept their request, the student gets mobile number of the provider with a call button, and student gets redirected to his phones default calling app and service providers number gets pasted to diaload of phone app for call..
+
+
+If students select Hotspot 
+Snapeats
+Kathi Junction 
+Dominos 
+Subway in pickup from drop-down box,
+
+Then student will see list of items available in these outlets along with item pricing, and they will have option to add item in their request along with increase decrease item count button 
+
+On bottom , item subtotal price+ 30₹ delivery charge!
+
+And they will place request!
+
+Service providers will get notification on their phone and app about this pickup request, also they will see pickup request in services tab, they can accept and reject the request. 
+When any delivery service provider accept their request, the student gets mobile number of the provider with a call button, and student gets redirected to his phones default calling app and service providers number gets pasted to diaload of phone app for call..
+If they accept the request, 
+a timer of 3 minutes  starts for completion of item amount  payment to the student and student get notification for this too, payment will be made by student to service provider directly,  both will connect on call and will provider will collect payment from student by sharing his bank details .. once student pays, then he will mark timer as paid and service provider will get notification to confirm payment received, once he confirms payment received, then provider will pay the amount to food outlet and collect the order , and deliver it to the student , once he reach to the student , the provider will ask to pay the delivery charge via app only, and student will see option to pay delivery charge + platform fee 2% of total bill (bill is item price)
+
+Outlet items listing, pricing will be accessed and edited by app admin only, by admin panel, any student or service provider cant edit or change any item listing of any pickup from outlet, 
+
+In drop to box , student will mention drop location.
+
+Once delivery completes, student will get option to rate rhe service provider, rating will be given for 3 things , how happy you were with service provider? how was the handling of item? how was the on time delivery experience?
+
+Also they will get a comment box below rating, and this rating and comment will be updated to service provider profile,

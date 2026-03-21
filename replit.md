@@ -6,12 +6,11 @@ A production-ready college social app — **CampusConnect** — built as a pnpm 
 
 ### Auth / Registration Flow
 - College list is static (5 colleges with domains): Bennett, Amity, Manipal, Sharda, Galgotias
-- Signup: select college → enter name/email (domain validated) / password / program → OTP sent → verify OTP → account created
-- Service providers additionally select their services (assignments, coaching, deliveries, tasks)
-- OTP is stored in `otp_codes` DB table; in dev mode the 6-digit code is printed to the API server console
-- Email uniqueness enforced: duplicate email returns clear error
+- Signup: select college → enter name/email (domain validated) / password / program / **academic year (1-4)** / phone (optional) → OTP sent → verify OTP → account created
+- Service providers additionally select their services (assignments, certifications, deliveries, tasks)
+- OTP sent via Gmail SMTP (nodemailer); credentials in SMTP_USER / SMTP_PASS secrets
 - `verificationToken` (short-lived JWT) issued after OTP verification, required for `/auth/register`
-- Users have `emailVerified=true` after completing OTP flow
+- Users have `emailVerified=true` after completing OTP flow; `year` and `phone` stored on user
 - Provider services stored as JSON array in `users.services` column, shown as badges on profile
 
 ## Stack
@@ -51,7 +50,7 @@ artifacts-monorepo/
 ### Mobile App (`artifacts/mobile`)
 - **Authentication**: Login / Register with JWT, demo account (priya@campus.edu / password123)
 - **Social Feed**: Posts, likes, comments, create posts
-- **Services Marketplace**: Assignments, Coaching, Deliveries, Tasks
+- **Services Marketplace**: Assignments, Certifications, Delivery, Tasks — full role-based logic
 - **Chat**: Direct messages (DMs) + Chatrooms (6 preset rooms), real-time polling
 - **Wallet**: Balance, add money, transfer, transaction history
 - **Profiles**: User profiles, follow/unfollow, bio/college/program

@@ -12,6 +12,8 @@ export interface User {
   bio?: string | null;
   college?: string | null;
   program?: string | null;
+  year?: number | null;
+  phone?: string | null;
   role: string;
   services?: string | null;
   emailVerified?: boolean;
@@ -40,6 +42,8 @@ interface RegisterData {
   college?: string;
   collegeId?: string;
   program?: string;
+  year?: number;
+  phone?: string;
   services?: string[];
   verificationToken?: string;
 }

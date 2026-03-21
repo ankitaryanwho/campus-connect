@@ -122,7 +122,7 @@ router.post("/verify-otp", async (req, res) => {
 
 router.post("/register", async (req, res) => {
   try {
-    const { name, email, password, role = "student", college, collegeId, program, services, verificationToken } = req.body;
+    const { name, email, password, role = "student", college, collegeId, program, year, phone, services, verificationToken } = req.body;
     if (!name || !email || !password) {
       res.status(400).json({ error: "ValidationError", message: "Name, email, and password are required" });
       return;
@@ -183,6 +183,8 @@ router.post("/register", async (req, res) => {
       role,
       college: college || selectedCollege.name,
       program,
+      year: year ? parseInt(year) : null,
+      phone: phone ? phone.trim() : null,
       services: servicesJson,
       emailVerified: true,
       followersCount: 0,
