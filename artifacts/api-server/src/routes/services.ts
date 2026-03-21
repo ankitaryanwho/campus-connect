@@ -27,6 +27,12 @@ async function currentUser(userId: string) {
   return users[0] || null;
 }
 
+function appendHistory(existing: string | null, status: string): string {
+  const h = existing ? JSON.parse(existing) : [];
+  h.push({ status, at: new Date().toISOString() });
+  return JSON.stringify(h);
+}
+
 // ─── Assignments ──────────────────────────────────────────────────────────────
 
 router.get("/assignments", authMiddleware, async (req, res) => {
@@ -109,12 +115,61 @@ router.post("/assignments/:id/book", authMiddleware, async (req, res) => {
     const rows = await db.select().from(assignmentsTable).where(eq(assignmentsTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].posterId === userId) { res.status(400).json({ error: "Cannot book your own listing" }); return; }
-    await db.update(assignmentsTable).set({ bookedById: userId, status: "booked" }).where(eq(assignmentsTable.id, id));
+    if (rows[0].status !== "open") { res.status(400).json({ error: "Already booked" }); return; }
+    const history = appendHistory(rows[0].statusHistory, "booked");
+    await db.update(assignmentsTable).set({ bookedById: userId, status: "booked", statusHistory: history }).where(eq(assignmentsTable.id, id));
     const updated = await db.select().from(assignmentsTable).where(eq(assignmentsTable.id, id)).limit(1);
     res.json({ ...updated[0], poster: await safeUser(updated[0].posterId), bookedBy: await safeUser(userId) });
   } catch (err) {
     res.status(500).json({ error: "ServerError", message: "Failed to book assignment" });
   }
+});
+
+router.post("/assignments/:id/accept", authMiddleware, async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const { id } = req.params;
+    const rows = await db.select().from(assignmentsTable).where(eq(assignmentsTable.id, id)).limit(1);
+    if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
+    if (rows[0].posterId !== userId) { res.status(403).json({ error: "Only the poster can accept bookings" }); return; }
+    if (rows[0].status !== "booked") { res.status(400).json({ error: "Must be in booked status" }); return; }
+    const history = appendHistory(rows[0].statusHistory, "accepted");
+    await db.update(assignmentsTable).set({ status: "accepted", statusHistory: history }).where(eq(assignmentsTable.id, id));
+    const updated = await db.select().from(assignmentsTable).where(eq(assignmentsTable.id, id)).limit(1);
+    res.json({ ...updated[0], poster: await safeUser(updated[0].posterId), bookedBy: updated[0].bookedById ? await safeUser(updated[0].bookedById) : null });
+  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to accept" }); }
+});
+
+router.post("/assignments/:id/progress", authMiddleware, async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const { id } = req.params;
+    const rows = await db.select().from(assignmentsTable).where(eq(assignmentsTable.id, id)).limit(1);
+    if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
+    if (rows[0].posterId !== userId) { res.status(403).json({ error: "Only the poster can update status" }); return; }
+    const next: Record<string, string> = { accepted: "in_progress", in_progress: "completed" };
+    const nextStatus = next[rows[0].status];
+    if (!nextStatus) { res.status(400).json({ error: "Cannot advance from status: " + rows[0].status }); return; }
+    const history = appendHistory(rows[0].statusHistory, nextStatus);
+    await db.update(assignmentsTable).set({ status: nextStatus, statusHistory: history }).where(eq(assignmentsTable.id, id));
+    const updated = await db.select().from(assignmentsTable).where(eq(assignmentsTable.id, id)).limit(1);
+    res.json({ ...updated[0], poster: await safeUser(updated[0].posterId), bookedBy: updated[0].bookedById ? await safeUser(updated[0].bookedById) : null });
+  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to update status" }); }
+});
+
+router.post("/assignments/:id/confirm", authMiddleware, async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const { id } = req.params;
+    const rows = await db.select().from(assignmentsTable).where(eq(assignmentsTable.id, id)).limit(1);
+    if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
+    if (rows[0].bookedById !== userId) { res.status(403).json({ error: "Only the student can confirm delivery" }); return; }
+    if (rows[0].status !== "completed") { res.status(400).json({ error: "Provider must mark as completed first" }); return; }
+    const history = appendHistory(rows[0].statusHistory, "delivered");
+    await db.update(assignmentsTable).set({ status: "delivered", statusHistory: history }).where(eq(assignmentsTable.id, id));
+    const updated = await db.select().from(assignmentsTable).where(eq(assignmentsTable.id, id)).limit(1);
+    res.json({ ...updated[0], poster: await safeUser(updated[0].posterId), bookedBy: await safeUser(userId) });
+  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to confirm delivery" }); }
 });
 
 // ─── Certifications ───────────────────────────────────────────────────────────
@@ -190,12 +245,61 @@ router.post("/certifications/:id/book", authMiddleware, async (req, res) => {
     const rows = await db.select().from(certificationsTable).where(eq(certificationsTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].posterId === userId) { res.status(400).json({ error: "Cannot book your own listing" }); return; }
-    await db.update(certificationsTable).set({ bookedById: userId, status: "booked" }).where(eq(certificationsTable.id, id));
+    if (rows[0].status !== "open") { res.status(400).json({ error: "Already booked" }); return; }
+    const history = appendHistory(rows[0].statusHistory, "booked");
+    await db.update(certificationsTable).set({ bookedById: userId, status: "booked", statusHistory: history }).where(eq(certificationsTable.id, id));
     const updated = await db.select().from(certificationsTable).where(eq(certificationsTable.id, id)).limit(1);
     res.json({ ...updated[0], poster: await safeUser(updated[0].posterId), bookedBy: await safeUser(userId) });
   } catch (err) {
     res.status(500).json({ error: "ServerError", message: "Failed to book certification" });
   }
+});
+
+router.post("/certifications/:id/accept", authMiddleware, async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const { id } = req.params;
+    const rows = await db.select().from(certificationsTable).where(eq(certificationsTable.id, id)).limit(1);
+    if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
+    if (rows[0].posterId !== userId) { res.status(403).json({ error: "Only the poster can accept bookings" }); return; }
+    if (rows[0].status !== "booked") { res.status(400).json({ error: "Must be in booked status" }); return; }
+    const history = appendHistory(rows[0].statusHistory, "accepted");
+    await db.update(certificationsTable).set({ status: "accepted", statusHistory: history }).where(eq(certificationsTable.id, id));
+    const updated = await db.select().from(certificationsTable).where(eq(certificationsTable.id, id)).limit(1);
+    res.json({ ...updated[0], poster: await safeUser(updated[0].posterId), bookedBy: updated[0].bookedById ? await safeUser(updated[0].bookedById) : null });
+  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to accept" }); }
+});
+
+router.post("/certifications/:id/progress", authMiddleware, async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const { id } = req.params;
+    const rows = await db.select().from(certificationsTable).where(eq(certificationsTable.id, id)).limit(1);
+    if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
+    if (rows[0].posterId !== userId) { res.status(403).json({ error: "Only the poster can update status" }); return; }
+    const next: Record<string, string> = { accepted: "in_progress", in_progress: "completed" };
+    const nextStatus = next[rows[0].status];
+    if (!nextStatus) { res.status(400).json({ error: "Cannot advance from status: " + rows[0].status }); return; }
+    const history = appendHistory(rows[0].statusHistory, nextStatus);
+    await db.update(certificationsTable).set({ status: nextStatus, statusHistory: history }).where(eq(certificationsTable.id, id));
+    const updated = await db.select().from(certificationsTable).where(eq(certificationsTable.id, id)).limit(1);
+    res.json({ ...updated[0], poster: await safeUser(updated[0].posterId), bookedBy: updated[0].bookedById ? await safeUser(updated[0].bookedById) : null });
+  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to update status" }); }
+});
+
+router.post("/certifications/:id/confirm", authMiddleware, async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const { id } = req.params;
+    const rows = await db.select().from(certificationsTable).where(eq(certificationsTable.id, id)).limit(1);
+    if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
+    if (rows[0].bookedById !== userId) { res.status(403).json({ error: "Only the student can confirm delivery" }); return; }
+    if (rows[0].status !== "completed") { res.status(400).json({ error: "Provider must mark as completed first" }); return; }
+    const history = appendHistory(rows[0].statusHistory, "delivered");
+    await db.update(certificationsTable).set({ status: "delivered", statusHistory: history }).where(eq(certificationsTable.id, id));
+    const updated = await db.select().from(certificationsTable).where(eq(certificationsTable.id, id)).limit(1);
+    res.json({ ...updated[0], poster: await safeUser(updated[0].posterId), bookedBy: await safeUser(userId) });
+  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to confirm delivery" }); }
 });
 
 // ─── Outlet Items ─────────────────────────────────────────────────────────────
@@ -341,19 +445,58 @@ router.post("/deliveries/:id/accept", authMiddleware, async (req, res) => {
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].requesterId === userId) { res.status(400).json({ error: "Cannot accept your own request" }); return; }
     if (rows[0].status !== "pending") { res.status(400).json({ error: "Already accepted" }); return; }
-
-    const now = new Date();
+    const history = appendHistory(rows[0].statusHistory, "accepted");
     await db.update(deliveriesTable).set({
       deliveryAgentId: userId,
       status: "accepted",
-      paymentTimerStartedAt: rows[0].pickupType === "outlet" ? now : null,
+      statusHistory: history,
     }).where(eq(deliveriesTable.id, id));
-
     const updated = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
     res.json({ ...updated[0], requester: await safeUser(updated[0].requesterId), deliveryAgent: await safeUser(userId) });
   } catch (err) {
     res.status(500).json({ error: "ServerError", message: "Failed to accept delivery" });
   }
+});
+
+// Provider advances delivery through Zomato-style steps
+router.post("/deliveries/:id/progress", authMiddleware, async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const { id } = req.params;
+    const rows = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
+    if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
+    if (rows[0].deliveryAgentId !== userId) { res.status(403).json({ error: "Only the delivery agent can update status" }); return; }
+    const isOutlet = rows[0].pickupType === "outlet";
+    const progressMap: Record<string, string> = {
+      accepted: "reaching_pickup",
+      ...(isOutlet
+        ? { reaching_pickup: "placed_order", placed_order: "collecting_order", collecting_order: "reaching_drop" }
+        : { reaching_pickup: "reaching_drop" }),
+      reaching_drop: "completed",
+    };
+    const nextStatus = progressMap[rows[0].status];
+    if (!nextStatus) { res.status(400).json({ error: "Cannot advance from status: " + rows[0].status }); return; }
+    const history = appendHistory(rows[0].statusHistory, nextStatus);
+    await db.update(deliveriesTable).set({ status: nextStatus, statusHistory: history }).where(eq(deliveriesTable.id, id));
+    const updated = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
+    res.json({ ...updated[0], requester: await safeUser(updated[0].requesterId), deliveryAgent: await safeUser(userId) });
+  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to progress delivery" }); }
+});
+
+// Student confirms delivery received
+router.post("/deliveries/:id/confirm", authMiddleware, async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const { id } = req.params;
+    const rows = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
+    if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
+    if (rows[0].requesterId !== userId) { res.status(403).json({ error: "Only the requester can confirm delivery" }); return; }
+    if (rows[0].status !== "completed") { res.status(400).json({ error: "Agent must mark as completed first" }); return; }
+    const history = appendHistory(rows[0].statusHistory, "delivered");
+    await db.update(deliveriesTable).set({ status: "delivered", statusHistory: history }).where(eq(deliveriesTable.id, id));
+    const updated = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
+    res.json({ ...updated[0], requester: await safeUser(userId), deliveryAgent: updated[0].deliveryAgentId ? await safeUser(updated[0].deliveryAgentId) : null });
+  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to confirm delivery" }); }
 });
 
 router.post("/deliveries/:id/reject", authMiddleware, async (req, res) => {
@@ -420,7 +563,7 @@ router.post("/deliveries/:id/rate", authMiddleware, async (req, res) => {
     const rows = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].requesterId !== userId) { res.status(403).json({ error: "Only the requester can rate" }); return; }
-    if (rows[0].status !== "completed") { res.status(400).json({ error: "Can only rate completed deliveries" }); return; }
+    if (!["completed", "delivered"].includes(rows[0].status)) { res.status(400).json({ error: "Can only rate completed or delivered orders" }); return; }
     await db.update(deliveriesTable).set({ ratingHappiness, ratingHandling, ratingOnTime, ratingComment }).where(eq(deliveriesTable.id, id));
     const updated = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
     res.json({ ...updated[0], requester: await safeUser(updated[0].requesterId), deliveryAgent: updated[0].deliveryAgentId ? await safeUser(updated[0].deliveryAgentId) : null });

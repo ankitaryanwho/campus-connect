@@ -16,6 +16,7 @@ export const assignmentsTable = pgTable("assignments", {
   posterId: text("poster_id").notNull().references(() => usersTable.id),
   bookedById: text("booked_by_id").references(() => usersTable.id),
   deadline: timestamp("deadline"),
+  statusHistory: text("status_history"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -36,6 +37,7 @@ export const certificationsTable = pgTable("certifications", {
   posterId: text("poster_id").notNull().references(() => usersTable.id),
   bookedById: text("booked_by_id").references(() => usersTable.id),
   deadline: timestamp("deadline"),
+  statusHistory: text("status_history"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -68,6 +70,7 @@ export const deliveriesTable = pgTable("deliveries", {
   deliveryFee: numeric("delivery_fee", { precision: 10, scale: 2 }).notNull().default("30"),
 
   status: text("status").notNull().default("pending"),
+  statusHistory: text("status_history"),
 
   paymentTimerStartedAt: timestamp("payment_timer_started_at"),
   paymentMarkedAt: timestamp("payment_marked_at"),

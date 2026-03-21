@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View, Text, ScrollView, Pressable, StyleSheet, Modal,
   useColorScheme, FlatList, ActivityIndicator, Platform,
-  TextInput, Linking,
+  TextInput, Linking, Animated,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
@@ -20,6 +20,34 @@ const SERVICE_TABS = [
   { id: "tasks", label: "Tasks", icon: "check-square", color: "#EF4444" },
 ];
 
+// ─── Status Tracking Steps ──────────────────────────────────────────────────
+
+const ACADEMIC_STEPS = [
+  { id: "booked", label: "Booking Confirmed", icon: "bookmark" },
+  { id: "accepted", label: "Work Accepted by Provider", icon: "thumbs-up" },
+  { id: "in_progress", label: "Work In Progress", icon: "edit-2" },
+  { id: "completed", label: "Work Completed", icon: "check-circle" },
+  { id: "delivered", label: "Delivered to Student", icon: "package" },
+];
+
+const DELIVERY_OUTLET_STEPS = [
+  { id: "accepted", label: "Request Accepted", icon: "user-check" },
+  { id: "reaching_pickup", label: "Heading to Outlet", icon: "navigation" },
+  { id: "placed_order", label: "Order Placed at Outlet", icon: "shopping-bag" },
+  { id: "collecting_order", label: "Collecting Order", icon: "clock" },
+  { id: "reaching_drop", label: "On the Way to You", icon: "truck" },
+  { id: "completed", label: "Arrived — Waiting to Hand Over", icon: "map-pin" },
+  { id: "delivered", label: "Delivered!", icon: "gift" },
+];
+
+const DELIVERY_GATE_STEPS = [
+  { id: "accepted", label: "Request Accepted", icon: "user-check" },
+  { id: "reaching_pickup", label: "Heading to Gate", icon: "navigation" },
+  { id: "reaching_drop", label: "On the Way to You", icon: "truck" },
+  { id: "completed", label: "Arrived — Waiting to Hand Over", icon: "map-pin" },
+  { id: "delivered", label: "Delivered!", icon: "gift" },
+];
+
 const PROGRAMS = ["BCA", "BTech", "MBA", "MTech", "BSc", "BCom", "BA", "Other"];
 const TASK_CATEGORIES = ["design", "development", "content", "video", "research", "other"];
 
@@ -34,9 +62,11 @@ const isGate = (loc: string) => loc.startsWith("Gate No");
 
 function statusColor(s: string, C: any) {
   if (s === "open" || s === "pending") return C.success;
-  if (s === "booked" || s === "accepted" || s === "payment_marked") return C.warning;
-  if (s === "in_progress") return "#8B5CF6";
+  if (s === "booked") return C.warning;
+  if (s === "accepted" || s === "reaching_pickup" || s === "placed_order" || s === "collecting_order") return "#F59E0B";
+  if (s === "in_progress" || s === "reaching_drop") return "#8B5CF6";
   if (s === "completed") return C.primary;
+  if (s === "delivered") return "#10B981";
   if (s === "cancelled") return C.error;
   return C.textTertiary;
 }
@@ -45,8 +75,10 @@ function statusLabel(s: string) {
   const map: Record<string, string> = {
     open: "Open", pending: "Pending", booked: "Booked",
     accepted: "Accepted", payment_marked: "Payment Sent",
-    payment_confirmed: "Confirmed", in_progress: "On the way",
-    completed: "Delivered", cancelled: "Cancelled",
+    payment_confirmed: "Confirmed", in_progress: "In Progress",
+    reaching_pickup: "Heading to Pickup", placed_order: "Order Placed",
+    collecting_order: "Collecting", reaching_drop: "On the Way",
+    completed: "Arrived", delivered: "Delivered", cancelled: "Cancelled",
   };
   return map[s] || s;
 }
@@ -101,6 +133,116 @@ function Picker({ label, options, value, onChange, C }: any) {
           </View>
         </Pressable>
       </Modal>
+    </View>
+  );
+}
+
+// ─── Status Tracker (Zomato/Swiggy style) ────────────────────────────────────
+
+function StatusTracker({ steps, currentStatus, history, accentColor = "#5B4FE8", C }: {
+  steps: Array<{ id: string; label: string; icon: string }>;
+  currentStatus: string;
+  history?: string | null;
+  accentColor?: string;
+  C: any;
+}) {
+  const currentIdx = Math.max(0, steps.findIndex(s => s.id === currentStatus));
+  const pulse = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1.3, duration: 900, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1, duration: 900, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, []);
+
+  const timeMap: Record<string, string> = {};
+  if (history) {
+    try {
+      const arr = JSON.parse(history);
+      arr.forEach((e: any) => {
+        timeMap[e.status] = new Date(e.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      });
+    } catch {}
+  }
+
+  return (
+    <View style={{ paddingTop: 4, paddingBottom: 8 }}>
+      {steps.map((step, idx) => {
+        const isDone = idx < currentIdx;
+        const isCurrent = idx === currentIdx;
+        const isPending = idx > currentIdx;
+        const isLast = idx === steps.length - 1;
+        const stepTime = timeMap[step.id];
+
+        return (
+          <View key={step.id} style={{ flexDirection: "row" }}>
+            {/* Left column: dot + connector line */}
+            <View style={{ width: 34, alignItems: "center" }}>
+              {isDone && (
+                <View style={{
+                  width: 28, height: 28, borderRadius: 14,
+                  backgroundColor: "#10B981",
+                  justifyContent: "center", alignItems: "center",
+                  shadowColor: "#10B981", shadowOpacity: 0.3, shadowRadius: 4, elevation: 2,
+                }}>
+                  <Feather name="check" size={14} color="#fff" />
+                </View>
+              )}
+              {isCurrent && (
+                <Animated.View style={{ transform: [{ scale: pulse }] }}>
+                  <View style={{
+                    width: 28, height: 28, borderRadius: 14,
+                    backgroundColor: accentColor,
+                    justifyContent: "center", alignItems: "center",
+                    shadowColor: accentColor, shadowOpacity: 0.5, shadowRadius: 8, elevation: 5,
+                  }}>
+                    <Feather name={step.icon as any} size={13} color="#fff" />
+                  </View>
+                </Animated.View>
+              )}
+              {isPending && (
+                <View style={{
+                  width: 28, height: 28, borderRadius: 14,
+                  borderWidth: 2, borderColor: C.border,
+                  backgroundColor: C.backgroundSecondary,
+                  justifyContent: "center", alignItems: "center",
+                }}>
+                  <Feather name={step.icon as any} size={12} color={C.textTertiary} />
+                </View>
+              )}
+              {!isLast && (
+                <View style={{
+                  width: 2, flex: 1, minHeight: 28,
+                  backgroundColor: isDone ? "#10B981" : C.border,
+                  marginVertical: 2, borderRadius: 1,
+                }} />
+              )}
+            </View>
+
+            {/* Right column: label + time */}
+            <View style={{ flex: 1, paddingLeft: 10, paddingBottom: isLast ? 4 : 28, paddingTop: 4 }}>
+              <Text style={{
+                fontSize: 13,
+                fontFamily: isCurrent ? "Inter_700Bold" : isDone ? "Inter_500Medium" : "Inter_400Regular",
+                color: isDone ? "#10B981" : isCurrent ? accentColor : C.textTertiary,
+                lineHeight: 18,
+              }}>
+                {step.label}
+              </Text>
+              {stepTime && (
+                <Text style={{ fontSize: 11, color: C.textTertiary, marginTop: 1, fontFamily: "Inter_400Regular" }}>
+                  {stepTime}
+                </Text>
+              )}
+            </View>
+          </View>
+        );
+      })}
     </View>
   );
 }
@@ -524,9 +666,22 @@ function PostTaskModal({ visible, onClose, C, apiRequest, queryClient, showToast
 
 function AcademicCard({ item, C, onAction, currentUserId, isPending, serviceType }: any) {
   const isOwner = item.poster?.id === currentUserId;
+  const isBooker = item.bookedBy?.id === currentUserId;
   const isBooked = item.bookedById != null;
-  const canBook = !isOwner && !isBooked;
-  const actionLabel = canBook ? "Book Now" : null;
+  const canBook = !isOwner && !isBooked && item.status === "open";
+  const accentColor = serviceType === "certifications" ? "#10B981" : "#5B4FE8";
+  const showTracker = item.status !== "open" && isBooked;
+
+  // Provider action buttons
+  const providerAction = (() => {
+    if (!isOwner) return null;
+    if (item.status === "booked") return { label: "Accept Booking", action: "accept", color: "#10B981" };
+    if (item.status === "accepted") return { label: "Start Work", action: "progress", color: accentColor };
+    if (item.status === "in_progress") return { label: "Mark Work Completed", action: "progress", color: "#F59E0B" };
+    return null;
+  })();
+
+  const studentCanConfirm = isBooker && item.status === "completed";
 
   return (
     <View style={[CS.card, { backgroundColor: C.surface, borderColor: C.border }]}>
@@ -539,7 +694,7 @@ function AcademicCard({ item, C, onAction, currentUserId, isPending, serviceType
         </View>
         <View style={{ alignItems: "flex-end", gap: 6 }}>
           <Text style={[CS.cardPrice, { color: C.primary }]}>₹{parseFloat(item.price).toFixed(0)}</Text>
-          <View style={[CS.badge, { backgroundColor: statusColor(item.status, C) + "20" }]}>
+          <View style={[CS.badge, { backgroundColor: statusColor(item.status, C) + "22" }]}>
             <Text style={[CS.badgeText, { color: statusColor(item.status, C) }]}>{statusLabel(item.status)}</Text>
           </View>
         </View>
@@ -564,33 +719,73 @@ function AcademicCard({ item, C, onAction, currentUserId, isPending, serviceType
           </View>
         )}
       </View>
-      {isOwner && (
-        <View style={[CS.ownerBadge, { backgroundColor: C.primaryLight }]}>
-          <Feather name="star" size={11} color={C.primary} />
-          <Text style={[CS.ownerBadgeText, { color: C.primary }]}>Your listing</Text>
-        </View>
-      )}
+
+      {/* Booking info badge */}
       {item.bookedBy && (
-        <View style={[CS.ownerBadge, { backgroundColor: C.successLight || "#D1FAE5" }]}>
-          <Feather name="check-circle" size={11} color={C.success} />
+        <View style={[CS.ownerBadge, { backgroundColor: C.successLight || "#D1FAE5", marginBottom: 4 }]}>
+          <Feather name="user-check" size={11} color={C.success} />
           <Text style={[CS.ownerBadgeText, { color: C.success }]}>Booked by {item.bookedBy.name}</Text>
         </View>
       )}
-      {actionLabel && (
-        <Pressable
-          style={[CS.actionBtn, { backgroundColor: C.primary }, isPending && { opacity: 0.6 }]}
-          onPress={() => onAction(item.id)} disabled={isPending}>
-          {isPending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={CS.actionBtnText}>{actionLabel}</Text>}
-        </Pressable>
+
+      {/* Zomato-style Status Tracker */}
+      {showTracker && (
+        <View style={{ borderTopWidth: 1, borderTopColor: C.border, marginTop: 8, paddingTop: 12 }}>
+          <Text style={{ fontSize: 12, fontFamily: "Inter_600SemiBold", color: C.textSecondary, marginBottom: 8, letterSpacing: 0.4, textTransform: "uppercase" }}>
+            Work Status
+          </Text>
+          <StatusTracker
+            steps={ACADEMIC_STEPS}
+            currentStatus={item.status}
+            history={item.statusHistory}
+            accentColor={accentColor}
+            C={C}
+          />
+        </View>
       )}
+
+      {/* Action buttons */}
+      <View style={{ gap: 8, marginTop: 8 }}>
+        {canBook && (
+          <Pressable
+            style={[CS.actionBtn, { backgroundColor: accentColor }, isPending && { opacity: 0.6 }]}
+            onPress={() => onAction(item.id, "book")} disabled={isPending}>
+            {isPending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={CS.actionBtnText}>Book Now</Text>}
+          </Pressable>
+        )}
+
+        {providerAction && (
+          <Pressable
+            style={[CS.actionBtn, { backgroundColor: providerAction.color }, isPending && { opacity: 0.6 }]}
+            onPress={() => onAction(item.id, providerAction.action)} disabled={isPending}>
+            {isPending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={CS.actionBtnText}>{providerAction.label}</Text>}
+          </Pressable>
+        )}
+
+        {studentCanConfirm && (
+          <Pressable
+            style={[CS.actionBtn, { backgroundColor: "#10B981" }, isPending && { opacity: 0.6 }]}
+            onPress={() => onAction(item.id, "confirm")} disabled={isPending}>
+            {isPending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={CS.actionBtnText}>Confirm Received</Text>}
+          </Pressable>
+        )}
+
+        {item.status === "delivered" && (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#D1FAE5", borderRadius: 10, padding: 10 }}>
+            <Feather name="check-circle" size={16} color="#059669" />
+            <Text style={{ color: "#059669", fontFamily: "Inter_600SemiBold", fontSize: 13 }}>Delivered successfully!</Text>
+          </View>
+        )}
+      </View>
     </View>
   );
 }
 
-function DeliveryCard({ item, C, currentUser, onAccept, onReject, onMarkPaid, onConfirmPayment, onComplete, onRate, isPending }: any) {
+function DeliveryCard({ item, C, currentUser, onAction, onRate, isPending }: any) {
   const isRequester = item.requester?.id === currentUser?.id;
   const isAgent = item.deliveryAgent?.id === currentUser?.id;
   const [showRating, setShowRating] = useState(false);
+  const isOutlet = item.pickupType === "outlet";
 
   const foodItems = item.foodItems ? JSON.parse(item.foodItems) : null;
   const subtotal = item.subtotal ? parseFloat(item.subtotal) : 0;
@@ -598,15 +793,35 @@ function DeliveryCard({ item, C, currentUser, onAccept, onReject, onMarkPaid, on
   const total = subtotal + deliveryFee;
 
   const canCall = (isRequester || isAgent) && item.deliveryAgent?.phone && item.status !== "pending";
+  const showTracker = item.status !== "pending";
+
+  const steps = isOutlet ? DELIVERY_OUTLET_STEPS : DELIVERY_GATE_STEPS;
+
+  // Provider's next step button label
+  const agentNextAction = (() => {
+    if (!isAgent) return null;
+    const map: Record<string, { label: string; color: string }> = {
+      accepted: { label: "Head to Pickup", color: "#F59E0B" },
+      reaching_pickup: isOutlet
+        ? { label: "Placed Order at Outlet", color: "#8B5CF6" }
+        : { label: "On My Way to Drop", color: "#8B5CF6" },
+      placed_order: { label: "Collecting Order", color: "#8B5CF6" },
+      collecting_order: { label: "On My Way to Drop", color: "#5B4FE8" },
+      reaching_drop: { label: "Arrived at Drop Point", color: "#5B4FE8" },
+    };
+    return map[item.status] || null;
+  })();
+
+  const studentCanConfirm = isRequester && item.status === "completed";
 
   return (
     <View style={[CS.card, { backgroundColor: C.surface, borderColor: C.border }]}>
       <View style={CS.cardTop}>
         <View style={{ flex: 1 }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 }}>
-            <View style={[CS.badge, { backgroundColor: item.pickupType === "gate" ? "#EDE9FE" : "#FEF3C7" }]}>
-              <Text style={[CS.badgeText, { color: item.pickupType === "gate" ? "#5B4FE8" : "#D97706" }]}>
-                {item.pickupType === "gate" ? "Parcel" : "Food Order"}
+            <View style={[CS.badge, { backgroundColor: isOutlet ? "#FEF3C7" : "#EDE9FE" }]}>
+              <Text style={[CS.badgeText, { color: isOutlet ? "#D97706" : "#5B4FE8" }]}>
+                {isOutlet ? "Food Order" : "Parcel"}
               </Text>
             </View>
           </View>
@@ -614,17 +829,17 @@ function DeliveryCard({ item, C, currentUser, onAccept, onReject, onMarkPaid, on
           <Text style={[CS.cardAuthor, { color: C.textSecondary }]}>→ {item.dropLocation}</Text>
         </View>
         <View style={{ alignItems: "flex-end", gap: 6 }}>
-          {item.pickupType === "outlet" && subtotal > 0 && (
+          {isOutlet && subtotal > 0 && (
             <Text style={[CS.cardPrice, { color: C.primary }]}>₹{total.toFixed(0)}</Text>
           )}
-          <View style={[CS.badge, { backgroundColor: statusColor(item.status, C) + "20" }]}>
+          <View style={[CS.badge, { backgroundColor: statusColor(item.status, C) + "22" }]}>
             <Text style={[CS.badgeText, { color: statusColor(item.status, C) }]}>{statusLabel(item.status)}</Text>
           </View>
         </View>
       </View>
 
       {/* Gate-specific info */}
-      {item.pickupType === "gate" && (
+      {!isOutlet && (
         <View style={{ backgroundColor: C.backgroundSecondary, borderRadius: 10, padding: 10, marginBottom: 8 }}>
           <Text style={{ color: C.text, fontFamily: "Inter_500Medium", fontSize: 13 }}>{item.websiteName} · {item.courierCompany}</Text>
           <Text style={{ color: C.textSecondary, fontFamily: "Inter_400Regular", fontSize: 12 }}>Order: {item.orderId} | {item.orderCustomerName}</Text>
@@ -647,73 +862,71 @@ function DeliveryCard({ item, C, currentUser, onAccept, onReject, onMarkPaid, on
 
       {/* Requester / agent info */}
       <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-        {item.requester && <Text style={{ color: C.textTertiary, fontSize: 11 }}>Requested by {item.requester.name}</Text>}
+        {item.requester && <Text style={{ color: C.textTertiary, fontSize: 11 }}>by {item.requester.name}</Text>}
         {item.deliveryAgent && <Text style={{ color: C.textTertiary, fontSize: 11 }}>Agent: {item.deliveryAgent.name}</Text>}
       </View>
 
-      {/* Payment timer (outlet, accepted, for requester) */}
-      {isRequester && item.pickupType === "outlet" && item.status === "accepted" && item.paymentTimerStartedAt && (
-        <PaymentTimer startedAt={item.paymentTimerStartedAt} C={C} />
+      {/* Zomato-style Status Tracker */}
+      {showTracker && (
+        <View style={{ borderTopWidth: 1, borderTopColor: C.border, marginTop: 4, paddingTop: 12, marginBottom: 4 }}>
+          <Text style={{ fontSize: 12, fontFamily: "Inter_600SemiBold", color: C.textSecondary, marginBottom: 8, letterSpacing: 0.4, textTransform: "uppercase" }}>
+            Live Tracking
+          </Text>
+          <StatusTracker
+            steps={steps}
+            currentStatus={item.status}
+            history={item.statusHistory}
+            accentColor="#F59E0B"
+            C={C}
+          />
+        </View>
       )}
 
       {/* Call button */}
       {canCall && item.deliveryAgent?.phone && (
         <Pressable
-          style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#D1FAE5", borderRadius: 10, padding: 12, marginTop: 8 }}
+          style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#D1FAE5", borderRadius: 10, padding: 12, marginTop: 4 }}
           onPress={() => Linking.openURL(`tel:${item.deliveryAgent.phone}`)}>
           <Feather name="phone" size={16} color="#059669" />
-          <Text style={{ color: "#059669", fontFamily: "Inter_600SemiBold", fontSize: 14 }}>Call {isRequester ? "Delivery Agent" : "Requester"}</Text>
+          <Text style={{ color: "#059669", fontFamily: "Inter_600SemiBold", fontSize: 14 }}>
+            Call {isRequester ? "Delivery Agent" : "Requester"}
+          </Text>
         </Pressable>
       )}
 
-      {/* Action buttons by role and status */}
+      {/* Action buttons */}
       <View style={{ gap: 8, marginTop: 8 }}>
-        {/* Provider: accept/reject pending */}
-        {isAgent === false && currentUser?.role === "provider" && currentUser?.services?.includes("deliveries") && item.status === "pending" && (
-          <View style={{ flexDirection: "row", gap: 8 }}>
-            <Pressable style={[CS.actionBtn, { flex: 1, backgroundColor: C.primary }, isPending && { opacity: 0.6 }]}
-              onPress={() => onAccept(item.id)} disabled={isPending}>
-              {isPending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={CS.actionBtnText}>Accept</Text>}
-            </Pressable>
-          </View>
-        )}
-
-        {/* Requester: mark paid (outlet, accepted) */}
-        {isRequester && item.pickupType === "outlet" && item.status === "accepted" && (
-          <Pressable style={[CS.actionBtn, { backgroundColor: "#F59E0B" }, isPending && { opacity: 0.6 }]}
-            onPress={() => onMarkPaid(item.id)} disabled={isPending}>
-            {isPending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={CS.actionBtnText}>I've Paid ✓</Text>}
-          </Pressable>
-        )}
-
-        {/* Agent: confirm payment received */}
-        {isAgent && item.status === "payment_marked" && (
+        {/* Provider: accept pending request */}
+        {!isAgent && currentUser?.role === "provider" && item.status === "pending" && (
           <Pressable style={[CS.actionBtn, { backgroundColor: "#10B981" }, isPending && { opacity: 0.6 }]}
-            onPress={() => onConfirmPayment(item.id)} disabled={isPending}>
-            {isPending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={CS.actionBtnText}>Confirm Payment Received</Text>}
+            onPress={() => onAction(item.id, "accept")} disabled={isPending}>
+            {isPending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={CS.actionBtnText}>Accept Request</Text>}
           </Pressable>
         )}
 
-        {/* Gate: requester sees "agent accepted" info, agent sees requester's contact */}
-        {isRequester && item.pickupType === "gate" && item.status === "accepted" && (
-          <View style={{ backgroundColor: C.infoLight || "#EFF6FF", borderRadius: 10, padding: 10 }}>
-            <Text style={{ color: "#3B82F6", fontFamily: "Inter_500Medium", fontSize: 13 }}>Your delivery agent will pick up your parcel. Please be reachable on your phone.</Text>
-          </View>
-        )}
-
-        {/* Agent: mark complete */}
-        {isAgent && (item.status === "in_progress" || (item.status === "accepted" && item.pickupType === "gate")) && (
-          <Pressable style={[CS.actionBtn, { backgroundColor: "#5B4FE8" }, isPending && { opacity: 0.6 }]}
-            onPress={() => onComplete(item.id)} disabled={isPending}>
-            {isPending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={CS.actionBtnText}>Mark as Delivered</Text>}
+        {/* Agent: progress through steps */}
+        {agentNextAction && (
+          <Pressable style={[CS.actionBtn, { backgroundColor: agentNextAction.color }, isPending && { opacity: 0.6 }]}
+            onPress={() => onAction(item.id, "progress")} disabled={isPending}>
+            {isPending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={CS.actionBtnText}>{agentNextAction.label}</Text>}
           </Pressable>
         )}
 
-        {/* Requester: rate (completed, no rating yet) */}
-        {isRequester && item.status === "completed" && !item.ratingHappiness && (
+        {/* Student: confirm received (when agent has arrived) */}
+        {studentCanConfirm && (
+          <>
+            <Pressable style={[CS.actionBtn, { backgroundColor: "#10B981" }, isPending && { opacity: 0.6 }]}
+              onPress={() => onAction(item.id, "confirm")} disabled={isPending}>
+              {isPending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={CS.actionBtnText}>Confirm Received</Text>}
+            </Pressable>
+          </>
+        )}
+
+        {/* Student: rate after delivered */}
+        {isRequester && ["completed", "delivered"].includes(item.status) && !item.ratingHappiness && (
           <>
             <Pressable style={[CS.actionBtn, { backgroundColor: "#F59E0B" }]} onPress={() => setShowRating(true)}>
-              <Text style={CS.actionBtnText}>⭐ Rate this delivery</Text>
+              <Text style={CS.actionBtnText}>⭐ Rate Experience</Text>
             </Pressable>
             <RatingModal visible={showRating} onClose={() => setShowRating(false)}
               onSubmit={async (data: any) => { await onRate(item.id, data); setShowRating(false); }} C={C} />
@@ -721,12 +934,20 @@ function DeliveryCard({ item, C, currentUser, onAccept, onReject, onMarkPaid, on
         )}
 
         {/* Rated */}
-        {isRequester && item.status === "completed" && item.ratingHappiness && (
+        {isRequester && ["completed", "delivered"].includes(item.status) && item.ratingHappiness && (
           <View style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#FEF3C7", borderRadius: 10, padding: 10 }}>
             <Feather name="star" size={14} color="#F59E0B" />
             <Text style={{ color: "#92400E", fontFamily: "Inter_500Medium", fontSize: 13 }}>
-              You rated: {item.ratingHappiness}★ happiness, {item.ratingHandling}★ handling, {item.ratingOnTime}★ on-time
+              Rated: {item.ratingHappiness}★ · {item.ratingHandling}★ · {item.ratingOnTime}★
             </Text>
+          </View>
+        )}
+
+        {/* Delivered confirmation */}
+        {item.status === "delivered" && (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#D1FAE5", borderRadius: 10, padding: 10 }}>
+            <Feather name="check-circle" size={16} color="#059669" />
+            <Text style={{ color: "#059669", fontFamily: "Inter_600SemiBold", fontSize: 13 }}>Delivered successfully!</Text>
           </View>
         )}
       </View>
@@ -838,18 +1059,28 @@ export default function ServicesScreen() {
   });
   const outletItems = outletData?.items || [];
 
-  // Action mutation (book, apply)
+  // Unified action mutation
   const actionMutation = useMutation({
-    mutationFn: async ({ id, action }: { id: string; action: string }) => {
+    mutationFn: async ({ id, action, tab }: { id: string; action: string; tab?: string }) => {
       setPendingId(id);
-      const res = await apiRequest(`${endpointMap[activeTab]}/${id}/${action}`, { method: "POST" });
+      const endpoint = endpointMap[tab || activeTab];
+      const res = await apiRequest(`${endpoint}/${id}/${action}`, { method: "POST" });
       const json = await res.json();
       if (!res.ok) throw new Error(json.message || "Action failed");
       return json;
     },
     onSuccess: (_, vars) => {
-      queryClient.invalidateQueries({ queryKey: ["services", activeTab] });
-      const msgs: Record<string, string> = { book: "Booked!", apply: "Applied!", accept: "Accepted!", "mark-paid": "Marked as paid!", "confirm-payment": "Payment confirmed!", complete: "Marked as delivered!" };
+      queryClient.invalidateQueries({ queryKey: ["services", vars.tab || activeTab] });
+      const msgs: Record<string, string> = {
+        book: "Booked successfully!",
+        apply: "Application sent!",
+        accept: "Accepted!",
+        progress: "Status updated!",
+        confirm: "Confirmed received! 🎉",
+        "mark-paid": "Marked as paid!",
+        "confirm-payment": "Payment confirmed!",
+        complete: "Marked as arrived!",
+      };
       showToast(msgs[vars.action] || "Done!", "success");
     },
     onError: (err: any) => showToast(err.message || "Action failed", "error"),
@@ -885,7 +1116,7 @@ export default function ServicesScreen() {
       return (
         <AcademicCard
           item={item} C={C} serviceType={activeTab} currentUserId={user?.id}
-          onAction={(id: string) => actionMutation.mutate({ id, action: "book" })}
+          onAction={(id: string, action: string) => actionMutation.mutate({ id, action })}
           isPending={pendingId === item.id && actionMutation.isPending}
         />
       );
@@ -894,11 +1125,7 @@ export default function ServicesScreen() {
       return (
         <DeliveryCard
           item={item} C={C} currentUser={user}
-          onAccept={(id: string) => actionMutation.mutate({ id, action: "accept" })}
-          onReject={(id: string) => actionMutation.mutate({ id, action: "reject" })}
-          onMarkPaid={(id: string) => actionMutation.mutate({ id, action: "mark-paid" })}
-          onConfirmPayment={(id: string) => actionMutation.mutate({ id, action: "confirm-payment" })}
-          onComplete={(id: string) => actionMutation.mutate({ id, action: "complete" })}
+          onAction={(id: string, action: string) => actionMutation.mutate({ id, action, tab: "deliveries" })}
           onRate={(id: string, data: any) => rateMutation.mutate({ id, data })}
           isPending={pendingId === item.id && (actionMutation.isPending || rateMutation.isPending)}
         />
