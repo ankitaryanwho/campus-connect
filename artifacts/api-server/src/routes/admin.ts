@@ -12,6 +12,8 @@ import {
   deliveriesTable,
   tasksTable,
   notificationsTable,
+  coachingSessionsTable,
+  outletItemsTable,
 } from "@workspace/db/schema";
 import { authMiddleware, generateToken, verifyToken } from "../lib/auth";
 import bcrypt from "bcryptjs";
@@ -556,6 +558,302 @@ router.post("/notifications/broadcast", adminMiddleware, async (req, res) => {
     }
 
     return res.json({ success: true, message: `Notification sent to ${notifs.length} users` });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Combined Orders Overview ─────────────────────────────────────────────────
+router.get("/orders", adminMiddleware, async (req, res) => {
+  try {
+    const status = String(req.query.status || "");
+    const type = String(req.query.type || "");
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const pageSize = Math.min(100, Number(req.query.pageSize) || 20);
+    const offset = (page - 1) * pageSize;
+
+    const results: any[] = [];
+
+    if (!type || type === "assignment") {
+      const cond = status ? eq(assignmentsTable.status, status) : undefined;
+      const rows = await db.select({
+        id: assignmentsTable.id, type: sql`'assignment'`, title: assignmentsTable.title,
+        status: assignmentsTable.status, price: assignmentsTable.price,
+        posterId: assignmentsTable.posterId, posterName: usersTable.name,
+        createdAt: assignmentsTable.createdAt,
+      }).from(assignmentsTable)
+        .leftJoin(usersTable, eq(assignmentsTable.posterId, usersTable.id))
+        .where(cond).orderBy(desc(assignmentsTable.createdAt));
+      results.push(...rows);
+    }
+
+    if (!type || type === "certification") {
+      const cond = status ? eq(certificationsTable.status, status) : undefined;
+      const rows = await db.select({
+        id: certificationsTable.id, type: sql`'certification'`, title: certificationsTable.title,
+        status: certificationsTable.status, price: certificationsTable.price,
+        posterId: certificationsTable.posterId, posterName: usersTable.name,
+        createdAt: certificationsTable.createdAt,
+      }).from(certificationsTable)
+        .leftJoin(usersTable, eq(certificationsTable.posterId, usersTable.id))
+        .where(cond).orderBy(desc(certificationsTable.createdAt));
+      results.push(...rows);
+    }
+
+    if (!type || type === "task") {
+      const cond = status ? eq(tasksTable.status, status) : undefined;
+      const rows = await db.select({
+        id: tasksTable.id, type: sql`'task'`, title: tasksTable.title,
+        status: tasksTable.status, price: tasksTable.budget,
+        posterId: tasksTable.posterId, posterName: usersTable.name,
+        createdAt: tasksTable.createdAt,
+      }).from(tasksTable)
+        .leftJoin(usersTable, eq(tasksTable.posterId, usersTable.id))
+        .where(cond).orderBy(desc(tasksTable.createdAt));
+      results.push(...rows);
+    }
+
+    if (!type || type === "delivery") {
+      const cond = status ? eq(deliveriesTable.status, status) : undefined;
+      const rows = await db.select({
+        id: deliveriesTable.id, type: sql`'delivery'`,
+        title: sql`CONCAT('Delivery: ', ${deliveriesTable.pickupLocation}, ' → ', ${deliveriesTable.dropLocation})`,
+        status: deliveriesTable.status, price: deliveriesTable.deliveryFee,
+        posterId: deliveriesTable.requesterId, posterName: usersTable.name,
+        createdAt: deliveriesTable.createdAt,
+      }).from(deliveriesTable)
+        .leftJoin(usersTable, eq(deliveriesTable.requesterId, usersTable.id))
+        .where(cond).orderBy(desc(deliveriesTable.createdAt));
+      results.push(...rows);
+    }
+
+    results.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const total = results.length;
+    const items = results.slice(offset, offset + pageSize);
+
+    return res.json({ items, total, page, pageSize });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Chat Moderation ───────────────────────────────────────────────────────────
+router.get("/chat/rooms", adminMiddleware, async (req, res) => {
+  try {
+    const rooms = await db.execute(sql`
+      SELECT c.id, c.name, c.description, c.category, c.member_count, c.created_at,
+             COUNT(m.id) as message_count
+      FROM chatrooms c
+      LEFT JOIN messages m ON m.chatroom_id = c.id
+      GROUP BY c.id ORDER BY c.updated_at DESC
+    `);
+    return res.json({ rooms: (rooms as any).rows || rooms });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/chat/conversations", adminMiddleware, async (req, res) => {
+  try {
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const pageSize = Math.min(100, Number(req.query.pageSize) || 20);
+    const offset = (page - 1) * pageSize;
+
+    const convs = await db.execute(sql`
+      SELECT cv.id, cv.updated_at,
+             u1.name as participant1_name, u1.email as participant1_email, cv.participant1_id,
+             u2.name as participant2_name, u2.email as participant2_email, cv.participant2_id,
+             COUNT(m.id) as message_count,
+             (SELECT content FROM messages WHERE conversation_id = cv.id ORDER BY created_at DESC LIMIT 1) as last_message
+      FROM conversations cv
+      JOIN users u1 ON u1.id = cv.participant1_id
+      JOIN users u2 ON u2.id = cv.participant2_id
+      LEFT JOIN messages m ON m.conversation_id = cv.id
+      GROUP BY cv.id, u1.name, u1.email, u2.name, u2.email
+      ORDER BY cv.updated_at DESC
+      LIMIT ${pageSize} OFFSET ${offset}
+    `);
+
+    const [{ total }] = await db.execute(sql`SELECT COUNT(*) as total FROM conversations`) as any;
+    return res.json({ conversations: (convs as any).rows || convs, total: Number(total?.total || 0), page, pageSize });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/chat/conversations/:id/messages", adminMiddleware, async (req, res) => {
+  try {
+    const msgs = await db.execute(sql`
+      SELECT m.id, m.content, m.created_at, m.is_read, m.sender_id, u.name as sender_name
+      FROM messages m
+      LEFT JOIN users u ON u.id = m.sender_id
+      WHERE m.conversation_id = ${req.params.id}
+      ORDER BY m.created_at ASC
+    `);
+    return res.json({ messages: (msgs as any).rows || msgs });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/chat/rooms/:id/messages", adminMiddleware, async (req, res) => {
+  try {
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const msgs = await db.execute(sql`
+      SELECT m.id, m.content, m.created_at, m.sender_id, u.name as sender_name
+      FROM messages m
+      LEFT JOIN users u ON u.id = m.sender_id
+      WHERE m.chatroom_id = ${req.params.id}
+      ORDER BY m.created_at DESC LIMIT 50 OFFSET ${(page - 1) * 50}
+    `);
+    return res.json({ messages: (msgs as any).rows || msgs });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete("/chat/messages/:id", adminMiddleware, async (req, res) => {
+  try {
+    await db.execute(sql`DELETE FROM messages WHERE id = ${req.params.id}`);
+    return res.json({ success: true, message: "Message deleted" });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Coaching Management ───────────────────────────────────────────────────────
+router.get("/coaching", adminMiddleware, async (req, res) => {
+  try {
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const pageSize = Math.min(100, Number(req.query.pageSize) || 20);
+    const offset = (page - 1) * pageSize;
+    const status = String(req.query.status || "");
+
+    const cond = status ? eq(coachingSessionsTable.status, status) : undefined;
+    const [{ total }] = await db.select({ total: count() }).from(coachingSessionsTable).where(cond);
+    const sessions = await db.select({
+      id: coachingSessionsTable.id, title: coachingSessionsTable.title,
+      description: coachingSessionsTable.description, price: coachingSessionsTable.price,
+      sessionType: coachingSessionsTable.sessionType, subject: coachingSessionsTable.subject,
+      status: coachingSessionsTable.status, maxStudents: coachingSessionsTable.maxStudents,
+      scheduledAt: coachingSessionsTable.scheduledAt, mentorId: coachingSessionsTable.mentorId,
+      mentorName: usersTable.name, createdAt: coachingSessionsTable.createdAt,
+    }).from(coachingSessionsTable)
+      .leftJoin(usersTable, eq(coachingSessionsTable.mentorId, usersTable.id))
+      .where(cond).orderBy(desc(coachingSessionsTable.createdAt)).limit(pageSize).offset(offset);
+
+    return res.json({ sessions, total: Number(total), page, pageSize });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.put("/coaching/:id", adminMiddleware, async (req, res) => {
+  try {
+    const { status, price } = req.body;
+    const updates: any = {};
+    if (status) updates.status = status;
+    if (price) updates.price = String(price);
+    const [updated] = await db.update(coachingSessionsTable).set(updates).where(eq(coachingSessionsTable.id, req.params.id)).returning();
+    return res.json(updated);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete("/coaching/:id", adminMiddleware, async (req, res) => {
+  try {
+    await db.delete(coachingSessionsTable).where(eq(coachingSessionsTable.id, req.params.id));
+    return res.json({ success: true, message: "Session deleted" });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Outlet / Shop Management ──────────────────────────────────────────────────
+router.get("/outlet-items", adminMiddleware, async (req, res) => {
+  try {
+    const search = String(req.query.search || "");
+    const outlet = String(req.query.outlet || "");
+    const conditions: any[] = [];
+    if (search) conditions.push(ilike(outletItemsTable.name, `%${search}%`));
+    if (outlet) conditions.push(ilike(outletItemsTable.outletName, `%${outlet}%`));
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+    const items = await db.select().from(outletItemsTable).where(where).orderBy(outletItemsTable.outletName, outletItemsTable.name);
+    const outlets = await db.selectDistinct({ name: outletItemsTable.outletName }).from(outletItemsTable).orderBy(outletItemsTable.outletName);
+    return res.json({ items, outlets: outlets.map(o => o.name) });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/outlet-items", adminMiddleware, async (req, res) => {
+  try {
+    const { outletName, name, price, available } = req.body;
+    if (!outletName || !name || !price) return res.status(400).json({ error: "outletName, name, price required" });
+    const [item] = await db.insert(outletItemsTable).values({
+      id: nanoid(), outletName, name, price: String(price),
+      available: available !== false,
+    }).returning();
+    return res.json(item);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.put("/outlet-items/:id", adminMiddleware, async (req, res) => {
+  try {
+    const { outletName, name, price, available } = req.body;
+    const updates: any = {};
+    if (outletName !== undefined) updates.outletName = outletName;
+    if (name !== undefined) updates.name = name;
+    if (price !== undefined) updates.price = String(price);
+    if (available !== undefined) updates.available = Boolean(available);
+    const [updated] = await db.update(outletItemsTable).set(updates).where(eq(outletItemsTable.id, req.params.id)).returning();
+    if (!updated) return res.status(404).json({ error: "Item not found" });
+    return res.json(updated);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete("/outlet-items/:id", adminMiddleware, async (req, res) => {
+  try {
+    await db.delete(outletItemsTable).where(eq(outletItemsTable.id, req.params.id));
+    return res.json({ success: true, message: "Item deleted" });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Comments Moderation ───────────────────────────────────────────────────────
+router.get("/comments", adminMiddleware, async (req, res) => {
+  try {
+    const search = String(req.query.search || "");
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const pageSize = Math.min(100, Number(req.query.pageSize) || 20);
+    const offset = (page - 1) * pageSize;
+
+    const where = search ? ilike(commentsTable.content, `%${search}%`) : undefined;
+    const [{ total }] = await db.select({ total: count() }).from(commentsTable).where(where);
+    const comments = await db.select({
+      id: commentsTable.id, content: commentsTable.content,
+      authorId: commentsTable.authorId, postId: commentsTable.postId,
+      authorName: usersTable.name, createdAt: commentsTable.createdAt,
+    }).from(commentsTable)
+      .leftJoin(usersTable, eq(commentsTable.authorId, usersTable.id))
+      .where(where).orderBy(desc(commentsTable.createdAt)).limit(pageSize).offset(offset);
+
+    return res.json({ comments, total: Number(total), page, pageSize });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete("/comments/:id", adminMiddleware, async (req, res) => {
+  try {
+    await db.delete(commentsTable).where(eq(commentsTable.id, req.params.id));
+    return res.json({ success: true, message: "Comment deleted" });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }

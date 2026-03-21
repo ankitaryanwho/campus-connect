@@ -1,0 +1,141 @@
+Show real-time metrics:
+
+Total Users
+Active Users
+Total Revenue
+Today’s Revenue
+Total Orders
+Pending Orders
+Completed Orders
+Failed Transactions
+
+Charts:
+
+Daily/Weekly/Monthly revenue graph
+User growth graph
+Orders trend graph
+
+Recent Activity Feed:
+
+New user registrations
+New orders
+New posts
+Flagged content
+👥 USER MANAGEMENT
+
+Features:
+
+View all users (table with pagination)
+Search & filter:
+By name
+By college
+By role
+View user profile details
+
+Actions:
+
+Edit user profile
+Ban / suspend user
+Delete user
+Change role (student → provider)
+
+Also:
+
+View user activity:
+Posts
+Orders
+Earnings
+🧾 SERVICE MANAGEMENT
+
+Manage all services:
+
+Assignment
+Coaching
+Delivery
+Tasks
+
+Features:
+
+View all listings
+Edit listing
+Delete listing
+Approve/reject listings
+Create new listings manually
+📦 ORDER MANAGEMENT
+View all orders (table)
+Filters:
+Pending
+In Progress
+Completed
+Cancelled
+
+Actions:
+
+Update order status
+Assign provider manually
+Cancel/refund order
+💰 PAYMENT & WALLET MANAGEMENT
+View all transactions
+Track:
+Payments
+Withdrawals
+Commission earned
+
+Features:
+
+Filter by date
+View transaction details
+Detect failed payments
+
+Show:
+
+Platform earnings (20% commission)
+📱 SOCIAL FEED MANAGEMENT
+View all posts
+Delete posts
+Moderate content
+
+Comments:
+
+View all comments
+Delete inappropriate comments
+💬 CHAT MODERATION
+Monitor chatrooms
+View messages (if flagged)
+Ban users from chat
+🚚 DELIVERY MANAGEMENT
+View delivery requests
+Track delivery status
+Verify selfie uploads
+Resolve disputes
+🎓 COACHING MANAGEMENT
+View sessions
+Track bookings
+Manage mentors
+🧾 TASK MANAGEMENT
+View posted tasks
+Track completion
+Resolve disputes
+📊 ANALYTICS (ADVANCED)
+
+Provide detailed insights:
+
+Revenue breakdown:
+Assignments
+Coaching
+Delivery
+Tasks
+User insights:
+Most active users
+Top earners
+Service performance:
+Most used services
+🔔 NOTIFICATION CONTROL
+Send broadcast notifications
+Send targeted notifications:
+Specific users
+Providers
+🏪 SHOP / OUTLET MANAGEMENT (FUTURE READY)
+Add shops/outlets
+Edit listings
+Manage availability

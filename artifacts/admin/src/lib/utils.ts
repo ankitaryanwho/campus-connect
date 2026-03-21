@@ -35,3 +35,30 @@ export function useAuthHeaders() {
     },
   };
 }
+
+// Raw fetch helper for admin endpoints not in the generated API client
+export async function adminFetch(path: string, options?: RequestInit) {
+  const token = localStorage.getItem("admin_token");
+  const res = await fetch(`/api/admin${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: token ? `Bearer ${token}` : "",
+      ...(options?.headers || {}),
+    },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || "Request failed");
+  }
+  return res.json();
+}
+
+export function getStatusColor(status: string): string {
+  const s = (status || "").toLowerCase();
+  if (["delivered", "completed", "active", "available"].includes(s)) return "success";
+  if (["pending", "open", "booked"].includes(s)) return "warning";
+  if (["cancelled", "failed", "banned"].includes(s)) return "destructive";
+  if (["in_progress", "accepted", "payment_confirmed"].includes(s)) return "default";
+  return "outline";
+}
