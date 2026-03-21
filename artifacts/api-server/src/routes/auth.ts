@@ -5,6 +5,7 @@ import bcrypt from "bcryptjs";
 import { eq, and, gt } from "drizzle-orm";
 import { generateToken, authMiddleware } from "../lib/auth";
 import { generateId } from "../lib/id";
+import { sendOtpEmail } from "../lib/resend";
 import jwt from "jsonwebtoken";
 
 const router = Router();
@@ -63,12 +64,16 @@ router.post("/send-otp", async (req, res) => {
       expiresAt,
     });
 
-    console.log(`\n========================================`);
-    console.log(`  OTP for ${emailLower}: ${code}`);
-    console.log(`  Expires at: ${expiresAt.toISOString()}`);
-    console.log(`========================================\n`);
+    try {
+      await sendOtpEmail(emailLower, code);
+      console.log(`OTP sent via email to ${emailLower}`);
+    } catch (emailErr) {
+      console.error("Failed to send OTP email:", emailErr);
+      res.status(500).json({ error: "EmailError", message: "Failed to send verification email. Please try again." });
+      return;
+    }
 
-    res.json({ message: "OTP sent to your email. Check API server logs for OTP in development." });
+    res.json({ message: "Verification code sent to your email. Please check your inbox." });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "ServerError", message: "Failed to send OTP" });

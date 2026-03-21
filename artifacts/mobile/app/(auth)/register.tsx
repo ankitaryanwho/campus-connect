@@ -203,7 +203,7 @@ export default function RegisterScreen() {
             <Text style={{ color: C.primary, fontFamily: "Inter_600SemiBold" }}>{email.trim().toLowerCase()}</Text>
           </Text>
           <Text style={[{ color: C.textTertiary, fontSize: 12, marginTop: 8, fontFamily: "Inter_400Regular", textAlign: "center" }]}>
-            Check the API server logs for the OTP (dev mode)
+            Also check your spam/junk folder if you don't see it
           </Text>
         </View>
 
