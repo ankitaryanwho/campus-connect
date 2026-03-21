@@ -2,13 +2,12 @@ import React, { useState } from "react";
 import {
   View, Text, TextInput, Pressable, StyleSheet,
   useColorScheme, ActivityIndicator, Platform,
-  Image, ScrollView,
+  Image, ScrollView, KeyboardAvoidingView,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import * as ImagePicker from "expo-image-picker";
 import Colors from "@/constants/colors";
 import { useAuth } from "@/contexts/AuthContext";
