@@ -37,10 +37,10 @@ export async function sendOtpEmail(toEmail: string, code: string): Promise<void>
             Hi there! Use the code below to verify your college email and complete your CampusConnect registration.
           </p>
 
-          <div style="background: linear-gradient(135deg, #5B4FE8, #7C6FF7); border-radius: 16px; padding: 28px; text-align: center; margin: 24px 0;">
-            <p style="color: rgba(255,255,255,0.8); font-size: 12px; font-weight: 600; letter-spacing: 2px; margin: 0 0 12px; text-transform: uppercase;">Verification Code</p>
-            <div style="letter-spacing: 10px; font-size: 40px; font-weight: 800; color: #fff; font-family: monospace;">${code}</div>
-            <p style="color: rgba(255,255,255,0.7); font-size: 12px; margin: 12px 0 0;">Expires in 10 minutes</p>
+          <div style="background: #f3f0ff; border: 2px solid #5B4FE8; border-radius: 16px; padding: 28px; text-align: center; margin: 24px 0;">
+            <p style="color: #5B4FE8; font-size: 12px; font-weight: 600; letter-spacing: 2px; margin: 0 0 12px; text-transform: uppercase;">Verification Code</p>
+            <div style="letter-spacing: 10px; font-size: 40px; font-weight: 800; color: #1a1a2e; font-family: monospace;">${code}</div>
+            <p style="color: #6b7280; font-size: 12px; margin: 12px 0 0;">Expires in 10 minutes</p>
           </div>
 
           <p style="color: #9ca3af; font-size: 13px; text-align: center; margin-top: 24px; line-height: 1.5;">
