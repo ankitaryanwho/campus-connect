@@ -31,6 +31,7 @@ export default function ProfileScreen() {
   const C = Colors[colorScheme === "dark" ? "dark" : "light"];
   const { user, apiRequest, updateUser, logout } = useAuth();
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
   const isWeb = Platform.OS === "web";
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(user?.name || "");
@@ -62,26 +63,13 @@ export default function ProfileScreen() {
       setEditing(false);
       queryClient.invalidateQueries({ queryKey: ["userPosts"] });
     },
-    onError: (err: any) => Alert.alert("Error", err.message),
+    onError: (err: any) => showToast(err.message || "Failed to update profile", "error"),
   });
 
-  const handleLogout = () => {
-    Alert.alert(
-      "Sign Out",
-      "Are you sure you want to sign out?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Sign Out",
-          style: "destructive",
-          onPress: async () => {
-            await logout();
-            queryClient.clear();
-            router.replace("/(auth)/login");
-          },
-        },
-      ]
-    );
+  const handleLogout = async () => {
+    await logout();
+    queryClient.clear();
+    router.replace("/(auth)/login");
   };
 
   const pickAvatar = async () => {
@@ -105,13 +93,13 @@ export default function ProfileScreen() {
         if (res.ok) {
           const data = await res.json();
           updateUser(data);
-          Alert.alert("Done", "Profile picture updated!");
+          showToast("Profile picture updated!", "success");
         } else {
-          Alert.alert("Error", "Failed to update profile picture.");
+          showToast("Failed to update profile picture", "error");
         }
       }
     } catch {
-      Alert.alert("Error", "Could not open image picker.");
+      showToast("Could not open image picker", "error");
     }
   };
 

@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import {
   View, Text, TextInput, Pressable, StyleSheet,
-  useColorScheme, ActivityIndicator, Alert, Platform,
+  useColorScheme, ActivityIndicator, Platform,
   Image, ScrollView,
 } from "react-native";
 import { router } from "expo-router";
@@ -12,6 +12,7 @@ import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import * as ImagePicker from "expo-image-picker";
 import Colors from "@/constants/colors";
 import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/contexts/ToastContext";
 
 export default function NewPostScreen() {
   const insets = useSafeAreaInsets();
@@ -19,6 +20,7 @@ export default function NewPostScreen() {
   const C = Colors[colorScheme === "dark" ? "dark" : "light"];
   const { apiRequest, user } = useAuth();
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
   const [content, setContent] = useState("");
   const [mediaUris, setMediaUris] = useState<string[]>([]);
   const isWeb = Platform.OS === "web";
@@ -39,7 +41,7 @@ export default function NewPostScreen() {
         setMediaUris(prev => [...prev, ...uris].slice(0, 4));
       }
     } catch {
-      Alert.alert("Error", "Could not open image picker.");
+      showToast("Could not open image picker", "error");
     }
   };
 
@@ -61,7 +63,7 @@ export default function NewPostScreen() {
       queryClient.invalidateQueries({ queryKey: ["posts"] });
       router.back();
     },
-    onError: (err: any) => Alert.alert("Error", err.message),
+    onError: (err: any) => showToast(err.message || "Failed to post", "error"),
   });
 
   const canPost = content.trim().length > 0 || mediaUris.length > 0;

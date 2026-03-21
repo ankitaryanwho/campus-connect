@@ -2,13 +2,14 @@ import React, { useState } from "react";
 import {
   View, Text, ScrollView, Pressable, StyleSheet, Modal,
   useColorScheme, FlatList, ActivityIndicator, Platform,
-  TextInput, Alert,
+  TextInput,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Colors from "@/constants/colors";
 import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/contexts/ToastContext";
 
 const SERVICE_TABS = [
   { id: "assignments", label: "Assignments", icon: "file-text", color: "#5B4FE8" },
@@ -127,7 +128,7 @@ function ServiceCard({ item, type, C, onAction, currentUserId, isPending }: any)
   );
 }
 
-function PostServiceModal({ visible, onClose, activeTab, C, apiRequest, queryClient }: any) {
+function PostServiceModal({ visible, onClose, activeTab, C, apiRequest, queryClient, showToast }: any) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
@@ -181,9 +182,9 @@ function PostServiceModal({ visible, onClose, activeTab, C, apiRequest, queryCli
       queryClient.invalidateQueries({ queryKey: ["services", activeTab] });
       reset();
       onClose();
-      Alert.alert("Posted!", "Your listing is now live.");
+      showToast("Your listing is now live!", "success");
     },
-    onError: (err: any) => Alert.alert("Error", err.message),
+    onError: (err: any) => showToast(err.message || "Failed to post listing", "error"),
   });
 
   const isWeb = Platform.OS === "web";
@@ -308,6 +309,7 @@ export default function ServicesScreen() {
   const [activeTab, setActiveTab] = useState("assignments");
   const [showPostModal, setShowPostModal] = useState(false);
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const { showToast } = useToast();
   const isWeb = Platform.OS === "web";
 
   const endpointMap: Record<string, string> = {
@@ -342,9 +344,10 @@ export default function ServicesScreen() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["services", activeTab] });
-      Alert.alert("Success! 🎉", activeTab === "tasks" ? "Application submitted!" : activeTab === "coaching" ? "Session booked!" : "Accepted successfully!");
+      const msg = activeTab === "tasks" ? "Application submitted!" : activeTab === "coaching" ? "Session booked!" : "Accepted successfully!";
+      showToast(msg, "success");
     },
-    onError: (err: any) => Alert.alert("Failed", err.message),
+    onError: (err: any) => showToast(err.message || "Action failed", "error"),
     onSettled: () => setPendingId(null),
   });
 
@@ -441,6 +444,7 @@ export default function ServicesScreen() {
         C={C}
         apiRequest={apiRequest}
         queryClient={queryClient}
+        showToast={showToast}
       />
     </View>
   );

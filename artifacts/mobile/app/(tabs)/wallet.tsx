@@ -1,13 +1,14 @@
 import React, { useState } from "react";
 import {
   View, Text, ScrollView, Pressable, TextInput, StyleSheet,
-  useColorScheme, ActivityIndicator, Alert, Modal, Platform,
+  useColorScheme, ActivityIndicator, Modal, Platform,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Colors from "@/constants/colors";
 import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/contexts/ToastContext";
 
 const PAYMENT_METHODS = [
   { id: "upi", label: "UPI", icon: "smartphone" },
@@ -52,6 +53,7 @@ export default function WalletScreen() {
   const C = Colors[colorScheme === "dark" ? "dark" : "light"];
   const { apiRequest } = useAuth();
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
   const isWeb = Platform.OS === "web";
   const [showAddMoney, setShowAddMoney] = useState(false);
   const [amount, setAmount] = useState("");
@@ -88,9 +90,9 @@ export default function WalletScreen() {
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
       setShowAddMoney(false);
       setAmount("");
-      Alert.alert("Success", `₹${amount} added to your wallet!`);
+      showToast(`₹${amount} added to your wallet!`, "success");
     },
-    onError: (err: any) => Alert.alert("Failed", err.message),
+    onError: (err: any) => showToast(err.message || "Failed to add money", "error"),
   });
 
   const wallet = walletQuery.data;
