@@ -183,6 +183,34 @@ export default function ProfileScreen() {
                 </View>
               )}
             </View>
+
+            {user.role === "provider" && user.services && (() => {
+              const SERVICE_META: Record<string, { label: string; icon: string }> = {
+                assignments: { label: "Assignments", icon: "file-text" },
+                coaching: { label: "Coaching", icon: "users" },
+                deliveries: { label: "Deliveries", icon: "truck" },
+                tasks: { label: "Tasks", icon: "clipboard" },
+              };
+              let svcs: string[] = [];
+              try { svcs = JSON.parse(user.services); } catch {}
+              if (!svcs.length) return null;
+              return (
+                <View style={{ marginTop: 10 }}>
+                  <Text style={[{ fontSize: 11, marginBottom: 6, color: C.textTertiary, fontFamily: "Inter_500Medium", letterSpacing: 0.5 }]}>SERVICES OFFERED</Text>
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                    {svcs.map((svc) => {
+                      const meta = SERVICE_META[svc] || { label: svc, icon: "star" };
+                      return (
+                        <View key={svc} style={[{ flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, backgroundColor: C.primaryLight }]}>
+                          <Feather name={meta.icon as any} size={11} color={C.primary} />
+                          <Text style={[{ fontSize: 12, color: C.primary, fontFamily: "Inter_500Medium" }]}>{meta.label}</Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                </View>
+              );
+            })()}
           </View>
         </View>
 

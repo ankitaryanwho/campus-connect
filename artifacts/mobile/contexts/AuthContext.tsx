@@ -13,6 +13,8 @@ export interface User {
   college?: string | null;
   program?: string | null;
   role: string;
+  services?: string | null;
+  emailVerified?: boolean;
   followersCount: number;
   followingCount: number;
   postsCount: number;
@@ -36,7 +38,10 @@ interface RegisterData {
   password: string;
   role?: string;
   college?: string;
+  collegeId?: string;
   program?: string;
+  services?: string[];
+  verificationToken?: string;
 }
 
 const [AuthProvider, useAuth] = createContextHook<AuthState>(() => {

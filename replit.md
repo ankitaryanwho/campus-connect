@@ -4,6 +4,16 @@
 
 A production-ready college social app — **CampusConnect** — built as a pnpm monorepo with TypeScript. Includes a React Native (Expo) mobile app, an Express 5 API server, and a PostgreSQL database.
 
+### Auth / Registration Flow
+- College list is static (5 colleges with domains): Bennett, Amity, Manipal, Sharda, Galgotias
+- Signup: select college → enter name/email (domain validated) / password / program → OTP sent → verify OTP → account created
+- Service providers additionally select their services (assignments, coaching, deliveries, tasks)
+- OTP is stored in `otp_codes` DB table; in dev mode the 6-digit code is printed to the API server console
+- Email uniqueness enforced: duplicate email returns clear error
+- `verificationToken` (short-lived JWT) issued after OTP verification, required for `/auth/register`
+- Users have `emailVerified=true` after completing OTP flow
+- Provider services stored as JSON array in `users.services` column, shown as badges on profile
+
 ## Stack
 
 - **Monorepo tool**: pnpm workspaces

@@ -12,6 +12,8 @@ export const usersTable = pgTable("users", {
   college: text("college"),
   program: text("program"),
   role: text("role").notNull().default("student"),
+  services: text("services"),
+  emailVerified: boolean("email_verified").notNull().default(false),
   followersCount: integer("followers_count").notNull().default(0),
   followingCount: integer("following_count").notNull().default(0),
   postsCount: integer("posts_count").notNull().default(0),
@@ -25,5 +27,14 @@ export type User = typeof usersTable.$inferSelect;
 export const followsTable = pgTable("follows", {
   followerId: text("follower_id").notNull().references(() => usersTable.id),
   followingId: text("following_id").notNull().references(() => usersTable.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const otpCodesTable = pgTable("otp_codes", {
+  id: text("id").primaryKey(),
+  email: text("email").notNull(),
+  code: text("code").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  used: boolean("used").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

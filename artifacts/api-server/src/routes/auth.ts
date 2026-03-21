@@ -1,36 +1,190 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { usersTable, walletsTable } from "@workspace/db/schema";
+import { usersTable, walletsTable, otpCodesTable } from "@workspace/db/schema";
 import bcrypt from "bcryptjs";
-import { eq } from "drizzle-orm";
+import { eq, and, gt } from "drizzle-orm";
 import { generateToken, authMiddleware } from "../lib/auth";
 import { generateId } from "../lib/id";
+import jwt from "jsonwebtoken";
 
 const router = Router();
 
+const JWT_SECRET = process.env.JWT_SECRET || "campusconnect-secret-key-2024";
+
+export const COLLEGES = [
+  { id: "bennett", name: "Bennett University (Greater Noida)", domain: "bennett.edu.in" },
+  { id: "amity", name: "Amity University (Noida)", domain: "amity.edu" },
+  { id: "manipal", name: "Manipal University (Jaipur)", domain: "jaipur.manipal.edu" },
+  { id: "sharda", name: "Sharda University (Greater Noida)", domain: "sharda.ac.in" },
+  { id: "galgotias", name: "Galgotias University (Greater Noida)", domain: "galgotiasuniversity.edu.in" },
+];
+
+router.get("/colleges", (_req, res) => {
+  res.json({ colleges: COLLEGES });
+});
+
+router.post("/send-otp", async (req, res) => {
+  try {
+    const { email, collegeId } = req.body;
+    if (!email || !collegeId) {
+      res.status(400).json({ error: "ValidationError", message: "Email and college are required" });
+      return;
+    }
+
+    const college = COLLEGES.find(c => c.id === collegeId);
+    if (!college) {
+      res.status(400).json({ error: "ValidationError", message: "Invalid college selected" });
+      return;
+    }
+
+    const emailLower = email.trim().toLowerCase();
+    const emailDomain = emailLower.split("@")[1];
+    if (emailDomain !== college.domain) {
+      res.status(400).json({
+        error: "DomainError",
+        message: `Please use your ${college.name} email (@${college.domain})`,
+      });
+      return;
+    }
+
+    const existing = await db.select().from(usersTable).where(eq(usersTable.email, emailLower)).limit(1);
+    if (existing.length > 0) {
+      res.status(400).json({ error: "ConflictError", message: "This email is already linked to another account" });
+      return;
+    }
+
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+    await db.insert(otpCodesTable).values({
+      id: generateId(),
+      email: emailLower,
+      code,
+      expiresAt,
+    });
+
+    console.log(`\n========================================`);
+    console.log(`  OTP for ${emailLower}: ${code}`);
+    console.log(`  Expires at: ${expiresAt.toISOString()}`);
+    console.log(`========================================\n`);
+
+    res.json({ message: "OTP sent to your email. Check API server logs for OTP in development." });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "ServerError", message: "Failed to send OTP" });
+  }
+});
+
+router.post("/verify-otp", async (req, res) => {
+  try {
+    const { email, code } = req.body;
+    if (!email || !code) {
+      res.status(400).json({ error: "ValidationError", message: "Email and OTP code are required" });
+      return;
+    }
+
+    const emailLower = email.trim().toLowerCase();
+    const now = new Date();
+
+    const otps = await db.select().from(otpCodesTable).where(
+      and(
+        eq(otpCodesTable.email, emailLower),
+        eq(otpCodesTable.code, code.trim()),
+        eq(otpCodesTable.used, false),
+        gt(otpCodesTable.expiresAt, now),
+      )
+    ).limit(1);
+
+    if (otps.length === 0) {
+      res.status(400).json({ error: "InvalidOTP", message: "Invalid or expired OTP. Please request a new one." });
+      return;
+    }
+
+    await db.update(otpCodesTable).set({ used: true }).where(eq(otpCodesTable.id, otps[0].id));
+
+    const verificationToken = jwt.sign(
+      { email: emailLower, type: "email_verification" },
+      JWT_SECRET,
+      { expiresIn: "30m" }
+    );
+
+    res.json({ verificationToken });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "ServerError", message: "OTP verification failed" });
+  }
+});
+
 router.post("/register", async (req, res) => {
   try {
-    const { name, email, password, role = "student", college, program } = req.body;
+    const { name, email, password, role = "student", college, collegeId, program, services, verificationToken } = req.body;
     if (!name || !email || !password) {
       res.status(400).json({ error: "ValidationError", message: "Name, email, and password are required" });
       return;
     }
 
-    const existing = await db.select().from(usersTable).where(eq(usersTable.email, email)).limit(1);
+    if (!verificationToken) {
+      res.status(400).json({ error: "ValidationError", message: "Email verification required. Please verify your OTP." });
+      return;
+    }
+
+    let tokenPayload: any;
+    try {
+      tokenPayload = jwt.verify(verificationToken, JWT_SECRET) as any;
+    } catch {
+      res.status(400).json({ error: "ValidationError", message: "Verification token expired. Please verify your OTP again." });
+      return;
+    }
+
+    const emailLower = email.trim().toLowerCase();
+    if (tokenPayload.type !== "email_verification" || tokenPayload.email !== emailLower) {
+      res.status(400).json({ error: "ValidationError", message: "Email verification mismatch. Please verify your OTP again." });
+      return;
+    }
+
+    const selectedCollege = COLLEGES.find(c => c.id === collegeId);
+    if (!selectedCollege) {
+      res.status(400).json({ error: "ValidationError", message: "Please select a valid college." });
+      return;
+    }
+
+    const emailDomain = emailLower.split("@")[1];
+    if (emailDomain !== selectedCollege.domain) {
+      res.status(400).json({
+        error: "DomainError",
+        message: `Email must be from @${selectedCollege.domain} for ${selectedCollege.name}`,
+      });
+      return;
+    }
+
+    const existing = await db.select().from(usersTable).where(eq(usersTable.email, emailLower)).limit(1);
     if (existing.length > 0) {
-      res.status(400).json({ error: "ConflictError", message: "Email already registered" });
+      res.status(400).json({ error: "ConflictError", message: "This email is already linked to another account" });
       return;
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
     const userId = generateId();
 
+    const servicesJson = Array.isArray(services) && services.length > 0
+      ? JSON.stringify(services)
+      : null;
+
     await db.insert(usersTable).values({
-      id: userId, name, email, passwordHash, role, college, program,
-      followersCount: 0, followingCount: 0, postsCount: 0,
+      id: userId,
+      name: name.trim(),
+      email: emailLower,
+      passwordHash,
+      role,
+      college: college || selectedCollege.name,
+      program,
+      services: servicesJson,
+      emailVerified: true,
+      followersCount: 0,
+      followingCount: 0,
+      postsCount: 0,
     });
 
-    // Create wallet
     await db.insert(walletsTable).values({
       id: generateId(), userId, balance: "0", currency: "INR",
     });
