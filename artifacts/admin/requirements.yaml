@@ -1,0 +1,20 @@
+packages:
+  "lucide-react": "Beautiful, consistent icons for the admin sidebar and UI elements"
+  "recharts": "Responsive, composable charting library for dashboard and analytics data"
+  "date-fns": "For elegant date and time formatting across tables and charts"
+  "clsx": "Utility for constructing CSS class strings conditionally"
+  "tailwind-merge": "Utility to efficiently merge Tailwind CSS classes"
+  "react-hook-form": "For robust form state management in the login and notification pages"
+
+images:
+  - path: "artifacts/admin/public/images/admin-bg.png"
+    description: "Abstract, deep dark blue and indigo gradient mesh with subtle glowing geometric lines, conveying a sense of secure, high-tech administration and data processing."
+    aspect_ratio: "16:9"
+  - path: "artifacts/admin/public/images/logo.png"
+    description: "A minimal, modern logo mark consisting of two intersecting geometric shapes (like a shield and a node) in bright neon blue and indigo on a completely transparent background."
+    aspect_ratio: "1:1"
+
+notes:
+  - "Assuming @workspace/api-client-react correctly exports the generated orval hooks."
+  - "Auth state relies on 'admin_token' in localStorage."
+  - "Base URL is handled natively by Vite/Wouter config, API calls go to absolute /api paths."

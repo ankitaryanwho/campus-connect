@@ -16,6 +16,7 @@ export const usersTable = pgTable("users", {
   role: text("role").notNull().default("student"),
   services: text("services"),
   emailVerified: boolean("email_verified").notNull().default(false),
+  banned: boolean("banned").notNull().default(false),
   followersCount: integer("followers_count").notNull().default(0),
   followingCount: integer("following_count").notNull().default(0),
   postsCount: integer("posts_count").notNull().default(0),

@@ -448,6 +448,144 @@ export interface NotificationsResponse {
   unreadCount: number;
 }
 
+export interface AdminLoginRequest {
+  email: string;
+  password: string;
+}
+
+export type AdminLoginResponseUser = { [key: string]: unknown };
+
+export interface AdminLoginResponse {
+  token: string;
+  user: AdminLoginResponseUser;
+}
+
+export interface AdminStatsResponse {
+  totalUsers: number;
+  activeUsers: number;
+  totalRevenue: number;
+  todayRevenue: number;
+  totalOrders: number;
+  pendingOrders: number;
+  completedOrders: number;
+  totalPosts: number;
+  totalTransactions: number;
+}
+
+export type AdminAnalyticsResponseRevenueByDayItem = { [key: string]: unknown };
+
+export type AdminAnalyticsResponseUsersByDayItem = { [key: string]: unknown };
+
+export type AdminAnalyticsResponseOrdersByDayItem = { [key: string]: unknown };
+
+export type AdminAnalyticsResponseRevenueByServiceItem = {
+  [key: string]: unknown;
+};
+
+export interface AdminAnalyticsResponse {
+  revenueByDay: AdminAnalyticsResponseRevenueByDayItem[];
+  usersByDay: AdminAnalyticsResponseUsersByDayItem[];
+  ordersByDay: AdminAnalyticsResponseOrdersByDayItem[];
+  revenueByService: AdminAnalyticsResponseRevenueByServiceItem[];
+}
+
+export interface AdminUserRow {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  college?: string;
+  program?: string;
+  year?: number | null;
+  emailVerified: boolean;
+  followersCount: number;
+  postsCount: number;
+  banned: boolean;
+  createdAt: string;
+}
+
+export interface AdminUsersResponse {
+  users: AdminUserRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface AdminServiceRow {
+  id: string;
+  title: string;
+  status: string;
+  price?: string | null;
+  posterId: string;
+  posterName: string;
+  createdAt: string;
+}
+
+export interface AdminServicesResponse {
+  items: AdminServiceRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface AdminDeliveryRow {
+  id: string;
+  requesterId: string;
+  requesterName: string;
+  deliveryAgentId?: string | null;
+  agentName?: string | null;
+  pickupType: string;
+  pickupLocation: string;
+  dropLocation: string;
+  status: string;
+  deliveryFee: string;
+  createdAt: string;
+}
+
+export interface AdminDeliveriesResponse {
+  items: AdminDeliveryRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface AdminTransactionRow {
+  id: string;
+  walletId: string;
+  userId: string;
+  userName: string;
+  type: string;
+  amount: string;
+  description: string;
+  status: string;
+  createdAt: string;
+}
+
+export interface AdminTransactionsResponse {
+  items: AdminTransactionRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalVolume: number;
+}
+
+export interface AdminPostRow {
+  id: string;
+  content: string;
+  authorId: string;
+  authorName: string;
+  likesCount: number;
+  commentsCount: number;
+  createdAt: string;
+}
+
+export interface AdminPostsResponse {
+  posts: AdminPostRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 export type GetPostsParams = {
   cursor?: string;
   limit?: number;
@@ -455,4 +593,87 @@ export type GetPostsParams = {
 
 export type GetMessagesParams = {
   cursor?: string;
+};
+
+export type AdminGetAnalyticsParams = {
+  days?: number;
+};
+
+export type AdminListUsersParams = {
+  search?: string;
+  role?: string;
+  college?: string;
+  page?: number;
+  pageSize?: number;
+};
+
+export type AdminGetUser200 = { [key: string]: unknown };
+
+export type AdminUpdateUserBody = { [key: string]: unknown };
+
+export type AdminUpdateUser200 = { [key: string]: unknown };
+
+export type AdminToggleBanBody = {
+  banned: boolean;
+};
+
+export type AdminChangeRoleBody = {
+  role: string;
+};
+
+export type AdminListAssignmentsParams = {
+  search?: string;
+  status?: string;
+  page?: number;
+  pageSize?: number;
+};
+
+export type AdminUpdateAssignmentBody = { [key: string]: unknown };
+
+export type AdminUpdateAssignment200 = { [key: string]: unknown };
+
+export type AdminListCertificationsParams = {
+  search?: string;
+  status?: string;
+  page?: number;
+  pageSize?: number;
+};
+
+export type AdminListTasksParams = {
+  search?: string;
+  status?: string;
+  page?: number;
+  pageSize?: number;
+};
+
+export type AdminListDeliveriesParams = {
+  search?: string;
+  status?: string;
+  page?: number;
+  pageSize?: number;
+};
+
+export type AdminUpdateDeliveryBody = { [key: string]: unknown };
+
+export type AdminUpdateDelivery200 = { [key: string]: unknown };
+
+export type AdminListTransactionsParams = {
+  search?: string;
+  type?: string;
+  startDate?: string;
+  endDate?: string;
+  page?: number;
+  pageSize?: number;
+};
+
+export type AdminListPostsParams = {
+  search?: string;
+  page?: number;
+  pageSize?: number;
+};
+
+export type AdminBroadcastNotificationBody = {
+  title: string;
+  body: string;
+  targetRole?: string;
 };

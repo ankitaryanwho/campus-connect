@@ -1061,3 +1061,417 @@ export const MarkNotificationReadResponse = zod.object({
   success: zod.boolean(),
   message: zod.string().optional(),
 });
+
+/**
+ * @summary Admin login
+ */
+export const AdminLoginBody = zod.object({
+  email: zod.string(),
+  password: zod.string(),
+});
+
+export const AdminLoginResponse = zod.object({
+  token: zod.string(),
+  user: zod.record(zod.string(), zod.unknown()),
+});
+
+/**
+ * @summary Get dashboard stats
+ */
+export const AdminGetStatsResponse = zod.object({
+  totalUsers: zod.number(),
+  activeUsers: zod.number(),
+  totalRevenue: zod.number(),
+  todayRevenue: zod.number(),
+  totalOrders: zod.number(),
+  pendingOrders: zod.number(),
+  completedOrders: zod.number(),
+  totalPosts: zod.number(),
+  totalTransactions: zod.number(),
+});
+
+/**
+ * @summary Get analytics charts data
+ */
+export const AdminGetAnalyticsQueryParams = zod.object({
+  days: zod.coerce.number().optional(),
+});
+
+export const AdminGetAnalyticsResponse = zod.object({
+  revenueByDay: zod.array(zod.record(zod.string(), zod.unknown())),
+  usersByDay: zod.array(zod.record(zod.string(), zod.unknown())),
+  ordersByDay: zod.array(zod.record(zod.string(), zod.unknown())),
+  revenueByService: zod.array(zod.record(zod.string(), zod.unknown())),
+});
+
+/**
+ * @summary List all users
+ */
+export const AdminListUsersQueryParams = zod.object({
+  search: zod.coerce.string().optional(),
+  role: zod.coerce.string().optional(),
+  college: zod.coerce.string().optional(),
+  page: zod.coerce.number().optional(),
+  pageSize: zod.coerce.number().optional(),
+});
+
+export const AdminListUsersResponse = zod.object({
+  users: zod.array(
+    zod.object({
+      id: zod.string(),
+      name: zod.string(),
+      email: zod.string(),
+      role: zod.string(),
+      college: zod.string().optional(),
+      program: zod.string().optional(),
+      year: zod.number().nullish(),
+      emailVerified: zod.boolean(),
+      followersCount: zod.number(),
+      postsCount: zod.number(),
+      banned: zod.boolean(),
+      createdAt: zod.date(),
+    }),
+  ),
+  total: zod.number(),
+  page: zod.number(),
+  pageSize: zod.number(),
+});
+
+/**
+ * @summary Get user details
+ */
+export const AdminGetUserParams = zod.object({
+  userId: zod.coerce.string(),
+});
+
+export const AdminGetUserResponse = zod.record(zod.string(), zod.unknown());
+
+/**
+ * @summary Update user
+ */
+export const AdminUpdateUserParams = zod.object({
+  userId: zod.coerce.string(),
+});
+
+export const AdminUpdateUserBody = zod.record(zod.string(), zod.unknown());
+
+export const AdminUpdateUserResponse = zod.record(zod.string(), zod.unknown());
+
+/**
+ * @summary Delete user
+ */
+export const AdminDeleteUserParams = zod.object({
+  userId: zod.coerce.string(),
+});
+
+export const AdminDeleteUserResponse = zod.object({
+  success: zod.boolean(),
+  message: zod.string().optional(),
+});
+
+/**
+ * @summary Ban or unban user
+ */
+export const AdminToggleBanParams = zod.object({
+  userId: zod.coerce.string(),
+});
+
+export const AdminToggleBanBody = zod.object({
+  banned: zod.boolean(),
+});
+
+export const AdminToggleBanResponse = zod.object({
+  success: zod.boolean(),
+  message: zod.string().optional(),
+});
+
+/**
+ * @summary Change user role
+ */
+export const AdminChangeRoleParams = zod.object({
+  userId: zod.coerce.string(),
+});
+
+export const AdminChangeRoleBody = zod.object({
+  role: zod.string(),
+});
+
+export const AdminChangeRoleResponse = zod.object({
+  success: zod.boolean(),
+  message: zod.string().optional(),
+});
+
+/**
+ * @summary List all assignments
+ */
+export const AdminListAssignmentsQueryParams = zod.object({
+  search: zod.coerce.string().optional(),
+  status: zod.coerce.string().optional(),
+  page: zod.coerce.number().optional(),
+  pageSize: zod.coerce.number().optional(),
+});
+
+export const AdminListAssignmentsResponse = zod.object({
+  items: zod.array(
+    zod.object({
+      id: zod.string(),
+      title: zod.string(),
+      status: zod.string(),
+      price: zod.string().nullish(),
+      posterId: zod.string(),
+      posterName: zod.string(),
+      createdAt: zod.date(),
+    }),
+  ),
+  total: zod.number(),
+  page: zod.number(),
+  pageSize: zod.number(),
+});
+
+/**
+ * @summary Update assignment
+ */
+export const AdminUpdateAssignmentParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const AdminUpdateAssignmentBody = zod.record(
+  zod.string(),
+  zod.unknown(),
+);
+
+export const AdminUpdateAssignmentResponse = zod.record(
+  zod.string(),
+  zod.unknown(),
+);
+
+/**
+ * @summary Delete assignment
+ */
+export const AdminDeleteAssignmentParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const AdminDeleteAssignmentResponse = zod.object({
+  success: zod.boolean(),
+  message: zod.string().optional(),
+});
+
+/**
+ * @summary List all certifications
+ */
+export const AdminListCertificationsQueryParams = zod.object({
+  search: zod.coerce.string().optional(),
+  status: zod.coerce.string().optional(),
+  page: zod.coerce.number().optional(),
+  pageSize: zod.coerce.number().optional(),
+});
+
+export const AdminListCertificationsResponse = zod.object({
+  items: zod.array(
+    zod.object({
+      id: zod.string(),
+      title: zod.string(),
+      status: zod.string(),
+      price: zod.string().nullish(),
+      posterId: zod.string(),
+      posterName: zod.string(),
+      createdAt: zod.date(),
+    }),
+  ),
+  total: zod.number(),
+  page: zod.number(),
+  pageSize: zod.number(),
+});
+
+/**
+ * @summary Delete certification
+ */
+export const AdminDeleteCertificationParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const AdminDeleteCertificationResponse = zod.object({
+  success: zod.boolean(),
+  message: zod.string().optional(),
+});
+
+/**
+ * @summary List all tasks
+ */
+export const AdminListTasksQueryParams = zod.object({
+  search: zod.coerce.string().optional(),
+  status: zod.coerce.string().optional(),
+  page: zod.coerce.number().optional(),
+  pageSize: zod.coerce.number().optional(),
+});
+
+export const AdminListTasksResponse = zod.object({
+  items: zod.array(
+    zod.object({
+      id: zod.string(),
+      title: zod.string(),
+      status: zod.string(),
+      price: zod.string().nullish(),
+      posterId: zod.string(),
+      posterName: zod.string(),
+      createdAt: zod.date(),
+    }),
+  ),
+  total: zod.number(),
+  page: zod.number(),
+  pageSize: zod.number(),
+});
+
+/**
+ * @summary Delete task
+ */
+export const AdminDeleteTaskParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const AdminDeleteTaskResponse = zod.object({
+  success: zod.boolean(),
+  message: zod.string().optional(),
+});
+
+/**
+ * @summary List all deliveries
+ */
+export const AdminListDeliveriesQueryParams = zod.object({
+  search: zod.coerce.string().optional(),
+  status: zod.coerce.string().optional(),
+  page: zod.coerce.number().optional(),
+  pageSize: zod.coerce.number().optional(),
+});
+
+export const AdminListDeliveriesResponse = zod.object({
+  items: zod.array(
+    zod.object({
+      id: zod.string(),
+      requesterId: zod.string(),
+      requesterName: zod.string(),
+      deliveryAgentId: zod.string().nullish(),
+      agentName: zod.string().nullish(),
+      pickupType: zod.string(),
+      pickupLocation: zod.string(),
+      dropLocation: zod.string(),
+      status: zod.string(),
+      deliveryFee: zod.string(),
+      createdAt: zod.date(),
+    }),
+  ),
+  total: zod.number(),
+  page: zod.number(),
+  pageSize: zod.number(),
+});
+
+/**
+ * @summary Update delivery status
+ */
+export const AdminUpdateDeliveryParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const AdminUpdateDeliveryBody = zod.record(zod.string(), zod.unknown());
+
+export const AdminUpdateDeliveryResponse = zod.record(
+  zod.string(),
+  zod.unknown(),
+);
+
+/**
+ * @summary Delete delivery
+ */
+export const AdminDeleteDeliveryParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const AdminDeleteDeliveryResponse = zod.object({
+  success: zod.boolean(),
+  message: zod.string().optional(),
+});
+
+/**
+ * @summary List all transactions
+ */
+export const AdminListTransactionsQueryParams = zod.object({
+  search: zod.coerce.string().optional(),
+  type: zod.coerce.string().optional(),
+  startDate: zod.coerce.string().optional(),
+  endDate: zod.coerce.string().optional(),
+  page: zod.coerce.number().optional(),
+  pageSize: zod.coerce.number().optional(),
+});
+
+export const AdminListTransactionsResponse = zod.object({
+  items: zod.array(
+    zod.object({
+      id: zod.string(),
+      walletId: zod.string(),
+      userId: zod.string(),
+      userName: zod.string(),
+      type: zod.string(),
+      amount: zod.string(),
+      description: zod.string(),
+      status: zod.string(),
+      createdAt: zod.date(),
+    }),
+  ),
+  total: zod.number(),
+  page: zod.number(),
+  pageSize: zod.number(),
+  totalVolume: zod.number(),
+});
+
+/**
+ * @summary List all posts
+ */
+export const AdminListPostsQueryParams = zod.object({
+  search: zod.coerce.string().optional(),
+  page: zod.coerce.number().optional(),
+  pageSize: zod.coerce.number().optional(),
+});
+
+export const AdminListPostsResponse = zod.object({
+  posts: zod.array(
+    zod.object({
+      id: zod.string(),
+      content: zod.string(),
+      authorId: zod.string(),
+      authorName: zod.string(),
+      likesCount: zod.number(),
+      commentsCount: zod.number(),
+      createdAt: zod.date(),
+    }),
+  ),
+  total: zod.number(),
+  page: zod.number(),
+  pageSize: zod.number(),
+});
+
+/**
+ * @summary Delete post
+ */
+export const AdminDeletePostParams = zod.object({
+  postId: zod.coerce.string(),
+});
+
+export const AdminDeletePostResponse = zod.object({
+  success: zod.boolean(),
+  message: zod.string().optional(),
+});
+
+/**
+ * @summary Send broadcast notification
+ */
+export const AdminBroadcastNotificationBody = zod.object({
+  title: zod.string(),
+  body: zod.string(),
+  targetRole: zod.string().optional(),
+});
+
+export const AdminBroadcastNotificationResponse = zod.object({
+  success: zod.boolean(),
+  message: zod.string().optional(),
+});

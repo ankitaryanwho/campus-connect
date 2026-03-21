@@ -7,6 +7,7 @@ import chatRouter from "./chat";
 import walletRouter from "./wallet";
 import servicesRouter from "./services";
 import notificationsRouter from "./notifications";
+import adminRouter from "./admin";
 
 const router: IRouter = Router();
 
@@ -18,5 +19,6 @@ router.use("/chat", chatRouter);
 router.use("/wallet", walletRouter);
 router.use("/services", servicesRouter);
 router.use("/notifications", notificationsRouter);
+router.use("/admin", adminRouter);
 
 export default router;

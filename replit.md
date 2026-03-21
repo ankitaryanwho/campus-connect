@@ -2,7 +2,36 @@
 
 ## Overview
 
-A production-ready college social app — **CampusConnect** — built as a pnpm monorepo with TypeScript. Includes a React Native (Expo) mobile app, an Express 5 API server, and a PostgreSQL database.
+A production-ready college social app — **CampusConnect** — built as a pnpm monorepo with TypeScript. Includes a React Native (Expo) mobile app, an Express 5 API server, a PostgreSQL database, and a **React + Vite Admin Panel**.
+
+## Admin Panel (`artifacts/admin` → `/admin/`)
+
+Dark professional admin dashboard with full CRUD control over the platform.
+
+**Login:** `admin@campusconnect.edu` / `admin123` (role must be `admin` or `super_admin`)
+
+**Pages:**
+- **Dashboard** — real-time stat cards + 4 Recharts charts (revenue/day, user growth, orders/day, revenue by service)
+- **Users** — paginated table, search/filter by name/email/role/college, ban/unban, change role, delete
+- **Services** — tabbed: Assignments | Certifications | Deliveries | Tasks with search+status filter+delete
+- **Transactions** — all wallet transactions with date range filter and total volume
+- **Posts** — social feed moderation with delete
+- **Analytics** — detailed charts over 7/14/30/90 day windows
+- **Notifications** — broadcast to all users, students, providers, or admins
+
+**Admin API routes** (`/api/admin/*`):
+- `POST /api/admin/auth/login` — admin-only login
+- `GET /api/admin/stats` — dashboard metrics
+- `GET /api/admin/analytics?days=30` — charts data
+- `GET/PUT/DELETE /api/admin/users/:id` — user CRUD
+- `POST /api/admin/users/:id/ban` — ban/unban
+- `POST /api/admin/users/:id/role` — change role
+- `GET/DELETE /api/admin/services/{assignments,certifications,tasks,deliveries}` — service management
+- `GET /api/admin/transactions` — all wallet transactions
+- `GET/DELETE /api/admin/posts` — post moderation
+- `POST /api/admin/notifications/broadcast` — send to all/role-filtered users
+
+**DB:** Added `banned` (boolean, default false) column to `users` table.
 
 ### Auth / Registration Flow
 - College list is static (5 colleges with domains): Bennett, Amity, Manipal, Sharda, Galgotias

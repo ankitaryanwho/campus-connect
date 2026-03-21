@@ -23,6 +23,8 @@ tags:
     description: User operations
   - name: notifications
     description: Notification operations
+  - name: admin
+    description: Admin panel operations
 
 paths:
   /healthz:
@@ -826,6 +828,611 @@ paths:
       responses:
         "200":
           description: Notification marked read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  # Admin Routes
+  /admin/auth/login:
+    post:
+      operationId: adminLogin
+      tags: [admin]
+      summary: Admin login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminLoginRequest"
+      responses:
+        "200":
+          description: Admin logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminLoginResponse"
+
+  /admin/stats:
+    get:
+      operationId: adminGetStats
+      tags: [admin]
+      summary: Get dashboard stats
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStatsResponse"
+
+  /admin/analytics:
+    get:
+      operationId: adminGetAnalytics
+      tags: [admin]
+      summary: Get analytics charts data
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: days
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Analytics data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAnalyticsResponse"
+
+  /admin/users:
+    get:
+      operationId: adminListUsers
+      tags: [admin]
+      summary: List all users
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: role
+          in: query
+          schema:
+            type: string
+        - name: college
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Users list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUsersResponse"
+
+  /admin/users/{userId}:
+    get:
+      operationId: adminGetUser
+      tags: [admin]
+      summary: Get user details
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: User details
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+    put:
+      operationId: adminUpdateUser
+      tags: [admin]
+      summary: Update user
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+    delete:
+      operationId: adminDeleteUser
+      tags: [admin]
+      summary: Delete user
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /admin/users/{userId}/ban:
+    post:
+      operationId: adminToggleBan
+      tags: [admin]
+      summary: Ban or unban user
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                banned:
+                  type: boolean
+              required: [banned]
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /admin/users/{userId}/role:
+    post:
+      operationId: adminChangeRole
+      tags: [admin]
+      summary: Change user role
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                role:
+                  type: string
+              required: [role]
+      responses:
+        "200":
+          description: Role updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /admin/services/assignments:
+    get:
+      operationId: adminListAssignments
+      tags: [admin]
+      summary: List all assignments
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Assignments
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminServicesResponse"
+
+  /admin/services/assignments/{id}:
+    put:
+      operationId: adminUpdateAssignment
+      tags: [admin]
+      summary: Update assignment
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+    delete:
+      operationId: adminDeleteAssignment
+      tags: [admin]
+      summary: Delete assignment
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /admin/services/certifications:
+    get:
+      operationId: adminListCertifications
+      tags: [admin]
+      summary: List all certifications
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Certifications
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminServicesResponse"
+
+  /admin/services/certifications/{id}:
+    delete:
+      operationId: adminDeleteCertification
+      tags: [admin]
+      summary: Delete certification
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /admin/services/tasks:
+    get:
+      operationId: adminListTasks
+      tags: [admin]
+      summary: List all tasks
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Tasks
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminServicesResponse"
+
+  /admin/services/tasks/{id}:
+    delete:
+      operationId: adminDeleteTask
+      tags: [admin]
+      summary: Delete task
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /admin/services/deliveries:
+    get:
+      operationId: adminListDeliveries
+      tags: [admin]
+      summary: List all deliveries
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deliveries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminDeliveriesResponse"
+
+  /admin/services/deliveries/{id}:
+    put:
+      operationId: adminUpdateDelivery
+      tags: [admin]
+      summary: Update delivery status
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+    delete:
+      operationId: adminDeleteDelivery
+      tags: [admin]
+      summary: Delete delivery
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /admin/transactions:
+    get:
+      operationId: adminListTransactions
+      tags: [admin]
+      summary: List all transactions
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: type
+          in: query
+          schema:
+            type: string
+        - name: startDate
+          in: query
+          schema:
+            type: string
+        - name: endDate
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Transactions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminTransactionsResponse"
+
+  /admin/posts:
+    get:
+      operationId: adminListPosts
+      tags: [admin]
+      summary: List all posts
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Posts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPostsResponse"
+
+  /admin/posts/{postId}:
+    delete:
+      operationId: adminDeletePost
+      tags: [admin]
+      summary: Delete post
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: postId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /admin/notifications/broadcast:
+    post:
+      operationId: adminBroadcastNotification
+      tags: [admin]
+      summary: Send broadcast notification
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                body:
+                  type: string
+                targetRole:
+                  type: string
+              required: [title, body]
+      responses:
+        "200":
+          description: Sent
           content:
             application/json:
               schema:
@@ -1653,3 +2260,273 @@ components:
       required:
         - notifications
         - unreadCount
+
+    AdminLoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+      required: [email, password]
+
+    AdminLoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        user:
+          type: object
+          additionalProperties: true
+      required: [token, user]
+
+    AdminStatsResponse:
+      type: object
+      properties:
+        totalUsers:
+          type: integer
+        activeUsers:
+          type: integer
+        totalRevenue:
+          type: number
+        todayRevenue:
+          type: number
+        totalOrders:
+          type: integer
+        pendingOrders:
+          type: integer
+        completedOrders:
+          type: integer
+        totalPosts:
+          type: integer
+        totalTransactions:
+          type: integer
+      required: [totalUsers, activeUsers, totalRevenue, todayRevenue, totalOrders, pendingOrders, completedOrders, totalPosts, totalTransactions]
+
+    AdminAnalyticsResponse:
+      type: object
+      properties:
+        revenueByDay:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        usersByDay:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        ordersByDay:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        revenueByService:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+      required: [revenueByDay, usersByDay, ordersByDay, revenueByService]
+
+    AdminUserRow:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+        college:
+          type: string
+        program:
+          type: string
+        year:
+          type: integer
+          nullable: true
+        emailVerified:
+          type: boolean
+        followersCount:
+          type: integer
+        postsCount:
+          type: integer
+        banned:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, name, email, role, emailVerified, followersCount, postsCount, banned, createdAt]
+
+    AdminUsersResponse:
+      type: object
+      properties:
+        users:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminUserRow"
+        total:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+      required: [users, total, page, pageSize]
+
+    AdminServiceRow:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+        price:
+          type: string
+          nullable: true
+        posterId:
+          type: string
+        posterName:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, title, status, posterId, posterName, createdAt]
+
+    AdminServicesResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminServiceRow"
+        total:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+      required: [items, total, page, pageSize]
+
+    AdminDeliveryRow:
+      type: object
+      properties:
+        id:
+          type: string
+        requesterId:
+          type: string
+        requesterName:
+          type: string
+        deliveryAgentId:
+          type: string
+          nullable: true
+        agentName:
+          type: string
+          nullable: true
+        pickupType:
+          type: string
+        pickupLocation:
+          type: string
+        dropLocation:
+          type: string
+        status:
+          type: string
+        deliveryFee:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, requesterId, requesterName, pickupType, pickupLocation, dropLocation, status, deliveryFee, createdAt]
+
+    AdminDeliveriesResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminDeliveryRow"
+        total:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+      required: [items, total, page, pageSize]
+
+    AdminTransactionRow:
+      type: object
+      properties:
+        id:
+          type: string
+        walletId:
+          type: string
+        userId:
+          type: string
+        userName:
+          type: string
+        type:
+          type: string
+        amount:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, walletId, userId, userName, type, amount, description, status, createdAt]
+
+    AdminTransactionsResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminTransactionRow"
+        total:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        totalVolume:
+          type: number
+      required: [items, total, page, pageSize, totalVolume]
+
+    AdminPostRow:
+      type: object
+      properties:
+        id:
+          type: string
+        content:
+          type: string
+        authorId:
+          type: string
+        authorName:
+          type: string
+        likesCount:
+          type: integer
+        commentsCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, content, authorId, authorName, likesCount, commentsCount, createdAt]
+
+    AdminPostsResponse:
+      type: object
+      properties:
+        posts:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminPostRow"
+        total:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+      required: [posts, total, page, pageSize]
