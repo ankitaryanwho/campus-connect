@@ -629,4 +629,36 @@ router.post("/tasks/:taskId/apply", authMiddleware, async (req, res) => {
   }
 });
 
+// ─── Provider Earnings ────────────────────────────────────────────────────────
+
+router.get("/my-earnings", authMiddleware, async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+
+    // Gather completed assignments as provider
+    const completedAssignments = await db.select().from(assignmentsTable)
+      .where(and(eq(assignmentsTable.providerId, userId), eq(assignmentsTable.status, "delivered")));
+
+    // Gather completed deliveries as provider
+    const completedDeliveries = await db.select().from(deliveriesTable)
+      .where(and(eq(deliveriesTable.providerId, userId), eq(deliveriesTable.status, "delivered")));
+
+    const allOrders = [
+      ...completedAssignments.map(a => ({ amount: a.price, createdAt: a.createdAt, type: "assignment" })),
+      ...completedDeliveries.map(d => ({ amount: d.deliveryFee || "0", createdAt: d.createdAt, type: "delivery" })),
+    ];
+
+    const total = allOrders.reduce((sum, o) => sum + parseFloat(o.amount || "0"), 0);
+    const today = allOrders
+      .filter(o => o.createdAt && new Date(o.createdAt) >= todayStart)
+      .reduce((sum, o) => sum + parseFloat(o.amount || "0"), 0);
+
+    res.json({ total, today, orders: allOrders.length });
+  } catch (err) {
+    console.error(err);
+    res.json({ total: 0, today: 0, orders: 0 });
+  }
+});
+
 export default router;

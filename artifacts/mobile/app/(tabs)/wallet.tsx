@@ -1,8 +1,9 @@
 import React, { useState } from "react";
 import {
   View, Text, ScrollView, Pressable, TextInput, StyleSheet,
-  useColorScheme, ActivityIndicator, Modal, Platform,
+  useColorScheme, ActivityIndicator, Modal, Platform, TouchableOpacity,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -10,35 +11,53 @@ import Colors from "@/constants/colors";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
 
+const isWeb = Platform.OS === "web";
+
 const PAYMENT_METHODS = [
-  { id: "upi", label: "UPI", icon: "smartphone" },
-  { id: "card", label: "Card", icon: "credit-card" },
-  { id: "netbanking", label: "Net Banking", icon: "globe" },
+  { id: "upi", label: "UPI", icon: "smartphone", color: "#5B4FE8" },
+  { id: "card", label: "Card", icon: "credit-card", color: "#F59E0B" },
+  { id: "netbanking", label: "Net Banking", icon: "globe", color: "#10B981" },
 ];
 
 const QUICK_AMOUNTS = [100, 200, 500, 1000, 2000, 5000];
 
+const TXN_ICONS: Record<string, string> = {
+  credit: "arrow-down-left",
+  debit: "arrow-up-right",
+  refund: "refresh-cw",
+  earning: "trending-up",
+  payment: "credit-card",
+};
+
+function formatAmount(amount: string | number): string {
+  const n = typeof amount === "string" ? parseFloat(amount) : amount;
+  if (isNaN(n)) return "0.00";
+  return n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 function TransactionItem({ txn, C }: any) {
-  const isCredit = txn.type === "credit";
+  const isCredit = txn.type === "credit" || txn.type === "refund" || txn.type === "earning";
+  const iconName = TXN_ICONS[txn.type] || (isCredit ? "arrow-down-left" : "arrow-up-right");
+  const iconColor = isCredit ? "#10B981" : "#EF4444";
+  const iconBg = isCredit ? (C.successLight) : (C.errorLight);
+
   return (
-    <View style={[styles.txnItem, { borderBottomColor: C.borderLight }]}>
-      <View style={[styles.txnIcon, { backgroundColor: isCredit ? C.successLight : C.errorLight }]}>
-        <Feather name={isCredit ? "arrow-down-left" : "arrow-up-right"} size={18} color={isCredit ? C.success : C.error} />
+    <View style={[styles.txnRow, { borderBottomColor: C.borderLight }]}>
+      <View style={[styles.txnIconWrap, { backgroundColor: iconBg }]}>
+        <Feather name={iconName as any} size={18} color={iconColor} />
       </View>
       <View style={styles.txnInfo}>
-        <Text style={[styles.txnDesc, { color: C.text, fontFamily: "Inter_500Medium" }]} numberOfLines={1}>
-          {txn.description}
-        </Text>
-        <Text style={[styles.txnDate, { color: C.textTertiary, fontFamily: "Inter_400Regular" }]}>
+        <Text style={[styles.txnDesc, { color: C.text }]} numberOfLines={1}>{txn.description}</Text>
+        <Text style={[styles.txnDate, { color: C.textTertiary }]}>
           {new Date(txn.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
         </Text>
       </View>
-      <View style={styles.txnAmount}>
-        <Text style={[styles.txnAmountText, { color: isCredit ? C.success : C.error, fontFamily: "Inter_700Bold" }]}>
-          {isCredit ? "+" : "-"}₹{parseFloat(txn.amount).toFixed(2)}
+      <View style={{ alignItems: "flex-end", gap: 4 }}>
+        <Text style={[styles.txnAmount, { color: isCredit ? "#10B981" : "#EF4444" }]}>
+          {isCredit ? "+" : "-"}₹{formatAmount(txn.amount)}
         </Text>
-        <View style={[styles.statusPill, { backgroundColor: txn.status === "completed" ? C.successLight : C.warningLight }]}>
-          <Text style={[styles.statusPillText, { color: txn.status === "completed" ? C.success : C.warning, fontFamily: "Inter_500Medium" }]}>
+        <View style={[styles.txnStatus, { backgroundColor: txn.status === "completed" ? C.successLight : C.warningLight }]}>
+          <Text style={[styles.txnStatusText, { color: txn.status === "completed" ? "#10B981" : "#F59E0B" }]}>
             {txn.status}
           </Text>
         </View>
@@ -54,7 +73,6 @@ export default function WalletScreen() {
   const { apiRequest } = useAuth();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
-  const isWeb = Platform.OS === "web";
   const [showAddMoney, setShowAddMoney] = useState(false);
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState("upi");
@@ -82,177 +100,203 @@ export default function WalletScreen() {
         body: JSON.stringify({ amount: parseFloat(amount), method }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
+      if (!res.ok) throw new Error(data.message || "Failed to add money");
       return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["wallet"] });
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      showToast(`₹${amount} added to your wallet!`, "success");
       setShowAddMoney(false);
       setAmount("");
-      showToast(`₹${amount} added to your wallet!`, "success");
     },
-    onError: (err: any) => showToast(err.message || "Failed to add money", "error"),
+    onError: (e: any) => showToast(e.message, "error"),
   });
 
-  const wallet = walletQuery.data;
-  const transactions = txnQuery.data?.transactions || [];
-
-  if (walletQuery.isLoading) {
-    return (
-      <View style={[styles.center, { backgroundColor: C.background }]}>
-        <ActivityIndicator color={C.primary} size="large" />
-      </View>
-    );
-  }
+  const balance = walletQuery.data?.balance || "0.00";
+  const txns = txnQuery.data?.transactions || [];
+  const totalCredits = txns.filter((t: any) => t.type === "credit" || t.type === "earning").reduce((s: number, t: any) => s + parseFloat(t.amount || "0"), 0);
+  const totalDebits = txns.filter((t: any) => t.type !== "credit" && t.type !== "earning").reduce((s: number, t: any) => s + parseFloat(t.amount || "0"), 0);
 
   return (
     <View style={[styles.container, { backgroundColor: C.background }]}>
-      <View style={[styles.header, { paddingTop: isWeb ? 67 : insets.top + 8, backgroundColor: C.background, borderBottomColor: C.border }]}>
-        <Text style={[styles.headerTitle, { color: C.text, fontFamily: "Inter_700Bold" }]}>Wallet</Text>
+      {/* Header */}
+      <View style={[styles.header, { paddingTop: isWeb ? 67 : insets.top + 10, borderBottomColor: C.border, backgroundColor: C.background }]}>
+        <View>
+          <Text style={[styles.headerTitle, { color: C.text }]}>Wallet</Text>
+          <Text style={[styles.headerSub, { color: C.textSecondary }]}>Manage your campus payments</Text>
+        </View>
+        <TouchableOpacity style={[styles.headerBtn, { backgroundColor: C.backgroundSecondary }]}>
+          <Feather name="clock" size={18} color={C.text} />
+        </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={{ paddingBottom: isWeb ? 34 + 84 : 100 }} showsVerticalScrollIndicator={false}>
-        {/* Balance Card */}
-        <View style={[styles.balanceCard, { backgroundColor: C.primary }]}>
-          <View style={styles.balanceTop}>
-            <Text style={[styles.balanceLabel, { fontFamily: "Inter_400Regular" }]}>Total Balance</Text>
-            <View style={styles.walletBadge}>
-              <Feather name="credit-card" size={14} color="rgba(255,255,255,0.8)" />
-              <Text style={[styles.walletBadgeText, { fontFamily: "Inter_500Medium" }]}>INR</Text>
+      <ScrollView contentContainerStyle={{ paddingBottom: isWeb ? 120 : 110 }} showsVerticalScrollIndicator={false}>
+        {/* Balance card */}
+        <LinearGradient
+          colors={["#5B4FE8", "#7B73F0", "#9F94F8"]}
+          start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+          style={styles.balanceCard}
+        >
+          {/* Decorative circles */}
+          <View style={[styles.cardCircle, { top: -30, right: -20, opacity: 0.15 }]} />
+          <View style={[styles.cardCircle, { bottom: -40, left: 20, opacity: 0.1, width: 120, height: 120, borderRadius: 60 }]} />
+
+          <View style={styles.cardHeader}>
+            <View style={styles.cardChip}>
+              <Feather name="shield" size={14} color="rgba(255,255,255,0.8)" />
+              <Text style={styles.cardChipText}>Secured</Text>
+            </View>
+            <View style={[styles.cardWifi]}>
+              <Feather name="wifi" size={16} color="rgba(255,255,255,0.6)" />
             </View>
           </View>
-          <Text style={[styles.balance, { fontFamily: "Inter_700Bold" }]}>
-            ₹{parseFloat(wallet?.balance || "0").toFixed(2)}
-          </Text>
-          <Text style={[styles.lastUpdated, { fontFamily: "Inter_400Regular" }]}>
-            Last updated {wallet ? new Date(wallet.updatedAt).toLocaleDateString("en-IN") : "—"}
-          </Text>
-        </View>
 
-        {/* Quick Actions */}
-        <View style={styles.quickActions}>
-          <Pressable
-            style={[styles.quickAction, { backgroundColor: C.surface, borderColor: C.border }]}
-            onPress={() => setShowAddMoney(true)}
-          >
-            <View style={[styles.quickActionIcon, { backgroundColor: C.successLight }]}>
-              <Feather name="plus-circle" size={22} color={C.success} />
+          <Text style={styles.balanceLabel}>Available Balance</Text>
+          {walletQuery.isLoading ? (
+            <ActivityIndicator color="#fff" size="large" style={{ marginVertical: 8 }} />
+          ) : (
+            <Text style={styles.balanceAmount}>₹{formatAmount(balance)}</Text>
+          )}
+
+          <View style={styles.cardFooter}>
+            <View>
+              <Text style={styles.cardFooterLabel}>Total In</Text>
+              <Text style={styles.cardFooterValue}>₹{formatAmount(totalCredits)}</Text>
             </View>
-            <Text style={[styles.quickActionText, { color: C.text, fontFamily: "Inter_500Medium" }]}>Add Money</Text>
-          </Pressable>
-          <Pressable style={[styles.quickAction, { backgroundColor: C.surface, borderColor: C.border }]}>
-            <View style={[styles.quickActionIcon, { backgroundColor: C.primaryLight }]}>
-              <Feather name="send" size={22} color={C.primary} />
+            <View style={styles.cardFooterDivider} />
+            <View>
+              <Text style={styles.cardFooterLabel}>Total Out</Text>
+              <Text style={styles.cardFooterValue}>₹{formatAmount(totalDebits)}</Text>
             </View>
-            <Text style={[styles.quickActionText, { color: C.text, fontFamily: "Inter_500Medium" }]}>Transfer</Text>
-          </Pressable>
-          <Pressable style={[styles.quickAction, { backgroundColor: C.surface, borderColor: C.border }]}>
-            <View style={[styles.quickActionIcon, { backgroundColor: C.warningLight }]}>
-              <Feather name="download" size={22} color={C.warning} />
+            <View style={[styles.cardFooterDivider]} />
+            <View>
+              <Text style={styles.cardFooterLabel}>Transactions</Text>
+              <Text style={styles.cardFooterValue}>{txns.length}</Text>
             </View>
-            <Text style={[styles.quickActionText, { color: C.text, fontFamily: "Inter_500Medium" }]}>Withdraw</Text>
-          </Pressable>
-          <Pressable style={[styles.quickAction, { backgroundColor: C.surface, borderColor: C.border }]}>
-            <View style={[styles.quickActionIcon, { backgroundColor: C.infoLight }]}>
-              <Feather name="bar-chart-2" size={22} color={C.info} />
-            </View>
-            <Text style={[styles.quickActionText, { color: C.text, fontFamily: "Inter_500Medium" }]}>History</Text>
-          </Pressable>
+          </View>
+        </LinearGradient>
+
+        {/* Quick actions */}
+        <View style={styles.actionsRow}>
+          {[
+            { icon: "plus-circle", label: "Add Money", color: "#5B4FE8", onPress: () => setShowAddMoney(true) },
+            { icon: "send", label: "Send", color: "#10B981", onPress: () => {} },
+            { icon: "download", label: "Request", color: "#F59E0B", onPress: () => {} },
+            { icon: "bar-chart-2", label: "Analytics", color: "#EF4444", onPress: () => {} },
+          ].map(({ icon, label, color, onPress }) => (
+            <TouchableOpacity key={label} style={[styles.actionTile, { backgroundColor: C.surface, borderColor: C.border }]} onPress={onPress} activeOpacity={0.8}>
+              <View style={[styles.actionTileIcon, { backgroundColor: color + "18" }]}>
+                <Feather name={icon as any} size={20} color={color} />
+              </View>
+              <Text style={[styles.actionTileLabel, { color: C.text }]}>{label}</Text>
+            </TouchableOpacity>
+          ))}
         </View>
 
         {/* Transactions */}
-        <View style={styles.txnSection}>
-          <Text style={[styles.sectionTitle, { color: C.text, fontFamily: "Inter_700Bold" }]}>Recent Transactions</Text>
-          <View style={[styles.txnList, { backgroundColor: C.surface, borderColor: C.border }]}>
-            {txnQuery.isLoading ? (
-              <View style={{ paddingVertical: 24, alignItems: "center" }}>
-                <ActivityIndicator color={C.primary} />
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: C.text }]}>Transaction History</Text>
+            {txns.length > 0 && (
+              <View style={[styles.txnCount, { backgroundColor: C.primaryLight }]}>
+                <Text style={[styles.txnCountText, { color: C.primary }]}>{txns.length}</Text>
               </View>
-            ) : transactions.length === 0 ? (
+            )}
+          </View>
+
+          <View style={[styles.txnCard, { backgroundColor: C.surface, borderColor: C.border }]}>
+            {txnQuery.isLoading ? (
+              <ActivityIndicator color={C.primary} style={{ paddingVertical: 30 }} />
+            ) : txns.length === 0 ? (
               <View style={styles.emptyTxn}>
-                <Feather name="inbox" size={36} color={C.textTertiary} />
-                <Text style={[styles.emptyTxnText, { color: C.textSecondary, fontFamily: "Inter_400Regular" }]}>
-                  No transactions yet
-                </Text>
+                <LinearGradient colors={[C.primaryLight, "transparent"]} style={styles.emptyTxnInner}>
+                  <Feather name="credit-card" size={40} color={C.primary} style={{ opacity: 0.5 }} />
+                  <Text style={[styles.emptyTxnText, { color: C.textSecondary }]}>No transactions yet</Text>
+                  <Text style={[styles.emptyTxnSub, { color: C.textTertiary }]}>Add money to get started</Text>
+                </LinearGradient>
               </View>
             ) : (
-              transactions.map(txn => <TransactionItem key={txn.id} txn={txn} C={C} />)
+              txns.map((txn: any) => <TransactionItem key={txn.id} txn={txn} C={C} />)
             )}
           </View>
         </View>
       </ScrollView>
 
       {/* Add Money Modal */}
-      <Modal visible={showAddMoney} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalSheet, { backgroundColor: C.surface }]}>
+      <Modal visible={showAddMoney} animationType="slide" transparent onRequestClose={() => setShowAddMoney(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setShowAddMoney(false)}>
+          <Pressable style={[styles.modalSheet, { backgroundColor: C.surface }]} onPress={() => {}}>
             <View style={styles.modalHandle} />
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: C.text, fontFamily: "Inter_700Bold" }]}>Add Money</Text>
-              <Pressable onPress={() => setShowAddMoney(false)}>
-                <Feather name="x" size={22} color={C.text} />
-              </Pressable>
+
+            <View style={styles.modalHeaderRow}>
+              <Text style={[styles.modalTitle, { color: C.text }]}>Add Money</Text>
+              <TouchableOpacity onPress={() => setShowAddMoney(false)}>
+                <Feather name="x" size={22} color={C.textSecondary} />
+              </TouchableOpacity>
             </View>
 
-            <Text style={[styles.modalLabel, { color: C.textSecondary, fontFamily: "Inter_500Medium" }]}>Amount</Text>
-            <View style={[styles.amountInput, { backgroundColor: C.backgroundSecondary, borderColor: C.border }]}>
-              <Text style={[styles.rupeeSymbol, { color: C.text, fontFamily: "Inter_700Bold" }]}>₹</Text>
+            {/* Amount Input */}
+            <Text style={[styles.fieldLabel, { color: C.textSecondary }]}>Amount (₹)</Text>
+            <View style={[styles.amountInputWrap, { backgroundColor: C.backgroundSecondary, borderColor: C.border }]}>
+              <Text style={[styles.rupeeSign, { color: C.primary }]}>₹</Text>
               <TextInput
-                style={[styles.amountInputText, { color: C.text, fontFamily: "Inter_700Bold" }]}
+                style={[styles.amountInput, { color: C.text }]}
                 value={amount}
                 onChangeText={setAmount}
                 keyboardType="numeric"
-                placeholder="0"
+                placeholder="0.00"
                 placeholderTextColor={C.textTertiary}
               />
             </View>
 
+            {/* Quick amounts */}
             <View style={styles.quickAmounts}>
-              {QUICK_AMOUNTS.map(qa => (
-                <Pressable
-                  key={qa}
-                  style={[styles.quickAmountBtn, { borderColor: C.border, backgroundColor: amount === qa.toString() ? C.primaryLight : C.backgroundSecondary }]}
-                  onPress={() => setAmount(qa.toString())}
+              {QUICK_AMOUNTS.map(a => (
+                <TouchableOpacity
+                  key={a}
+                  style={[styles.quickChip, { borderColor: amount === String(a) ? C.primary : C.border, backgroundColor: amount === String(a) ? C.primaryLight : "transparent" }]}
+                  onPress={() => setAmount(String(a))}
                 >
-                  <Text style={[styles.quickAmountText, { color: amount === qa.toString() ? C.primary : C.text, fontFamily: "Inter_500Medium" }]}>
-                    ₹{qa}
-                  </Text>
-                </Pressable>
+                  <Text style={[styles.quickChipText, { color: amount === String(a) ? C.primary : C.textSecondary }]}>₹{a}</Text>
+                </TouchableOpacity>
               ))}
             </View>
 
-            <Text style={[styles.modalLabel, { color: C.textSecondary, fontFamily: "Inter_500Medium" }]}>Payment Method</Text>
+            {/* Payment methods */}
+            <Text style={[styles.fieldLabel, { color: C.textSecondary }]}>Payment Method</Text>
             <View style={styles.methodsRow}>
               {PAYMENT_METHODS.map(m => (
-                <Pressable
+                <TouchableOpacity
                   key={m.id}
-                  style={[styles.methodBtn, { borderColor: method === m.id ? C.primary : C.border, backgroundColor: method === m.id ? C.primaryLight : C.backgroundSecondary }]}
+                  style={[styles.methodCard, { borderColor: method === m.id ? m.color : C.border, backgroundColor: method === m.id ? m.color + "15" : C.backgroundSecondary }]}
                   onPress={() => setMethod(m.id)}
                 >
-                  <Feather name={m.icon as any} size={16} color={method === m.id ? C.primary : C.textSecondary} />
-                  <Text style={[styles.methodLabel, { color: method === m.id ? C.primary : C.textSecondary, fontFamily: "Inter_500Medium" }]}>
-                    {m.label}
-                  </Text>
-                </Pressable>
+                  <Feather name={m.icon as any} size={18} color={method === m.id ? m.color : C.textSecondary} />
+                  <Text style={[styles.methodLabel, { color: method === m.id ? m.color : C.textSecondary }]}>{m.label}</Text>
+                </TouchableOpacity>
               ))}
             </View>
 
-            <Pressable
-              style={[styles.addBtn, { backgroundColor: C.primary }, addMoneyMutation.isPending && { opacity: 0.7 }]}
+            <TouchableOpacity
+              style={[styles.addBtn, { opacity: (!amount || parseFloat(amount) <= 0 || addMoneyMutation.isPending) ? 0.6 : 1 }]}
               onPress={() => addMoneyMutation.mutate()}
-              disabled={addMoneyMutation.isPending || !amount}
+              disabled={!amount || parseFloat(amount) <= 0 || addMoneyMutation.isPending}
+              activeOpacity={0.85}
             >
-              {addMoneyMutation.isPending ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={[styles.addBtnText, { fontFamily: "Inter_600SemiBold" }]}>
-                  Add ₹{amount || "0"}
-                </Text>
-              )}
-            </Pressable>
-          </View>
-        </View>
+              <LinearGradient colors={["#5B4FE8", "#7B73F0"]} style={styles.addBtnGradient}>
+                {addMoneyMutation.isPending ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <>
+                    <Feather name="plus" size={18} color="#fff" />
+                    <Text style={styles.addBtnText}>Add ₹{amount || "0"}</Text>
+                  </>
+                )}
+              </LinearGradient>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
       </Modal>
     </View>
   );
@@ -260,52 +304,64 @@ export default function WalletScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  center: { flex: 1, alignItems: "center", justifyContent: "center" },
   header: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
     paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 0.5,
   },
-  headerTitle: { fontSize: 22 },
-  balanceCard: { margin: 16, borderRadius: 24, padding: 24 },
-  balanceTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
-  balanceLabel: { color: "rgba(255,255,255,0.8)", fontSize: 14 },
-  walletBadge: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "rgba(255,255,255,0.2)", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
-  walletBadgeText: { color: "rgba(255,255,255,0.9)", fontSize: 12 },
-  balance: { color: "#fff", fontSize: 40, marginBottom: 8 },
-  lastUpdated: { color: "rgba(255,255,255,0.6)", fontSize: 12 },
-  quickActions: { flexDirection: "row", paddingHorizontal: 12, gap: 10, marginBottom: 24 },
-  quickAction: { flex: 1, alignItems: "center", paddingVertical: 14, borderRadius: 16, borderWidth: 0.5, gap: 8 },
-  quickActionIcon: { width: 44, height: 44, borderRadius: 14, alignItems: "center", justifyContent: "center" },
-  quickActionText: { fontSize: 11 },
-  txnSection: { paddingHorizontal: 16 },
-  sectionTitle: { fontSize: 18, marginBottom: 14 },
-  txnList: { borderRadius: 16, borderWidth: 0.5, overflow: "hidden" },
-  txnItem: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 14, paddingHorizontal: 16, borderBottomWidth: 0.5 },
-  txnIcon: { width: 42, height: 42, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  headerTitle: { fontSize: 22, fontFamily: "Inter_700Bold" },
+  headerSub: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 1 },
+  headerBtn: { width: 40, height: 40, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  balanceCard: { margin: 16, borderRadius: 24, padding: 24, overflow: "hidden", minHeight: 200 },
+  cardCircle: { position: "absolute", width: 150, height: 150, borderRadius: 75, backgroundColor: "#fff" },
+  cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 24 },
+  cardChip: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "rgba(255,255,255,0.15)", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
+  cardChipText: { color: "rgba(255,255,255,0.8)", fontSize: 11, fontFamily: "Inter_600SemiBold" },
+  cardWifi: {},
+  balanceLabel: { color: "rgba(255,255,255,0.7)", fontSize: 13, fontFamily: "Inter_500Medium", marginBottom: 4 },
+  balanceAmount: { color: "#fff", fontSize: 40, fontFamily: "Inter_700Bold", letterSpacing: -1 },
+  cardFooter: { flexDirection: "row", alignItems: "center", marginTop: 24, gap: 0 },
+  cardFooterLabel: { color: "rgba(255,255,255,0.6)", fontSize: 11, fontFamily: "Inter_400Regular", marginBottom: 3 },
+  cardFooterValue: { color: "#fff", fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  cardFooterDivider: { width: 1, height: 30, backgroundColor: "rgba(255,255,255,0.2)", marginHorizontal: 20 },
+  actionsRow: { flexDirection: "row", paddingHorizontal: 16, gap: 10, marginBottom: 8 },
+  actionTile: { flex: 1, borderRadius: 16, borderWidth: 0.5, padding: 14, alignItems: "center", gap: 8 },
+  actionTileIcon: { width: 44, height: 44, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  actionTileLabel: { fontSize: 11, fontFamily: "Inter_500Medium", textAlign: "center" },
+  section: { paddingHorizontal: 16, marginTop: 8 },
+  sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
+  sectionTitle: { fontSize: 18, fontFamily: "Inter_700Bold" },
+  txnCount: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 20 },
+  txnCountText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  txnCard: { borderRadius: 20, borderWidth: 0.5, overflow: "hidden" },
+  txnRow: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderBottomWidth: 0.5 },
+  txnIconWrap: { width: 44, height: 44, borderRadius: 14, alignItems: "center", justifyContent: "center", flexShrink: 0 },
   txnInfo: { flex: 1 },
-  txnDesc: { fontSize: 14, marginBottom: 3 },
-  txnDate: { fontSize: 11 },
-  txnAmount: { alignItems: "flex-end", gap: 4 },
-  txnAmountText: { fontSize: 16 },
-  statusPill: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
-  statusPillText: { fontSize: 10 },
-  emptyTxn: { alignItems: "center", paddingVertical: 32, gap: 10 },
-  emptyTxnText: { fontSize: 14 },
+  txnDesc: { fontSize: 14, fontFamily: "Inter_500Medium", marginBottom: 3 },
+  txnDate: { fontSize: 11, fontFamily: "Inter_400Regular" },
+  txnAmount: { fontSize: 15, fontFamily: "Inter_700Bold" },
+  txnStatus: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 },
+  txnStatusText: { fontSize: 10, fontFamily: "Inter_500Medium" },
+  emptyTxn: { overflow: "hidden", borderRadius: 20 },
+  emptyTxnInner: { alignItems: "center", paddingVertical: 50, gap: 10 },
+  emptyTxnText: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  emptyTxnSub: { fontSize: 13, fontFamily: "Inter_400Regular" },
+  // Modal
   modalOverlay: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.5)" },
-  modalSheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 },
+  modalSheet: { borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 48 },
   modalHandle: { width: 40, height: 4, backgroundColor: "#ccc", borderRadius: 2, alignSelf: "center", marginBottom: 20 },
-  modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 },
-  modalTitle: { fontSize: 20 },
-  modalLabel: { fontSize: 13, marginBottom: 8, letterSpacing: 0.3 },
-  amountInput: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 14, borderWidth: 1, marginBottom: 16 },
-  rupeeSymbol: { fontSize: 28 },
-  amountInputText: { flex: 1, fontSize: 28 },
+  modalHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 24 },
+  modalTitle: { fontSize: 22, fontFamily: "Inter_700Bold" },
+  fieldLabel: { fontSize: 13, fontFamily: "Inter_600SemiBold", marginBottom: 8 },
+  amountInputWrap: { flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 16, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 12, marginBottom: 14 },
+  rupeeSign: { fontSize: 22, fontFamily: "Inter_700Bold" },
+  amountInput: { flex: 1, fontSize: 24, fontFamily: "Inter_700Bold" },
   quickAmounts: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 20 },
-  quickAmountBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, borderWidth: 1 },
-  quickAmountText: { fontSize: 13 },
-  methodsRow: { flexDirection: "row", gap: 10, marginBottom: 24 },
-  methodBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 12, borderRadius: 12, borderWidth: 1 },
-  methodLabel: { fontSize: 12 },
-  addBtn: { paddingVertical: 16, borderRadius: 14, alignItems: "center" },
-  addBtnText: { color: "#fff", fontSize: 16 },
+  quickChip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, borderWidth: 1 },
+  quickChipText: { fontSize: 13, fontFamily: "Inter_500Medium" },
+  methodsRow: { flexDirection: "row", gap: 8, marginBottom: 24 },
+  methodCard: { flex: 1, borderRadius: 14, borderWidth: 1, padding: 12, alignItems: "center", gap: 6 },
+  methodLabel: { fontSize: 11, fontFamily: "Inter_500Medium" },
+  addBtn: { borderRadius: 16, overflow: "hidden" },
+  addBtnGradient: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, paddingVertical: 16 },
+  addBtnText: { color: "#fff", fontSize: 16, fontFamily: "Inter_700Bold" },
 });

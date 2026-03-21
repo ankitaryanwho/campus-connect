@@ -1,14 +1,18 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import {
   View, Text, FlatList, Pressable, StyleSheet,
-  useColorScheme, ActivityIndicator, Platform, Image,
+  useColorScheme, ActivityIndicator, Platform, Image, TextInput,
+  TouchableOpacity, Animated,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import Colors from "@/constants/colors";
 import { useAuth } from "@/contexts/AuthContext";
+
+const isWeb = Platform.OS === "web";
 
 function timeAgo(date: string): string {
   const diff = Date.now() - new Date(date).getTime();
@@ -17,21 +21,53 @@ function timeAgo(date: string): string {
   if (m < 60) return `${m}m`;
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h`;
-  return `${Math.floor(h / 24)}d`;
+  const d = Math.floor(h / 24);
+  if (d === 1) return "Yesterday";
+  return `${d}d`;
 }
 
 function getInitials(name: string): string {
   return name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
 }
 
-function Avatar({ name, avatar, size = 48, color }: any) {
-  if (avatar) return <Image source={{ uri: avatar }} style={{ width: size, height: size, borderRadius: size / 2 }} />;
+const AVATAR_GRADIENTS = [
+  ["#667eea", "#764ba2"], ["#f093fb", "#f5576c"], ["#4facfe", "#00f2fe"],
+  ["#43e97b", "#38f9d7"], ["#fa709a", "#fee140"], ["#a18cd1", "#fbc2eb"],
+];
+
+function getGradient(name: string) {
+  let hash = 0;
+  for (let c of name) hash = c.charCodeAt(0) + ((hash << 5) - hash);
+  return AVATAR_GRADIENTS[Math.abs(hash) % AVATAR_GRADIENTS.length];
+}
+
+function GradientAvatar({ name, avatar, size = 50, online = false }: any) {
+  const grad = getGradient(name || "?");
   return (
-    <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: color, alignItems: "center", justifyContent: "center" }}>
-      <Text style={{ color: "#fff", fontFamily: "Inter_600SemiBold", fontSize: size * 0.35 }}>{getInitials(name || "?")}</Text>
+    <View>
+      {avatar
+        ? <Image source={{ uri: avatar }} style={{ width: size, height: size, borderRadius: size / 2 }} />
+        : (
+          <LinearGradient colors={grad as any} style={{ width: size, height: size, borderRadius: size / 2, alignItems: "center", justifyContent: "center" }}>
+            <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: size * 0.36 }}>{getInitials(name || "?")}</Text>
+          </LinearGradient>
+        )
+      }
+      {online && (
+        <View style={{ position: "absolute", bottom: 2, right: 2, width: 12, height: 12, borderRadius: 6, backgroundColor: "#10B981", borderWidth: 2, borderColor: "#fff" }} />
+      )}
     </View>
   );
 }
+
+const ROOM_COLORS: Record<string, [string, string]> = {
+  tech: ["#5B4FE8", "#7B73F0"],
+  marketplace: ["#10B981", "#34D399"],
+  program: ["#F59E0B", "#FBBF24"],
+  general: ["#F97316", "#FB923C"],
+  career: ["#06B6D4", "#22D3EE"],
+  social: ["#EC4899", "#F472B6"],
+};
 
 export default function ChatScreen() {
   const insets = useSafeAreaInsets();
@@ -39,7 +75,8 @@ export default function ChatScreen() {
   const C = Colors[colorScheme === "dark" ? "dark" : "light"];
   const { apiRequest, user } = useAuth();
   const [mode, setMode] = useState<"dms" | "rooms">("dms");
-  const isWeb = Platform.OS === "web";
+  const [search, setSearch] = useState("");
+  const tabAnim = useRef(new Animated.Value(0)).current;
 
   const conversationsQuery = useQuery({
     queryKey: ["conversations"],
@@ -59,123 +96,157 @@ export default function ChatScreen() {
     enabled: mode === "rooms",
   });
 
-  const isLoading = mode === "dms" ? conversationsQuery.isLoading : chatroomsQuery.isLoading;
-  const conversations = conversationsQuery.data?.conversations || [];
-  const chatrooms = chatroomsQuery.data?.chatrooms || [];
-
-  const categoryColors: Record<string, string> = {
-    tech: C.primary, marketplace: C.success, program: C.info, general: C.orange, career: C.cyan,
+  const switchMode = (m: "dms" | "rooms") => {
+    Animated.spring(tabAnim, {
+      toValue: m === "dms" ? 0 : 1,
+      useNativeDriver: false,
+    }).start();
+    setMode(m);
   };
 
+  const isLoading = mode === "dms" ? conversationsQuery.isLoading : chatroomsQuery.isLoading;
+  const conversations = (conversationsQuery.data?.conversations || []).filter((c: any) => {
+    if (!search) return true;
+    const other = c.participants?.find((p: any) => p?.id !== user?.id);
+    return other?.name?.toLowerCase().includes(search.toLowerCase());
+  });
+  const chatrooms = (chatroomsQuery.data?.chatrooms || []).filter((r: any) =>
+    !search || r.name?.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const tabIndicatorLeft = tabAnim.interpolate({ inputRange: [0, 1], outputRange: ["1%", "51%"] });
+
   const renderConversation = ({ item }: any) => {
-    const other = item.participants.find((p: any) => p?.id !== user?.id);
+    const other = item.participants?.find((p: any) => p?.id !== user?.id);
     if (!other) return null;
+    const isOnline = Math.random() > 0.6; // Simulated online state
     return (
-      <Pressable
-        style={[styles.convItem, { borderBottomColor: C.borderLight }]}
+      <TouchableOpacity
+        style={[styles.convRow, { borderBottomColor: C.borderLight }]}
         onPress={() => router.push(`/chat/${item.id}`)}
+        activeOpacity={0.7}
       >
-        <Avatar name={other.name} avatar={other.avatar} size={50} color={C.primary} />
-        <View style={styles.convInfo}>
+        <GradientAvatar name={other.name} avatar={other.avatar} size={52} online={isOnline} />
+        <View style={styles.convContent}>
           <View style={styles.convTop}>
-            <Text style={[styles.convName, { color: C.text, fontFamily: "Inter_600SemiBold" }]}>{other.name}</Text>
-            {item.lastMessage && (
-              <Text style={[styles.convTime, { color: C.textTertiary, fontFamily: "Inter_400Regular" }]}>
-                {timeAgo(item.lastMessage.createdAt)}
-              </Text>
+            <Text style={[styles.convName, { color: C.text }]} numberOfLines={1}>{other.name}</Text>
+            <Text style={[styles.convTime, { color: item.unreadCount > 0 ? C.primary : C.textTertiary }]}>
+              {item.lastMessage ? timeAgo(item.lastMessage.createdAt) : ""}
+            </Text>
+          </View>
+          <View style={styles.convBottom}>
+            <Text style={[styles.convPreview, { color: item.unreadCount > 0 ? C.text : C.textSecondary, fontFamily: item.unreadCount > 0 ? "Inter_500Medium" : "Inter_400Regular" }]} numberOfLines={1}>
+              {item.lastMessage?.content || "No messages yet"}
+            </Text>
+            {item.unreadCount > 0 && (
+              <LinearGradient colors={["#5B4FE8", "#7B73F0"]} style={styles.unreadBadge}>
+                <Text style={styles.unreadText}>{item.unreadCount > 9 ? "9+" : item.unreadCount}</Text>
+              </LinearGradient>
             )}
           </View>
-          <Text style={[styles.convPreview, { color: C.textSecondary, fontFamily: "Inter_400Regular" }]} numberOfLines={1}>
-            {item.lastMessage?.content || "No messages yet"}
-          </Text>
         </View>
-        {item.unreadCount > 0 && (
-          <View style={[styles.badge, { backgroundColor: C.primary }]}>
-            <Text style={styles.badgeText}>{item.unreadCount}</Text>
-          </View>
-        )}
-      </Pressable>
+      </TouchableOpacity>
     );
   };
 
   const renderChatroom = ({ item }: any) => {
-    const color = categoryColors[item.category] || C.primary;
+    const [c1, c2] = ROOM_COLORS[item.category] || ["#5B4FE8", "#7B73F0"];
+    const initial = (item.name || "#").replace("#", "").slice(0, 2).toUpperCase();
     return (
-      <Pressable
-        style={[styles.chatroomItem, { backgroundColor: C.surface, borderColor: C.border }]}
+      <TouchableOpacity
+        style={[styles.roomCard, { backgroundColor: C.surface, borderColor: C.border }]}
         onPress={() => router.push(`/chatroom/${item.id}`)}
+        activeOpacity={0.8}
       >
-        <View style={[styles.chatroomIcon, { backgroundColor: color + "20" }]}>
-          <Text style={[styles.chatroomIconText, { color, fontFamily: "Inter_700Bold" }]}>
-            {item.name.startsWith("#") ? item.name.slice(1, 2).toUpperCase() : item.name[0].toUpperCase()}
-          </Text>
-        </View>
-        <View style={styles.chatroomInfo}>
-          <Text style={[styles.chatroomName, { color: C.text, fontFamily: "Inter_600SemiBold" }]}>{item.name}</Text>
-          <Text style={[styles.chatroomDesc, { color: C.textSecondary, fontFamily: "Inter_400Regular" }]} numberOfLines={1}>
+        <LinearGradient colors={[c1, c2]} style={styles.roomIcon}>
+          <Text style={styles.roomIconText}>#</Text>
+        </LinearGradient>
+        <View style={styles.roomInfo}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 3 }}>
+            <Text style={[styles.roomName, { color: C.text }]}>{item.name}</Text>
+            <View style={[styles.roomCategoryTag, { backgroundColor: c1 + "22" }]}>
+              <Text style={[styles.roomCategoryText, { color: c1 }]}>{item.category}</Text>
+            </View>
+          </View>
+          <Text style={[styles.roomDesc, { color: C.textSecondary }]} numberOfLines={1}>
             {item.description || item.lastMessage?.content || "No messages yet"}
           </Text>
-          <View style={styles.chatroomMeta}>
+          <View style={styles.roomMeta}>
             <Feather name="users" size={11} color={C.textTertiary} />
-            <Text style={[styles.chatroomMetaText, { color: C.textTertiary, fontFamily: "Inter_400Regular" }]}>
-              {item.memberCount} members
-            </Text>
+            <Text style={[styles.roomMetaText, { color: C.textTertiary }]}>{item.memberCount} members</Text>
+            <View style={[styles.liveDot, { backgroundColor: "#10B981" }]} />
+            <Text style={[styles.roomMetaText, { color: "#10B981" }]}>active</Text>
           </View>
         </View>
-        <View style={[styles.categoryTag, { backgroundColor: color + "20" }]}>
-          <Text style={[styles.categoryTagText, { color, fontFamily: "Inter_500Medium" }]}>{item.category}</Text>
-        </View>
-      </Pressable>
+        <Feather name="chevron-right" size={18} color={C.textTertiary} />
+      </TouchableOpacity>
     );
   };
 
   return (
     <View style={[styles.container, { backgroundColor: C.background }]}>
-      <View style={[styles.header, { paddingTop: isWeb ? 67 : insets.top + 8, backgroundColor: C.background, borderBottomColor: C.border }]}>
-        <Text style={[styles.headerTitle, { color: C.text, fontFamily: "Inter_700Bold" }]}>Messages</Text>
-        <Pressable style={[styles.composeBtn, { backgroundColor: C.primaryLight }]}>
+      {/* Header */}
+      <View style={[styles.header, { paddingTop: isWeb ? 67 : insets.top + 10, backgroundColor: C.background, borderBottomColor: C.border }]}>
+        <View>
+          <Text style={[styles.headerTitle, { color: C.text }]}>Messages</Text>
+          <Text style={[styles.headerSub, { color: C.textSecondary }]}>
+            {mode === "dms" ? `${conversations.length} conversations` : `${chatrooms.length} chatrooms`}
+          </Text>
+        </View>
+        <TouchableOpacity style={[styles.composeBtn, { backgroundColor: C.primaryLight }]} activeOpacity={0.8}>
           <Feather name="edit-2" size={18} color={C.primary} />
-        </Pressable>
+        </TouchableOpacity>
       </View>
 
-      {/* Mode Toggle */}
-      <View style={[styles.modeToggle, { backgroundColor: C.backgroundSecondary, borderColor: C.border }]}>
-        <Pressable
-          style={[styles.modeBtn, mode === "dms" && { backgroundColor: C.surface, shadowColor: "#000", shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 }]}
-          onPress={() => setMode("dms")}
-        >
-          <Text style={[styles.modeBtnText, { color: mode === "dms" ? C.text : C.textSecondary, fontFamily: "Inter_600SemiBold" }]}>
-            Direct
-          </Text>
-        </Pressable>
-        <Pressable
-          style={[styles.modeBtn, mode === "rooms" && { backgroundColor: C.surface, shadowColor: "#000", shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 }]}
-          onPress={() => setMode("rooms")}
-        >
-          <Text style={[styles.modeBtnText, { color: mode === "rooms" ? C.text : C.textSecondary, fontFamily: "Inter_600SemiBold" }]}>
-            Chatrooms
-          </Text>
-        </Pressable>
+      {/* Search */}
+      <View style={[styles.searchRow, { backgroundColor: C.backgroundSecondary, borderColor: C.border }]}>
+        <Feather name="search" size={16} color={C.textTertiary} />
+        <TextInput
+          style={[styles.searchInput, { color: C.text }]}
+          placeholder="Search messages..."
+          placeholderTextColor={C.textTertiary}
+          value={search}
+          onChangeText={setSearch}
+        />
+        {search.length > 0 && (
+          <TouchableOpacity onPress={() => setSearch("")}>
+            <Feather name="x-circle" size={16} color={C.textTertiary} />
+          </TouchableOpacity>
+        )}
       </View>
 
+      {/* Mode toggle */}
+      <View style={[styles.tabContainer, { backgroundColor: C.backgroundSecondary, borderColor: C.border }]}>
+        <Animated.View style={[styles.tabIndicator, { left: tabIndicatorLeft, backgroundColor: C.surface }]} />
+        <TouchableOpacity style={styles.tabBtn} onPress={() => switchMode("dms")}>
+          <Feather name="message-circle" size={15} color={mode === "dms" ? C.primary : C.textTertiary} />
+          <Text style={[styles.tabBtnText, { color: mode === "dms" ? C.primary : C.textTertiary }]}>Direct</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.tabBtn} onPress={() => switchMode("rooms")}>
+          <Feather name="hash" size={15} color={mode === "rooms" ? C.primary : C.textTertiary} />
+          <Text style={[styles.tabBtnText, { color: mode === "rooms" ? C.primary : C.textTertiary }]}>Chatrooms</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Content */}
       {isLoading ? (
         <View style={styles.center}>
-          <ActivityIndicator color={C.primary} />
+          <ActivityIndicator color={C.primary} size="large" />
         </View>
       ) : mode === "dms" ? (
         <FlatList
           data={conversations}
           renderItem={renderConversation}
           keyExtractor={item => item.id}
-          contentContainerStyle={{ paddingBottom: isWeb ? 34 + 84 : 100 }}
+          contentContainerStyle={{ paddingBottom: isWeb ? 120 : 110 }}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
             <View style={styles.emptyState}>
-              <Feather name="message-circle" size={44} color={C.textTertiary} />
-              <Text style={[styles.emptyTitle, { color: C.text, fontFamily: "Inter_600SemiBold" }]}>No conversations</Text>
-              <Text style={[styles.emptyText, { color: C.textSecondary, fontFamily: "Inter_400Regular" }]}>
-                Visit a profile to start chatting
-              </Text>
+              <LinearGradient colors={[C.primaryLight, C.background]} style={styles.emptyInner}>
+                <Feather name="message-circle" size={52} color={C.primary} style={{ opacity: 0.6 }} />
+                <Text style={[styles.emptyTitle, { color: C.text }]}>No conversations yet</Text>
+                <Text style={[styles.emptyText, { color: C.textSecondary }]}>Visit a profile to start chatting</Text>
+              </LinearGradient>
             </View>
           }
         />
@@ -184,12 +255,17 @@ export default function ChatScreen() {
           data={chatrooms}
           renderItem={renderChatroom}
           keyExtractor={item => item.id}
-          contentContainerStyle={{ padding: 12, paddingBottom: isWeb ? 34 + 84 : 100, gap: 10 }}
+          contentContainerStyle={{ padding: 14, paddingBottom: isWeb ? 120 : 110, gap: 10 }}
           showsVerticalScrollIndicator={false}
+          ListHeaderComponent={
+            <Text style={[styles.sectionLabel, { color: C.textTertiary }]}>DISCOVER COMMUNITIES</Text>
+          }
           ListEmptyComponent={
             <View style={styles.emptyState}>
-              <Feather name="hash" size={44} color={C.textTertiary} />
-              <Text style={[styles.emptyTitle, { color: C.text, fontFamily: "Inter_600SemiBold" }]}>No chatrooms yet</Text>
+              <LinearGradient colors={[C.primaryLight, C.background]} style={styles.emptyInner}>
+                <Feather name="hash" size={52} color={C.primary} style={{ opacity: 0.6 }} />
+                <Text style={[styles.emptyTitle, { color: C.text }]}>No chatrooms yet</Text>
+              </LinearGradient>
             </View>
           }
         />
@@ -205,35 +281,48 @@ const styles = StyleSheet.create({
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
     paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 0.5,
   },
-  headerTitle: { fontSize: 22 },
-  composeBtn: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  modeToggle: {
-    flexDirection: "row", margin: 12, borderRadius: 14, padding: 3, borderWidth: 0.5,
+  headerTitle: { fontSize: 22, fontFamily: "Inter_700Bold" },
+  headerSub: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 1 },
+  composeBtn: { width: 40, height: 40, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  searchRow: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    margin: 12, marginBottom: 8, paddingHorizontal: 14, paddingVertical: 10,
+    borderRadius: 14, borderWidth: 0.5,
   },
-  modeBtn: { flex: 1, paddingVertical: 8, alignItems: "center", borderRadius: 11 },
-  modeBtnText: { fontSize: 14 },
-  convItem: {
-    flexDirection: "row", alignItems: "center", gap: 12,
-    paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 0.5,
+  searchInput: { flex: 1, fontSize: 14, fontFamily: "Inter_400Regular" },
+  tabContainer: {
+    flexDirection: "row", marginHorizontal: 12, marginBottom: 8,
+    borderRadius: 14, borderWidth: 0.5, padding: 4, position: "relative",
   },
-  convInfo: { flex: 1 },
-  convTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 3 },
-  convName: { fontSize: 15 },
-  convTime: { fontSize: 11 },
-  convPreview: { fontSize: 13 },
-  badge: { width: 20, height: 20, borderRadius: 10, alignItems: "center", justifyContent: "center" },
-  badgeText: { color: "#fff", fontSize: 11, fontFamily: "Inter_600SemiBold" },
-  chatroomItem: { flexDirection: "row", alignItems: "center", gap: 12, borderRadius: 16, borderWidth: 0.5, padding: 14 },
-  chatroomIcon: { width: 48, height: 48, borderRadius: 14, alignItems: "center", justifyContent: "center" },
-  chatroomIconText: { fontSize: 20 },
-  chatroomInfo: { flex: 1 },
-  chatroomName: { fontSize: 15, marginBottom: 3 },
-  chatroomDesc: { fontSize: 12, marginBottom: 6 },
-  chatroomMeta: { flexDirection: "row", alignItems: "center", gap: 4 },
-  chatroomMetaText: { fontSize: 11 },
-  categoryTag: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
-  categoryTagText: { fontSize: 11 },
-  emptyState: { alignItems: "center", paddingTop: 60, gap: 10 },
-  emptyTitle: { fontSize: 18 },
-  emptyText: { fontSize: 13 },
+  tabIndicator: {
+    position: "absolute", top: 4, bottom: 4, width: "48%", borderRadius: 10,
+    shadowColor: "#000", shadowOpacity: 0.1, shadowRadius: 4, elevation: 2,
+  },
+  tabBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 8, borderRadius: 10 },
+  tabBtnText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  convRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 0.5 },
+  convContent: { flex: 1 },
+  convTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 },
+  convName: { fontSize: 15, fontFamily: "Inter_600SemiBold", flex: 1 },
+  convTime: { fontSize: 11, fontFamily: "Inter_500Medium" },
+  convBottom: { flexDirection: "row", alignItems: "center", gap: 8 },
+  convPreview: { fontSize: 13, flex: 1 },
+  unreadBadge: { minWidth: 20, height: 20, borderRadius: 10, alignItems: "center", justifyContent: "center", paddingHorizontal: 5 },
+  unreadText: { color: "#fff", fontSize: 11, fontFamily: "Inter_700Bold" },
+  roomCard: { flexDirection: "row", alignItems: "center", gap: 12, borderRadius: 18, borderWidth: 0.5, padding: 14 },
+  roomIcon: { width: 50, height: 50, borderRadius: 14, alignItems: "center", justifyContent: "center", flexShrink: 0 },
+  roomIconText: { fontSize: 20, color: "#fff", fontFamily: "Inter_700Bold" },
+  roomInfo: { flex: 1 },
+  roomName: { fontSize: 15, fontFamily: "Inter_700Bold" },
+  roomCategoryTag: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 },
+  roomCategoryText: { fontSize: 10, fontFamily: "Inter_600SemiBold" },
+  roomDesc: { fontSize: 12, fontFamily: "Inter_400Regular", marginBottom: 5 },
+  roomMeta: { flexDirection: "row", alignItems: "center", gap: 4 },
+  roomMetaText: { fontSize: 11, fontFamily: "Inter_400Regular" },
+  liveDot: { width: 6, height: 6, borderRadius: 3, marginLeft: 6 },
+  sectionLabel: { fontSize: 11, fontFamily: "Inter_600SemiBold", letterSpacing: 1, marginBottom: 10 },
+  emptyState: { margin: 16, borderRadius: 20, overflow: "hidden" },
+  emptyInner: { alignItems: "center", paddingVertical: 60, paddingHorizontal: 24, gap: 10, borderRadius: 20 },
+  emptyTitle: { fontSize: 18, fontFamily: "Inter_700Bold" },
+  emptyText: { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center" },
 });

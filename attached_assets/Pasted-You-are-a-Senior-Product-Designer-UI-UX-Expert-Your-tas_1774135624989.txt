@@ -1,0 +1,335 @@
+You are a **Senior Product Designer + UI/UX Expert**.
+
+Your task is to redesign the entire mobile app into a **premium, modern, highly attractive, and smooth user experience**, comparable to:
+
+* Zomato (clean cards + listings)
+* Instagram (feed + interactions)
+* Reddit (community + discussions)
+* Shopify (analytics + dashboards)
+
+⚠️ IMPORTANT:
+
+* This is NOT a basic UI.
+* This must feel like a **₹1 million / $1M startup product**.
+* Every screen must be **polished, modern, smooth, and intuitive**.
+
+---
+
+# 🎯 DESIGN PRINCIPLES
+
+* Minimal but rich
+* Smooth animations
+* High readability
+* Clean spacing
+* Card-based layout
+* Micro-interactions (hover, tap feedback)
+* Premium typography
+* Consistent color system
+
+---
+
+# 🎨 VISUAL STYLE
+
+* Soft shadows (neumorphism + modern flat mix)
+* Rounded corners (12–20px radius)
+* Gradient accents (subtle)
+* Clean icons (Lucide / Material)
+* Dark + Light mode support
+
+Color System:
+
+* Primary: Modern gradient (e.g., purple/blue)
+* Background: Clean white / soft dark
+* Cards: Slight elevation
+* Success/Error: subtle, not harsh
+
+---
+
+# 📱 GLOBAL NAVIGATION
+
+* Bottom Tab Bar (like Instagram)
+
+  * Home (Feed)
+  * Services
+  * Post (+ button center floating)
+  * Chats
+  * Profile
+
+* Smooth transitions between screens
+
+---
+
+# 🏠 HOME FEED (MOST IMPORTANT)
+
+Design like **Instagram + Reddit hybrid**
+
+Features:
+
+* Infinite scroll feed
+* Card-based posts
+
+Each Post Card:
+
+* User avatar + name + follow button
+* Time ago
+* Content (text + media)
+* Action bar:
+
+  * ❤️ Like
+  * 💬 Comment
+  * 🔁 Share
+  * 📥 Save/Download
+
+Interactions:
+
+* Double tap to like
+* Smooth animations
+* Expand comments inline
+
+---
+
+# 💬 CHAT UI (PREMIUM LIKE WHATSAPP + DISCORD)
+
+## Chat List Screen:
+
+* User avatars
+* Last message preview
+* Online indicator
+* Unread badge
+
+## Chat Screen:
+
+* Smooth message bubbles
+* Typing indicator
+* Media preview
+* Sticky input box (ALWAYS enabled)
+
+Input box:
+
+* Rounded
+* Emoji + attachment icons
+* Send button animated
+
+---
+
+# 🌐 CHATROOM UI
+
+* Discord-style layout
+
+Features:
+
+* Channel list (#coding, #buy-sell)
+* Active users indicator
+* Thread-style replies
+* Highlight mentions
+
+---
+
+# 👤 PROFILE PAGE (VERY IMPORTANT)
+
+Design like **Instagram + LinkedIn hybrid**
+
+Sections:
+
+* Profile header
+* Stats (posts, followers, earnings if provider)
+* Bio
+* Action buttons (Follow, Message)
+
+---
+
+# 💰 SERVICE PROVIDER PROFILE (SPECIAL DESIGN)
+
+Below Wallet Card → ADD:
+
+## 💸 EARNINGS CARD (PREMIUM)
+
+Design:
+
+* Gradient card
+* Clean typography
+* Small chart preview inside
+
+Show:
+
+* “Today’s Earnings”
+* Amount (₹XXX)
+
+Button:
+👉 “Explore Earnings”
+
+---
+
+# 📊 EARNINGS ANALYTICS SCREEN
+
+When user clicks “Explore Earnings”:
+
+Show:
+
+## Top Section:
+
+* Toggle filters:
+
+  * Today
+  * Yesterday
+  * This Week
+  * This Month
+  * All Time
+  * Custom Range (date picker)
+
+## Chart Section:
+
+* Smooth animated line/bar chart
+* Show earnings trend
+
+## Summary Cards:
+
+* Total earnings
+* Orders completed
+* Avg earning per order
+
+---
+
+# 📄 DETAILED EARNINGS VIEW (ADVANCED)
+
+When clicking a specific day:
+
+Show list:
+
+Each item:
+
+* Service Category (Assignment / Delivery / Coaching)
+* App Order ID
+* Earning Amount
+* Time
+
+Design:
+
+* Clean list with icons
+* Expandable rows
+* Smooth transitions
+
+---
+
+# 📦 ORDER TRACKER (PREMIUM EXPERIENCE)
+
+Design like:
+👉 Zomato / Swiggy live tracking
+
+Features:
+
+* Step progress tracker:
+
+  * Requested
+  * Accepted
+  * In Progress
+  * Completed
+
+* Animated progress bar
+
+* Status icons
+
+* Timeline view
+
+---
+
+# 🧾 SERVICES UI
+
+* Card-based listings
+* Filters (price, category, rating)
+* Smooth scrolling
+
+Each card:
+
+* Title
+* Price
+* Delivery mode
+* Provider info
+
+---
+
+# ➕ POST CREATION UI
+
+* Floating action button (+)
+* Modal bottom sheet
+
+Options:
+
+* Text
+* Image
+* File
+
+Preview before posting
+
+---
+
+# 🔔 NOTIFICATIONS UI
+
+* Clean list
+* Grouped notifications
+* Icons per type
+
+---
+
+# ⚡ MICRO INTERACTIONS (VERY IMPORTANT)
+
+Add:
+
+* Button press animations
+* Loading skeletons
+* Smooth page transitions
+* Pull-to-refresh
+
+---
+
+# 🧠 UX FLOW OPTIMIZATION
+
+Ensure:
+
+* Minimum clicks for actions
+* Clear CTAs
+* No confusion
+* Fast navigation
+
+---
+
+# 📱 PERFORMANCE UX
+
+* Lazy loading
+* Skeleton loaders
+* Optimized images
+
+---
+
+# ⚠️ FIX CURRENT PROBLEMS
+
+* Remove all prototype-like UI
+* Replace basic layouts with premium ones
+* Ensure all inputs are usable
+* Ensure chat input is always active
+* Ensure buttons have visual feedback
+
+---
+
+# 📦 FINAL OUTPUT
+
+Provide:
+
+* Complete UI components
+* Styled screens
+* Navigation flow
+* Reusable design system
+
+---
+
+# 🚫 DO NOT
+
+* Do NOT create basic UI
+* Do NOT use plain layouts
+* Do NOT ignore animations
+
+---
+
+# ✅ FINAL GOAL
+
+Create a **high-end, visually stunning, modern mobile app UI/UX** that feels like a top-tier startup product and is delightful to use.
