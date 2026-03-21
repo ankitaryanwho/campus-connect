@@ -17,6 +17,8 @@ export const usersTable = pgTable("users", {
   services: text("services"),
   emailVerified: boolean("email_verified").notNull().default(false),
   banned: boolean("banned").notNull().default(false),
+  verified: boolean("verified").notNull().default(false),
+  verificationBadge: text("verification_badge"),
   followersCount: integer("followers_count").notNull().default(0),
   followingCount: integer("following_count").notNull().default(0),
   postsCount: integer("posts_count").notNull().default(0),

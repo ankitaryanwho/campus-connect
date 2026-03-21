@@ -297,6 +297,70 @@ router.post("/users/:userId/role", adminMiddleware, async (req, res) => {
   }
 });
 
+// ─── User Verification / Badges ───────────────────────────────────────────────
+router.post("/users/:userId/verify", adminMiddleware, async (req, res) => {
+  try {
+    const { verified, verificationBadge } = req.body;
+    const updates: any = {};
+    if (verified !== undefined) updates.verified = Boolean(verified);
+    if (verificationBadge !== undefined) updates.verificationBadge = verificationBadge || null;
+    const [updated] = await db.update(usersTable).set(updates).where(eq(usersTable.id, req.params.userId)).returning();
+    if (!updated) return res.status(404).json({ error: "User not found" });
+    return res.json({ success: true, user: updated, message: verified ? "User verified" : "Verification removed" });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Service Status Updates ────────────────────────────────────────────────────
+router.put("/services/deliveries/:id", adminMiddleware, async (req, res) => {
+  try {
+    const { status, deliveryFee, pickupLocation, dropLocation } = req.body;
+    const updates: any = {};
+    if (status) updates.status = status;
+    if (deliveryFee !== undefined) updates.deliveryFee = String(deliveryFee);
+    if (pickupLocation) updates.pickupLocation = pickupLocation;
+    if (dropLocation) updates.dropLocation = dropLocation;
+    const [updated] = await db.update(deliveriesTable).set(updates).where(eq(deliveriesTable.id, req.params.id)).returning();
+    if (!updated) return res.status(404).json({ error: "Delivery not found" });
+    return res.json(updated);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.put("/services/assignments/:id", adminMiddleware, async (req, res) => {
+  try {
+    const { status, price, title, description } = req.body;
+    const updates: any = {};
+    if (status) updates.status = status;
+    if (price !== undefined) updates.price = String(price);
+    if (title) updates.title = title;
+    if (description) updates.description = description;
+    const [updated] = await db.update(assignmentsTable).set(updates).where(eq(assignmentsTable.id, req.params.id)).returning();
+    if (!updated) return res.status(404).json({ error: "Assignment not found" });
+    return res.json(updated);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.put("/services/tasks/:id", adminMiddleware, async (req, res) => {
+  try {
+    const { status, budget, title, description } = req.body;
+    const updates: any = {};
+    if (status) updates.status = status;
+    if (budget !== undefined) updates.budget = String(budget);
+    if (title) updates.title = title;
+    if (description) updates.description = description;
+    const [updated] = await db.update(tasksTable).set(updates).where(eq(tasksTable.id, req.params.id)).returning();
+    if (!updated) return res.status(404).json({ error: "Task not found" });
+    return res.json(updated);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Services ──────────────────────────────────────────────────────────────────
 function buildServiceQuery(table: any, nameField: string, req: any) {
   const search = String(req.query.search || "");
