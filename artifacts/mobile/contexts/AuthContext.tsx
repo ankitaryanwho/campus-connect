@@ -2,7 +2,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import createContextHook from "@nkzw/create-context-hook";
 import React, { useState, useEffect, useCallback } from "react";
 
-const API_BASE = process.env.EXPO_PUBLIC_API_URL || "/api";
+const DEPLOYED_API = "https://asset-manager-thakurankitedu.replit.app/api";
+const API_BASE = process.env.EXPO_PUBLIC_API_URL || DEPLOYED_API;
 
 export interface User {
   id: string;
@@ -88,14 +89,15 @@ const [AuthProvider, useAuth] = createContextHook<AuthState>(() => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
-    } catch {
-      throw new Error("Cannot reach the server. Check your internet connection.");
+    } catch (e: any) {
+      throw new Error(`Network error: ${e?.message || "Cannot reach server"}. URL: ${API_BASE}`);
     }
     let data: any;
     try {
-      data = await res.json();
-    } catch {
-      throw new Error("Server returned an unexpected response. Please try again later.");
+      const text = await res.text();
+      data = JSON.parse(text);
+    } catch (e: any) {
+      throw new Error(`Status ${res.status} — non-JSON response from server (URL: ${API_BASE})`);
     }
     if (!res.ok) throw new Error(data.message || "Invalid email or password");
     setToken(data.token);
