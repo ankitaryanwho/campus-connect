@@ -1015,6 +1015,208 @@ function TaskCard({ item, C, onAction, currentUserId, isPending, hasApplied }: a
   );
 }
 
+// ─── Step helpers ─────────────────────────────────────────────────────────────
+
+function getStepsForItem(item: any): { labels: string[]; index: number } {
+  const s = item.status;
+  if (item._type === "assignments" || item._type === "certifications") {
+    const labels = ["Booked", "Accepted", "In Progress", "Completed", "Delivered"];
+    const map: Record<string, number> = { booked: 0, accepted: 1, in_progress: 2, completed: 3, delivered: 4 };
+    return { labels, index: map[s] ?? 0 };
+  }
+  if (item._type === "deliveries") {
+    if (item.pickupType === "outlet") {
+      const labels = ["Accepted", "Heading Out", "Order Placed", "Collecting", "On the Way", "Arrived", "Delivered"];
+      const map: Record<string, number> = { accepted: 0, reaching_pickup: 1, placed_order: 2, collecting_order: 3, reaching_drop: 4, completed: 5, delivered: 6 };
+      return { labels, index: map[s] ?? 0 };
+    }
+    const labels = ["Accepted", "Heading Out", "On the Way", "Arrived", "Delivered"];
+    const map: Record<string, number> = { accepted: 0, reaching_pickup: 1, reaching_drop: 2, completed: 3, delivered: 4 };
+    return { labels, index: map[s] ?? 0 };
+  }
+  const labels = ["Booked", "Accepted", "In Progress", "Completed", "Done"];
+  const map: Record<string, number> = { booked: 0, accepted: 1, in_progress: 2, completed: 3, delivered: 4 };
+  return { labels, index: map[s] ?? 0 };
+}
+
+// ─── Compact Active Job Card (matches Priority Lane mockup exactly) ────────────
+
+function CompactActiveCard({ item, C, onTrackPress }: any) {
+  const meta = CAT_META[item._type] || CAT_META.tasks;
+  const { labels, index } = getStepsForItem(item);
+  const progress = labels.length > 1 ? index / (labels.length - 1) : 1;
+
+  const title = item.title || item.pickupLocation || "Delivery Request";
+  const provider = item.poster?.name || item.deliveryAgent?.name || item.assignedTo?.name || "—";
+  const rawPrice = item._type === "deliveries"
+    ? (item.subtotal ? parseFloat(item.subtotal) + 30 : parseFloat(item.deliveryFee || "20"))
+    : parseFloat(item.price || "0");
+  const price = rawPrice > 0 ? `₹${rawPrice.toFixed(0)}` : "";
+
+  return (
+    <View style={{ borderRadius: 16, overflow: "hidden", borderWidth: 1.5, borderColor: meta.accent + "33" }}>
+      {/* ── Coloured header strip ── */}
+      <View style={{ backgroundColor: meta.bg, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 8, flexDirection: "row", alignItems: "center", gap: 8 }}>
+        <Text style={{ fontSize: 18 }}>{meta.emoji}</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 12, fontFamily: "Inter_700Bold", color: "#1C1917" }} numberOfLines={1}>{title}</Text>
+          <Text style={{ fontSize: 10, color: "#78716C" }}>
+            {"by "}{provider}{"  ·  "}
+            <Text style={{ fontFamily: "Inter_600SemiBold", color: meta.accent }}>In Progress</Text>
+          </Text>
+        </View>
+        {price ? <Text style={{ fontSize: 15, fontFamily: "Inter_800ExtraBold", color: meta.accent }}>{price}</Text> : null}
+      </View>
+
+      {/* ── Progress area ── */}
+      <View style={{ backgroundColor: C.surface, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 12 }}>
+        {/* Horizontal bar */}
+        <View style={{ height: 6, borderRadius: 3, backgroundColor: meta.bg, marginBottom: 12 }}>
+          <View style={{ height: 6, borderRadius: 3, backgroundColor: meta.accent, width: `${progress * 100}%` as any }} />
+        </View>
+
+        {/* Step dots */}
+        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+          {labels.map((label, i) => {
+            const done = i < index;
+            const active = i === index;
+            return (
+              <View key={i} style={{ alignItems: "center", flex: 1 }}>
+                {done ? (
+                  <Feather name="check-circle" size={15} color={meta.accent} />
+                ) : active ? (
+                  <View style={{ width: 15, height: 15, borderRadius: 8, borderWidth: 2, borderColor: meta.accent, alignItems: "center", justifyContent: "center" }}>
+                    <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: meta.accent }} />
+                  </View>
+                ) : (
+                  <Feather name="circle" size={15} color="#D6D3D1" />
+                )}
+                <Text
+                  numberOfLines={2}
+                  style={{ fontSize: 8, textAlign: "center", marginTop: 3, lineHeight: 10,
+                    color: active ? meta.accent : done ? "#78716C" : "#D6D3D1",
+                    fontFamily: active ? "Inter_700Bold" : "Inter_400Regular" }}
+                >{label}</Text>
+              </View>
+            );
+          })}
+        </View>
+
+        {/* Track CTA */}
+        <Pressable
+          style={{ marginTop: 12, paddingVertical: 9, borderRadius: 12, backgroundColor: meta.accent, alignItems: "center" }}
+          onPress={() => onTrackPress(item)}
+        >
+          <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 12 }}>Track Order →</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+// ─── Compact Open Listing Row (matches Priority Lane mockup exactly) ───────────
+
+function CompactListingRow({ item, C, onBook, isPending, isLast }: any) {
+  const meta = CAT_META[item._type] || CAT_META.tasks;
+  const title = item.title || item.pickupLocation || "Delivery Request";
+  const author = item.poster?.name || item.requester?.name || "—";
+  const subject = item.subject || item.category || (item._type === "deliveries" ? item.pickupLocation : null);
+  const rawPrice = parseFloat(item.price || item.deliveryFee || "20");
+  const price = `₹${rawPrice.toFixed(0)}`;
+  const urgent = item._type === "deliveries" && item.status === "pending";
+  const canBook = !item.bookedById && item.status === "open";
+
+  const timeLabel = (() => {
+    if (!item.createdAt) return null;
+    const mins = Math.floor((Date.now() - new Date(item.createdAt).getTime()) / 60000);
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    return `${Math.floor(hrs / 24)}d ago`;
+  })();
+
+  return (
+    <View style={{
+      flexDirection: "row", alignItems: "center", gap: 12,
+      paddingHorizontal: 14, paddingVertical: 12,
+      borderBottomWidth: isLast ? 0 : 0.5, borderBottomColor: "#F0EDEA",
+    }}>
+      {/* Category emoji icon */}
+      <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: meta.bg, alignItems: "center", justifyContent: "center" }}>
+        <Text style={{ fontSize: 20 }}>{meta.emoji}</Text>
+      </View>
+
+      {/* Info */}
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 2, flexWrap: "nowrap" }}>
+          {urgent && (
+            <View style={{ backgroundColor: "#EF4444", paddingHorizontal: 5, paddingVertical: 2, borderRadius: 20 }}>
+              <Text style={{ color: "#fff", fontSize: 8, fontFamily: "Inter_700Bold" }}>URGENT</Text>
+            </View>
+          )}
+          <Text style={{ fontSize: 12, fontFamily: "Inter_700Bold", color: C.text, flex: 1 }} numberOfLines={1}>{title}</Text>
+        </View>
+        <Text style={{ fontSize: 10, color: C.textSecondary }} numberOfLines={1}>
+          {author}{subject ? "  ·  " : ""}
+          {subject ? <Text style={{ color: meta.accent, fontFamily: "Inter_500Medium" }}>{subject}</Text> : null}
+        </Text>
+        {timeLabel ? (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 3, marginTop: 2 }}>
+            <Feather name="clock" size={9} color={C.textTertiary} />
+            <Text style={{ fontSize: 9, color: C.textTertiary }}>{timeLabel}</Text>
+          </View>
+        ) : null}
+      </View>
+
+      {/* Price + Book */}
+      <View style={{ alignItems: "flex-end", gap: 5 }}>
+        <Text style={{ fontSize: 15, fontFamily: "Inter_800ExtraBold", color: meta.accent }}>{price}</Text>
+        {canBook && (
+          <Pressable
+            style={{ backgroundColor: meta.bg, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 }}
+            onPress={() => onBook(item.id, item._type)}
+            disabled={isPending}
+          >
+            {isPending
+              ? <ActivityIndicator size="small" color={meta.accent} />
+              : <Text style={{ color: meta.accent, fontSize: 10, fontFamily: "Inter_700Bold" }}>Book</Text>}
+          </Pressable>
+        )}
+      </View>
+    </View>
+  );
+}
+
+// ─── Detail Modal (full card shown on "Track Order" tap) ──────────────────────
+
+function DetailModal({ item, C, user, onClose, onAction, onRate, isPending }: any) {
+  if (!item) return null;
+  const type = item._type;
+  return (
+    <Modal visible animationType="slide" transparent>
+      <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.55)" }}>
+        <View style={{ backgroundColor: C.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 40, maxHeight: "85%" }}>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+            <Text style={{ fontSize: 17, fontFamily: "Inter_700Bold", color: C.text }}>Order Details</Text>
+            <Pressable onPress={onClose}><Feather name="x" size={22} color={C.text} /></Pressable>
+          </View>
+          <ScrollView showsVerticalScrollIndicator={false}>
+            {(type === "assignments" || type === "certifications") && (
+              <AcademicCard item={item} C={C} serviceType={type} currentUserId={user?.id} onAction={onAction} isPending={isPending} />
+            )}
+            {type === "deliveries" && (
+              <DeliveryCard item={item} C={C} currentUser={user} onAction={onAction} onRate={onRate} isPending={isPending} />
+            )}
+            {type === "tasks" && (
+              <TaskCard item={item} C={C} currentUserId={user?.id} onAction={onAction} isPending={isPending} hasApplied={false} />
+            )}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 // ─── Category chip definitions ────────────────────────────────────────────────
 
 const CHIPS = [
@@ -1037,6 +1239,7 @@ export default function ServicesScreen() {
   const [showPostModal, setShowPostModal] = useState(false);
   const [postType, setPostType] = useState("tasks");
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [selectedItem, setSelectedItem] = useState<any>(null);
   const { showToast } = useToast();
   const isWeb = Platform.OS === "web";
 
@@ -1278,7 +1481,16 @@ export default function ServicesScreen() {
                 </View>
                 <Text style={[CS.sectionCount, { color: C.textTertiary }]}>{activeJobs.length} in progress</Text>
               </View>
-              <View style={{ gap: 12 }}>{activeJobs.map(renderCard)}</View>
+              <View style={{ gap: 12 }}>
+                {activeJobs.map(item => (
+                  <CompactActiveCard
+                    key={item.id}
+                    item={item}
+                    C={C}
+                    onTrackPress={(i: any) => setSelectedItem(i)}
+                  />
+                ))}
+              </View>
             </View>
           )}
 
@@ -1298,7 +1510,18 @@ export default function ServicesScreen() {
                 </Text>
               </View>
             ) : (
-              <View style={{ gap: 12 }}>{openListings.map(renderCard)}</View>
+              <View style={{ backgroundColor: C.surface, borderRadius: 16, borderWidth: 0.5, borderColor: C.border, overflow: "hidden" }}>
+                {openListings.map((item: any, i: number) => (
+                  <CompactListingRow
+                    key={item.id}
+                    item={item}
+                    C={C}
+                    isLast={i === openListings.length - 1}
+                    isPending={pendingId === item.id && actionMutation.isPending}
+                    onBook={(id: string, type: string) => actionMutation.mutate({ id, action: "book", tab: type })}
+                  />
+                ))}
+              </View>
             )}
           </View>
 
@@ -1327,6 +1550,19 @@ export default function ServicesScreen() {
         <Pressable style={[CS.fab, { backgroundColor: "#5B4FE8" }]} onPress={handleFAB}>
           <Feather name="plus" size={22} color="#fff" />
         </Pressable>
+      )}
+
+      {/* ── Detail Modal (Track Order tap) ── */}
+      {selectedItem && (
+        <DetailModal
+          item={selectedItem}
+          C={C}
+          user={user}
+          onClose={() => setSelectedItem(null)}
+          isPending={pendingId === selectedItem?.id && actionMutation.isPending}
+          onAction={(id: string, action: string) => actionMutation.mutate({ id, action, tab: selectedItem._type })}
+          onRate={(id: string, data: any) => rateMutation.mutate({ id, data })}
+        />
       )}
 
       {/* ── Post Modals ── */}
