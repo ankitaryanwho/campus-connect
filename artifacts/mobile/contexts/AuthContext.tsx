@@ -81,13 +81,23 @@ const [AuthProvider, useAuth] = createContextHook<AuthState>(() => {
   }, [token]);
 
   const login = useCallback(async (email: string, password: string) => {
-    const res = await fetch(`${API_BASE}/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.message || "Login failed");
+    let res: Response;
+    try {
+      res = await fetch(`${API_BASE}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+    } catch {
+      throw new Error("Cannot reach the server. Check your internet connection.");
+    }
+    let data: any;
+    try {
+      data = await res.json();
+    } catch {
+      throw new Error("Server returned an unexpected response. Please try again later.");
+    }
+    if (!res.ok) throw new Error(data.message || "Invalid email or password");
     setToken(data.token);
     setUser(data.user);
     await AsyncStorage.setItem("@auth_token", data.token);
@@ -95,12 +105,22 @@ const [AuthProvider, useAuth] = createContextHook<AuthState>(() => {
   }, []);
 
   const register = useCallback(async (registerData: RegisterData) => {
-    const res = await fetch(`${API_BASE}/auth/register`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(registerData),
-    });
-    const data = await res.json();
+    let res: Response;
+    try {
+      res = await fetch(`${API_BASE}/auth/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(registerData),
+      });
+    } catch {
+      throw new Error("Cannot reach the server. Check your internet connection.");
+    }
+    let data: any;
+    try {
+      data = await res.json();
+    } catch {
+      throw new Error("Server returned an unexpected response. Please try again later.");
+    }
     if (!res.ok) throw new Error(data.message || "Registration failed");
     setToken(data.token);
     setUser(data.user);

@@ -16,7 +16,9 @@
     "ios": {
       "supportsTablet": false
     },
-    "android": {},
+    "android": {
+      "package": "com.ankitaryanwho.mobile"
+    },
     "web": {
       "favicon": "./assets/images/icon.png"
     },
@@ -33,6 +35,11 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "bd089591-9152-4ce7-8551-806c9d57748f"
+      }
     }
   }
 }
