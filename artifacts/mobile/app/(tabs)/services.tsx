@@ -51,6 +51,13 @@ const DELIVERY_GATE_STEPS = [
 const PROGRAMS = ["BCA", "BTech", "MBA", "MTech", "BSc", "BCom", "BA", "Other"];
 const TASK_CATEGORIES = ["design", "development", "content", "video", "research", "other"];
 
+const CAT_META: Record<string, { label: string; emoji: string; accent: string; bg: string }> = {
+  assignments:    { label: "Assignments",    emoji: "📝", accent: "#5B4FE8", bg: "#EDE9FE" },
+  certifications: { label: "Certifications", emoji: "🏆", accent: "#10B981", bg: "#D1FAE5" },
+  deliveries:     { label: "Delivery",       emoji: "🚀", accent: "#F59E0B", bg: "#FEF3C7" },
+  tasks:          { label: "Tasks",          emoji: "⚡", accent: "#EF4444", bg: "#FEE2E2" },
+};
+
 const GATE_LOCATIONS = ["Gate No 3 (prepaid only)", "Gate No 1 (prepaid only)"];
 const OUTLET_LOCATIONS = ["Southern Stories", "Hotspot", "Snapeats", "Kathi Junction", "Dominos", "Subway"];
 const ALL_PICKUP_LOCATIONS = [...GATE_LOCATIONS, ...OUTLET_LOCATIONS];
@@ -1008,6 +1015,16 @@ function TaskCard({ item, C, onAction, currentUserId, isPending, hasApplied }: a
   );
 }
 
+// ─── Category chip definitions ────────────────────────────────────────────────
+
+const CHIPS = [
+  { id: "all",            label: "All",            emoji: "✦", accent: "#1C1917", bg: "#F0EDEA" },
+  { id: "assignments",    label: "Assignments",    emoji: "📝", accent: "#5B4FE8", bg: "#EDE9FE" },
+  { id: "certifications", label: "Certifications", emoji: "🏆", accent: "#10B981", bg: "#D1FAE5" },
+  { id: "deliveries",     label: "Delivery",       emoji: "🚀", accent: "#F59E0B", bg: "#FEF3C7" },
+  { id: "tasks",          label: "Tasks",          emoji: "⚡", accent: "#EF4444", bg: "#FEE2E2" },
+];
+
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function ServicesScreen() {
@@ -1016,38 +1033,36 @@ export default function ServicesScreen() {
   const C = Colors[colorScheme === "dark" ? "dark" : "light"];
   const { apiRequest, user } = useAuth();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState("assignments");
+  const [activeCat, setActiveCat] = useState("all");
   const [showPostModal, setShowPostModal] = useState(false);
+  const [postType, setPostType] = useState("tasks");
   const [pendingId, setPendingId] = useState<string | null>(null);
   const { showToast } = useToast();
   const isWeb = Platform.OS === "web";
 
   const isProvider = user?.role === "provider";
   const userServices: string[] = user?.services ? JSON.parse(user.services) : [];
-  const canPost = (tab: string) => {
-    if (tab === "deliveries") return user?.role === "student"; // students POST delivery requests
-    if (tab === "tasks") return true; // anyone can post tasks
-    return isProvider && (userServices.includes(tab) || userServices.length === 0);
+  const canPost = (cat: string) => {
+    if (cat === "deliveries") return user?.role === "student";
+    if (cat === "tasks") return true;
+    return isProvider && (userServices.includes(cat) || userServices.length === 0);
   };
 
-  const endpointMap: Record<string, string> = {
-    assignments: "/services/assignments",
-    certifications: "/services/certifications",
-    deliveries: "/services/deliveries",
-    tasks: "/services/tasks",
-  };
-
-  // Main data query
-  const { data, isLoading, refetch, isRefetching } = useQuery({
-    queryKey: ["services", activeTab],
+  // ── Parallel queries for all 4 categories ─────────────────────────────────
+  const mkQuery = (key: string, path: string) => ({
+    queryKey: ["services", key],
     queryFn: async () => {
-      const res = await apiRequest(endpointMap[activeTab]);
+      const res = await apiRequest(path);
       if (!res.ok) throw new Error("Failed to load");
       return res.json();
     },
   });
 
-  // Outlet items (for delivery form)
+  const { data: assignData, isLoading: aLoading, refetch: rA } = useQuery(mkQuery("assignments", "/services/assignments"));
+  const { data: certData,   isLoading: cLoading, refetch: rC } = useQuery(mkQuery("certifications", "/services/certifications"));
+  const { data: delivData,  isLoading: dLoading, refetch: rD } = useQuery(mkQuery("deliveries", "/services/deliveries"));
+  const { data: taskData,   isLoading: tLoading, refetch: rT } = useQuery(mkQuery("tasks", "/services/tasks"));
+
   const { data: outletData } = useQuery({
     queryKey: ["outlet-items"],
     queryFn: async () => {
@@ -1059,27 +1074,67 @@ export default function ServicesScreen() {
   });
   const outletItems = outletData?.items || [];
 
-  // Unified action mutation
+  const isLoading = aLoading || cLoading || dLoading || tLoading;
+
+  // Tag each item with its _type so renderCard can dispatch correctly
+  const assignments    = (assignData?.assignments    || []).map((i: any) => ({ ...i, _type: "assignments" }));
+  const certifications = (certData?.certifications   || []).map((i: any) => ({ ...i, _type: "certifications" }));
+  const deliveries     = (delivData?.deliveries       || []).map((i: any) => ({ ...i, _type: "deliveries" }));
+  const tasks          = (taskData?.tasks             || []).map((i: any) => ({ ...i, _type: "tasks" }));
+  const allItems       = [...assignments, ...certifications, ...deliveries, ...tasks];
+
+  const getItemsForCat = (cat: string) => {
+    if (cat === "assignments")    return assignments;
+    if (cat === "certifications") return certifications;
+    if (cat === "deliveries")     return deliveries;
+    if (cat === "tasks")          return tasks;
+    return allItems;
+  };
+
+  // Active job = user is involved AND status is not open/pending/delivered/cancelled
+  const isActiveJob = (item: any) => {
+    const idle = ["open", "pending", "delivered", "cancelled"];
+    if (idle.includes(item.status)) return false;
+    return (
+      item.poster?.id         === user?.id ||
+      item.bookedBy?.id       === user?.id ||
+      item.requester?.id      === user?.id ||
+      item.deliveryAgent?.id  === user?.id ||
+      item.assignedTo?.id     === user?.id
+    );
+  };
+
+  const isOpenListing = (item: any) => ["open", "pending"].includes(item.status);
+
+  const filteredItems  = getItemsForCat(activeCat);
+  const activeJobs     = filteredItems.filter(isActiveJob);
+  const openListings   = filteredItems.filter(isOpenListing);
+  const totalActive    = allItems.filter(isActiveJob).length;
+  const totalCompleted = allItems.filter((i: any) => i.status === "delivered").length;
+  const totalOpen      = allItems.filter(isOpenListing).length;
+
+  // ── Mutations ─────────────────────────────────────────────────────────────
+  const endpointMap: Record<string, string> = {
+    assignments:    "/services/assignments",
+    certifications: "/services/certifications",
+    deliveries:     "/services/deliveries",
+    tasks:          "/services/tasks",
+  };
+
   const actionMutation = useMutation({
-    mutationFn: async ({ id, action, tab }: { id: string; action: string; tab?: string }) => {
+    mutationFn: async ({ id, action, tab }: { id: string; action: string; tab: string }) => {
       setPendingId(id);
-      const endpoint = endpointMap[tab || activeTab];
-      const res = await apiRequest(`${endpoint}/${id}/${action}`, { method: "POST" });
+      const res = await apiRequest(`${endpointMap[tab]}/${id}/${action}`, { method: "POST" });
       const json = await res.json();
       if (!res.ok) throw new Error(json.message || "Action failed");
       return json;
     },
     onSuccess: (_, vars) => {
-      queryClient.invalidateQueries({ queryKey: ["services", vars.tab || activeTab] });
+      queryClient.invalidateQueries({ queryKey: ["services", vars.tab] });
       const msgs: Record<string, string> = {
-        book: "Booked successfully!",
-        apply: "Application sent!",
-        accept: "Accepted!",
-        progress: "Status updated!",
-        confirm: "Confirmed received! 🎉",
-        "mark-paid": "Marked as paid!",
-        "confirm-payment": "Payment confirmed!",
-        complete: "Marked as arrived!",
+        book: "Booked successfully!", apply: "Application sent!",
+        accept: "Accepted!", progress: "Status updated!", confirm: "Confirmed received! 🎉",
+        "mark-paid": "Marked as paid!", "confirm-payment": "Payment confirmed!", complete: "Marked as arrived!",
       };
       showToast(msgs[vars.action] || "Done!", "success");
     },
@@ -1098,152 +1153,198 @@ export default function ServicesScreen() {
     onError: (err: any) => showToast(err.message || "Failed to submit rating", "error"),
   });
 
-  const items =
-    data?.assignments || data?.certifications || data?.deliveries || data?.tasks || [];
-  const activeService = SERVICE_TABS.find(t => t.id === activeTab)!;
-
-  // Post button label
-  const postLabel = () => {
-    if (activeTab === "deliveries") return "Request";
-    if (activeTab === "tasks") return "Post Task";
-    return "Post";
-  };
-
-  const showPostBtn = canPost(activeTab);
-
-  const renderItem = useCallback(({ item }: any) => {
-    if (activeTab === "assignments" || activeTab === "certifications") {
+  // ── Render a single item card ──────────────────────────────────────────────
+  const renderCard = useCallback((item: any) => {
+    const type = item._type;
+    if (type === "assignments" || type === "certifications") {
       return (
         <AcademicCard
-          item={item} C={C} serviceType={activeTab} currentUserId={user?.id}
-          onAction={(id: string, action: string) => actionMutation.mutate({ id, action })}
+          key={item.id} item={item} C={C} serviceType={type} currentUserId={user?.id}
+          onAction={(id: string, action: string) => actionMutation.mutate({ id, action, tab: type })}
           isPending={pendingId === item.id && actionMutation.isPending}
         />
       );
     }
-    if (activeTab === "deliveries") {
+    if (type === "deliveries") {
       return (
         <DeliveryCard
-          item={item} C={C} currentUser={user}
+          key={item.id} item={item} C={C} currentUser={user}
           onAction={(id: string, action: string) => actionMutation.mutate({ id, action, tab: "deliveries" })}
           onRate={(id: string, data: any) => rateMutation.mutate({ id, data })}
           isPending={pendingId === item.id && (actionMutation.isPending || rateMutation.isPending)}
         />
       );
     }
-    if (activeTab === "tasks") {
+    if (type === "tasks") {
       return (
         <TaskCard
-          item={item} C={C} currentUserId={user?.id}
-          onAction={(id: string) => actionMutation.mutate({ id, action: "apply" })}
+          key={item.id} item={item} C={C} currentUserId={user?.id}
+          onAction={(id: string) => actionMutation.mutate({ id, action: "apply", tab: "tasks" })}
           isPending={pendingId === item.id && actionMutation.isPending}
           hasApplied={false}
         />
       );
     }
     return null;
-  }, [activeTab, C, user, pendingId, actionMutation.isPending]);
+  }, [C, user, pendingId, actionMutation.isPending, rateMutation.isPending]);
+
+  // ── Post helpers ───────────────────────────────────────────────────────────
+  const postableCats = ["assignments", "certifications", "deliveries", "tasks"].filter(canPost);
+  const openPostFor = (type: string) => { setPostType(type); setShowPostModal(true); };
+  const handleFAB = () => {
+    const target = activeCat !== "all" ? activeCat : postableCats.length === 1 ? postableCats[0] : "tasks";
+    openPostFor(target);
+  };
 
   return (
     <View style={[CS.container, { backgroundColor: C.background }]}>
-      {/* Header */}
+
+      {/* ── Header ── */}
       <View style={[CS.header, { paddingTop: isWeb ? 67 : insets.top + 8, backgroundColor: C.background, borderBottomColor: C.border }]}>
         <View>
           <Text style={[CS.headerTitle, { color: C.text }]}>Services</Text>
-          <Text style={[CS.headerSub, { color: C.textSecondary }]}>{items.length} listing{items.length !== 1 ? "s" : ""}</Text>
-        </View>
-        {showPostBtn && (
-          <Pressable style={[CS.addBtn, { backgroundColor: activeService.color }]} onPress={() => setShowPostModal(true)}>
-            <Feather name="plus" size={18} color="#fff" />
-            <Text style={[CS.addBtnText]}>{ postLabel()}</Text>
-          </Pressable>
-        )}
-      </View>
-
-      {/* Role hint for delivery */}
-      {activeTab === "deliveries" && (
-        <View style={{ backgroundColor: C.backgroundSecondary, padding: 10, marginHorizontal: 12, marginTop: 4, borderRadius: 10 }}>
-          <Text style={{ color: C.textSecondary, fontSize: 12, fontFamily: "Inter_400Regular", textAlign: "center" }}>
-            {user?.role === "student"
-              ? "You see your own delivery requests. Tap + to create a new one."
-              : "You see pending requests + your accepted deliveries."}
+          <Text style={[CS.headerSub, { color: C.textTertiary }]}>
+            {totalActive > 0 ? `${totalActive} active · ` : ""}{totalOpen} open listing{totalOpen !== 1 ? "s" : ""}
           </Text>
         </View>
-      )}
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <Pressable style={[CS.headerIconBtn, { backgroundColor: C.backgroundSecondary, borderColor: C.border }]}>
+            <Feather name="search" size={17} color={C.textSecondary} />
+          </Pressable>
+          <View>
+            <Pressable style={[CS.headerIconBtn, { backgroundColor: C.backgroundSecondary, borderColor: C.border }]}>
+              <Feather name="bell" size={17} color={C.textSecondary} />
+            </Pressable>
+            {totalActive > 0 && <View style={CS.notifDot} />}
+          </View>
+        </View>
+      </View>
 
-      {/* Tabs */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={CS.tabsRow}>
-        {SERVICE_TABS.map(tab => {
-          const active = activeTab === tab.id;
+      {/* ── Category chips ── */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={CS.chipsRow}>
+        {CHIPS.map(chip => {
+          const active = activeCat === chip.id;
           return (
             <Pressable
-              key={tab.id}
-              style={[CS.tab, active ? { backgroundColor: tab.color } : { backgroundColor: C.backgroundSecondary, borderColor: C.border, borderWidth: 1 }]}
-              onPress={() => setActiveTab(tab.id)}>
-              <Feather name={tab.icon as any} size={15} color={active ? "#fff" : C.textSecondary} />
-              <Text style={[CS.tabLabel, { color: active ? "#fff" : C.textSecondary }]}>{tab.label}</Text>
+              key={chip.id}
+              onPress={() => setActiveCat(chip.id)}
+              style={[CS.chip, {
+                backgroundColor: active ? chip.bg : C.surface,
+                borderColor: active ? chip.accent + "55" : C.border,
+              }]}
+            >
+              <Text style={CS.chipEmoji}>{chip.emoji}</Text>
+              <Text style={[CS.chipLabel, { color: active ? chip.accent : C.textTertiary }]}>{chip.label}</Text>
             </Pressable>
           );
         })}
       </ScrollView>
 
-      {/* List */}
+      {/* ── Content ── */}
       {isLoading ? (
         <View style={CS.center}>
-          <ActivityIndicator color={activeService.color} size="large" />
-          <Text style={[{ color: C.textSecondary, fontSize: 14, fontFamily: "Inter_400Regular" }]}>Loading {activeService.label}...</Text>
+          <ActivityIndicator color="#5B4FE8" size="large" />
         </View>
       ) : (
-        <FlatList
-          data={items}
-          keyExtractor={(item: any) => item.id}
-          renderItem={renderItem}
-          contentContainerStyle={{ padding: 12, paddingBottom: isWeb ? 34 + 84 : 100, gap: 12 }}
+        <ScrollView
+          contentContainerStyle={{ paddingBottom: isWeb ? 120 : 110, paddingTop: 4 }}
           showsVerticalScrollIndicator={false}
-          refreshing={isRefetching}
-          onRefresh={refetch}
-          ListEmptyComponent={
-            <View style={CS.empty}>
-              <View style={[CS.emptyIcon, { backgroundColor: activeService.color + "15" }]}>
-                <Feather name={activeService.icon as any} size={36} color={activeService.color} />
-              </View>
-              <Text style={[CS.emptyTitle, { color: C.text }]}>
-                {activeTab === "deliveries" && user?.role === "student"
-                  ? "No delivery requests yet"
-                  : activeTab === "deliveries"
-                  ? "No pending deliveries"
-                  : `No ${activeService.label} yet`}
-              </Text>
-              <Text style={[{ color: C.textSecondary, fontSize: 13, fontFamily: "Inter_400Regular" }]}>
-                {showPostBtn ? "Be the first to post!" : "Check back later for listings."}
-              </Text>
-              {showPostBtn && (
-                <Pressable style={[CS.emptyBtn, { backgroundColor: activeService.color }]} onPress={() => setShowPostModal(true)}>
-                  <Feather name="plus" size={16} color="#fff" />
-                  <Text style={[CS.emptyBtnText]}>{postLabel()}</Text>
-                </Pressable>
-              )}
+        >
+          {/* Activity banner */}
+          <View style={[CS.activityBanner, { backgroundColor: C.surface, borderColor: C.border }]}>
+            <View style={[CS.activityIcon, { backgroundColor: "#EDE9FE" }]}>
+              <Feather name="activity" size={16} color="#5B4FE8" />
             </View>
-          }
-        />
+            <View style={{ flex: 1 }}>
+              <Text style={[CS.activityTitle, { color: C.text }]}>Your activity</Text>
+              <View style={{ flexDirection: "row", gap: 14, marginTop: 2 }}>
+                <Text style={[CS.activityStat, { color: C.textSecondary }]}>
+                  <Text style={{ color: "#5B4FE8", fontFamily: "Inter_700Bold" }}>{totalActive}</Text> active job{totalActive !== 1 ? "s" : ""}
+                </Text>
+                <Text style={[CS.activityStat, { color: C.textSecondary }]}>
+                  <Text style={{ color: "#10B981", fontFamily: "Inter_700Bold" }}>{totalCompleted}</Text> completed
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Active Now */}
+          {activeJobs.length > 0 && (
+            <View style={CS.section}>
+              <View style={CS.sectionHeader}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <View style={CS.pulseDot} />
+                  <Text style={[CS.sectionTitle, { color: C.text }]}>Active Now</Text>
+                </View>
+                <Text style={[CS.sectionCount, { color: C.textTertiary }]}>{activeJobs.length} in progress</Text>
+              </View>
+              <View style={{ gap: 12 }}>{activeJobs.map(renderCard)}</View>
+            </View>
+          )}
+
+          {/* Open Listings */}
+          <View style={CS.section}>
+            <View style={CS.sectionHeader}>
+              <Text style={[CS.sectionTitle, { color: C.text }]}>Open Listings</Text>
+              <Text style={[CS.sectionCount, { color: C.textTertiary }]}>{openListings.length} available</Text>
+            </View>
+            {openListings.length === 0 ? (
+              <View style={[CS.emptyBlock, { backgroundColor: C.surface, borderColor: C.border }]}>
+                <Feather name="inbox" size={28} color={C.textTertiary} />
+                <Text style={{ color: C.textTertiary, fontSize: 13, fontFamily: "Inter_400Regular", marginTop: 10, textAlign: "center" }}>
+                  {activeCat !== "all"
+                    ? `No open ${CAT_META[activeCat]?.label || activeCat} listings right now`
+                    : "No open listings right now"}
+                </Text>
+              </View>
+            ) : (
+              <View style={{ gap: 12 }}>{openListings.map(renderCard)}</View>
+            )}
+          </View>
+
+          {/* Post CTA */}
+          {postableCats.length > 0 && (
+            <View style={[CS.postCTA, { backgroundColor: "#EDE9FE", borderColor: "#C4B5FD" }]}>
+              <Feather name="zap" size={18} color="#5B4FE8" />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 13, fontFamily: "Inter_700Bold", color: "#1C1917" }}>Offer a service or need help?</Text>
+                <Text style={{ fontSize: 11, color: "#78716C", marginTop: 1 }}>Post in under 60 seconds</Text>
+              </View>
+              <Pressable
+                style={{ backgroundColor: "#5B4FE8", paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, flexDirection: "row", alignItems: "center", gap: 5 }}
+                onPress={handleFAB}
+              >
+                <Feather name="plus" size={14} color="#fff" />
+                <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 12 }}>Post</Text>
+              </Pressable>
+            </View>
+          )}
+        </ScrollView>
       )}
 
-      {/* Post Modals */}
-      {(activeTab === "assignments" || activeTab === "certifications") && (
+      {/* FAB */}
+      {postableCats.length > 0 && (
+        <Pressable style={[CS.fab, { backgroundColor: "#5B4FE8" }]} onPress={handleFAB}>
+          <Feather name="plus" size={22} color="#fff" />
+        </Pressable>
+      )}
+
+      {/* ── Post Modals ── */}
+      {(postType === "assignments" || postType === "certifications") && (
         <PostAssignmentModal
           visible={showPostModal} onClose={() => setShowPostModal(false)}
           C={C} apiRequest={apiRequest} queryClient={queryClient} showToast={showToast}
-          user={user} serviceType={activeTab}
+          user={user} serviceType={postType}
         />
       )}
-      {activeTab === "deliveries" && (
+      {postType === "deliveries" && (
         <PostDeliveryModal
           visible={showPostModal} onClose={() => setShowPostModal(false)}
           C={C} apiRequest={apiRequest} queryClient={queryClient} showToast={showToast}
           outletItems={outletItems}
         />
       )}
-      {activeTab === "tasks" && (
+      {postType === "tasks" && (
         <PostTaskModal
           visible={showPostModal} onClose={() => setShowPostModal(false)}
           C={C} apiRequest={apiRequest} queryClient={queryClient} showToast={showToast}
@@ -1258,14 +1359,35 @@ export default function ServicesScreen() {
 const CS = StyleSheet.create({
   container: { flex: 1 },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 0.5 },
+
+  // ── Header ────────────────────────────────────────────────────────────────
+  header: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 0.5 },
   headerTitle: { fontSize: 22, fontFamily: "Inter_700Bold" },
-  headerSub: { fontSize: 12, fontFamily: "Inter_400Regular" },
-  addBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 12 },
-  addBtnText: { color: "#fff", fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  tabsRow: { paddingHorizontal: 12, paddingVertical: 12, gap: 8 },
-  tab: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20 },
-  tabLabel: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  headerSub: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 2 },
+  headerIconBtn: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center", borderWidth: 0.5 },
+  notifDot: { position: "absolute", top: 0, right: 0, width: 9, height: 9, borderRadius: 5, backgroundColor: "#EF4444", borderWidth: 1.5, borderColor: "#FAF8F4" },
+
+  // ── Category chips ────────────────────────────────────────────────────────
+  chipsRow: { paddingHorizontal: 14, paddingVertical: 11, gap: 8 },
+  chip: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1.5 },
+  chipEmoji: { fontSize: 12 },
+  chipLabel: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
+
+  // ── Sections ──────────────────────────────────────────────────────────────
+  activityBanner: { flexDirection: "row", alignItems: "center", gap: 12, marginHorizontal: 14, marginTop: 12, padding: 12, borderRadius: 14, borderWidth: 0.5 },
+  activityIcon: { width: 36, height: 36, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  activityTitle: { fontSize: 13, fontFamily: "Inter_700Bold" },
+  activityStat: { fontSize: 11, fontFamily: "Inter_400Regular" },
+  section: { paddingHorizontal: 14, marginTop: 20 },
+  sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
+  sectionTitle: { fontSize: 15, fontFamily: "Inter_700Bold" },
+  sectionCount: { fontSize: 11, fontFamily: "Inter_400Regular" },
+  pulseDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#10B981" },
+  emptyBlock: { alignItems: "center", justifyContent: "center", padding: 32, borderRadius: 16, borderWidth: 0.5 },
+  postCTA: { flexDirection: "row", alignItems: "center", gap: 12, marginHorizontal: 14, marginTop: 16, padding: 14, borderRadius: 14, borderWidth: 0.5 },
+  fab: { position: "absolute", bottom: 90, right: 16, width: 52, height: 52, borderRadius: 26, alignItems: "center", justifyContent: "center", shadowColor: "#5B4FE8", shadowOpacity: 0.35, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 8 },
+
+  // ── Card sub-components (kept for AcademicCard / DeliveryCard / TaskCard) ─
   card: { borderRadius: 16, borderWidth: 0.5, padding: 14 },
   cardTop: { flexDirection: "row", gap: 12, marginBottom: 10 },
   cardTitle: { fontSize: 15, lineHeight: 20, fontFamily: "Inter_600SemiBold" },
