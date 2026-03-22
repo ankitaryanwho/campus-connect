@@ -310,7 +310,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: { fontSize: 22, fontFamily: "Inter_700Bold" },
   headerSub: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 1 },
-  headerBtn: { width: 40, height: 40, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  headerBtn: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", borderWidth: 0.5, borderColor: "#E7E5E4" },
   balanceCard: { margin: 16, borderRadius: 24, padding: 24, overflow: "hidden", minHeight: 200 },
   cardCircle: { position: "absolute", width: 150, height: 150, borderRadius: 75, backgroundColor: "#fff" },
   cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 24 },

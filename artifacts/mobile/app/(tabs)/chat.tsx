@@ -193,7 +193,7 @@ export default function ChatScreen() {
             {mode === "dms" ? `${conversations.length} conversations` : `${chatrooms.length} chatrooms`}
           </Text>
         </View>
-        <TouchableOpacity style={[styles.composeBtn, { backgroundColor: C.primaryLight }]} activeOpacity={0.8}>
+        <TouchableOpacity style={[styles.composeBtn, { backgroundColor: C.primaryLight, borderColor: C.primary + "44" }]} activeOpacity={0.8}>
           <Feather name="edit-2" size={18} color={C.primary} />
         </TouchableOpacity>
       </View>
@@ -283,7 +283,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: { fontSize: 22, fontFamily: "Inter_700Bold" },
   headerSub: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 1 },
-  composeBtn: { width: 40, height: 40, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  composeBtn: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", borderWidth: 0.5 },
   searchRow: {
     flexDirection: "row", alignItems: "center", gap: 10,
     margin: 12, marginBottom: 8, paddingHorizontal: 14, paddingVertical: 10,

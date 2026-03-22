@@ -52,9 +52,9 @@ function ClassicTabLayout() {
         headerShown: false,
         tabBarStyle: {
           position: "absolute",
-          backgroundColor: isIOS ? "transparent" : isDark ? "#111" : "#fff",
+          backgroundColor: isIOS ? "transparent" : isDark ? "#111" : "#FAF8F4",
           borderTopWidth: isWeb ? 1 : 0.5,
-          borderTopColor: isDark ? "#2A2A2A" : "#E5E7EB",
+          borderTopColor: isDark ? "#2A2A2A" : "#E7E5E4",
           elevation: 0,
           ...(isWeb ? { height: 84 } : {}),
         },
@@ -63,7 +63,7 @@ function ClassicTabLayout() {
           isIOS ? (
             <BlurView intensity={100} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
           ) : isWeb ? (
-            <View style={[StyleSheet.absoluteFill, { backgroundColor: isDark ? "#111" : "#fff" }]} />
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: isDark ? "#111" : "#FAF8F4" }]} />
           ) : null,
       }}
     >

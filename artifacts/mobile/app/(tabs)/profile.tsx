@@ -167,12 +167,12 @@ export default function ProfileScreen() {
     <View style={[styles.container, { backgroundColor: C.background }]}>
       {/* Top bar */}
       <View style={[styles.topBar, { paddingTop: isWeb ? 67 : insets.top + 10 }]}>
-        <Pressable style={[styles.topBtn, { backgroundColor: C.backgroundSecondary }]}
+        <Pressable style={[styles.topBtn, { backgroundColor: C.backgroundSecondary, borderColor: C.border }]}
           onPress={() => { setName(user.name); setBio(user.bio || ""); setCollege(user.college || ""); setProgram(user.program || ""); setEditing(true); }}>
           <Feather name="edit-2" size={16} color={C.text} />
         </Pressable>
         <Text style={[styles.topTitle, { color: C.text }]}>Profile</Text>
-        <Pressable style={[styles.topBtn, { backgroundColor: C.errorLight }]} onPress={handleLogout}>
+        <Pressable style={[styles.topBtn, { backgroundColor: C.errorLight, borderColor: C.error + "33" }]} onPress={handleLogout}>
           <Feather name="log-out" size={16} color={C.error} />
         </Pressable>
       </View>
@@ -181,7 +181,7 @@ export default function ProfileScreen() {
 
         {/* Cover Banner */}
         <LinearGradient
-          colors={["#5B4FE8", "#9F94F8", "#C4AEFE"]}
+          colors={["#292524", "#57534E", "#A8A29E"]}
           start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
           style={styles.banner}
         >
@@ -460,7 +460,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16, paddingBottom: 12,
   },
   topTitle: { fontSize: 18, fontFamily: "Inter_700Bold" },
-  topBtn: { width: 38, height: 38, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  topBtn: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center", borderWidth: 0.5 },
   banner: { height: 130, overflow: "hidden" },
   bannerCircle: { position: "absolute", width: 200, height: 200, borderRadius: 100, backgroundColor: "rgba(255,255,255,0.1)" },
   bannerBadge: { position: "absolute", top: 16, right: 16, flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
