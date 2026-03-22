@@ -47,10 +47,10 @@ export async function seedData() {
 
   // Assignments (posted by students, solved by providers)
   await db.insert(assignmentsTable).values([
-    { id: generateId(), title: "DBMS Assignment - Normalization", description: "Need expert help with 3NF, BCNF normalization problems and ER diagrams. 5 questions total.", price: "350", deliveryMode: "pdf", subject: "DBMS", posterId: users[0].id },
-    { id: generateId(), title: "Operating Systems Lab Report", description: "Write OS lab report covering scheduling algorithms, memory management with diagrams.", price: "250", deliveryMode: "pdf", subject: "OS", posterId: users[0].id },
-    { id: generateId(), title: "Python Data Analysis Project", description: "Analyze a dataset using pandas/matplotlib, create 5 visualizations with insights.", price: "500", deliveryMode: "zip", subject: "Python", posterId: users[2].id },
-    { id: generateId(), title: "Marketing Case Study", description: "Write 3000-word case study on Zomato marketing strategy with SWOT analysis.", price: "400", deliveryMode: "pdf", subject: "Marketing", posterId: users[2].id },
+    { id: generateId(), title: "DBMS Assignment - Normalization", description: "Need expert help with 3NF, BCNF normalization problems and ER diagrams. 5 questions total.", price: "350", subject: "DBMS", program: "BCA", targetYear: 2, posterId: users[0].id },
+    { id: generateId(), title: "Operating Systems Lab Report", description: "Write OS lab report covering scheduling algorithms, memory management with diagrams.", price: "250", subject: "OS", program: "BCA", targetYear: 2, posterId: users[0].id },
+    { id: generateId(), title: "Python Data Analysis Project", description: "Analyze a dataset using pandas/matplotlib, create 5 visualizations with insights.", price: "500", subject: "Python", program: "MBA", targetYear: 1, posterId: users[2].id },
+    { id: generateId(), title: "Marketing Case Study", description: "Write 3000-word case study on Zomato marketing strategy with SWOT analysis.", price: "400", subject: "Marketing", program: "MBA", targetYear: 1, posterId: users[2].id },
   ]);
 
   // Coaching sessions (offered by providers)
@@ -63,9 +63,9 @@ export async function seedData() {
 
   // Deliveries (requested by students)
   await db.insert(deliveriesTable).values([
-    { id: generateId(), pickupLocation: "Main Gate", dropLocation: "Boys Hostel Block C", item: "Amazon parcel (laptop bag)", requesterId: users[2].id, notes: "Handle with care please" },
-    { id: generateId(), pickupLocation: "Girls Hostel", dropLocation: "Library", item: "Books (3 textbooks)", requesterId: users[0].id, notes: "Available after 2pm" },
-    { id: generateId(), pickupLocation: "Canteen", dropLocation: "Computer Lab", item: "Lunch box", requesterId: users[2].id, notes: "Urgent - hot food" },
+    { id: generateId(), pickupType: "gate", pickupLocation: "Main Gate", dropLocation: "Boys Hostel Block C", requesterId: users[2].id },
+    { id: generateId(), pickupType: "gate", pickupLocation: "Girls Hostel", dropLocation: "Library", requesterId: users[0].id },
+    { id: generateId(), pickupType: "outlet", pickupLocation: "Canteen", dropLocation: "Computer Lab", requesterId: users[2].id },
   ]);
 
   // Tasks (posted by students, done by anyone)
