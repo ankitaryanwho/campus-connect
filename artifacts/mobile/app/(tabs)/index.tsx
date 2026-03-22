@@ -2,7 +2,7 @@ import React, { useState, useCallback, useRef } from "react";
 import {
   View, Text, FlatList, Pressable, StyleSheet,
   useColorScheme, RefreshControl, Image, Platform,
-  Animated, TouchableOpacity, Dimensions,
+  Animated, TouchableOpacity, ScrollView,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
@@ -13,8 +13,9 @@ import * as ExpoHaptics from "expo-haptics";
 import Colors from "@/constants/colors";
 import { useAuth } from "@/contexts/AuthContext";
 
-const { width: SW } = Dimensions.get("window");
 const isWeb = Platform.OS === "web";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Post {
   id: string;
@@ -25,6 +26,32 @@ interface Post {
   commentsCount: number;
   isLiked: boolean;
   createdAt: string;
+}
+
+// ─── Design Tokens ───────────────────────────────────────────────────────────
+
+const WARM = {
+  bg: "#FAF8F4",
+  surface: "#FFFFFF",
+  border: "#E7E5E4",
+  borderLight: "#F0EDEA",
+  text: "#1C1917",
+  textSecondary: "#78716C",
+  textTertiary: "#A8A29E",
+};
+
+const CATEGORIES = [
+  { id: "all",     label: "All",        emoji: "✦",  accent: "#1C1917", bg: "#F0EDEA" },
+  { id: "study",   label: "Study Help", emoji: "📚", accent: "#3B82F6", bg: "#EFF6FF" },
+  { id: "events",  label: "Events",     emoji: "🎪", accent: "#8B5CF6", bg: "#F5F3FF" },
+  { id: "buysell", label: "Buy / Sell", emoji: "🛒", accent: "#F59E0B", bg: "#FFFBEB" },
+  { id: "social",  label: "Social",     emoji: "💬", accent: "#10B981", bg: "#ECFDF5" },
+] as const;
+
+type CategoryId = typeof CATEGORIES[number]["id"];
+
+function getCategoryInfo(id: CategoryId) {
+  return CATEGORIES.find(c => c.id === id) ?? CATEGORIES[0];
 }
 
 // ─── Utilities ───────────────────────────────────────────────────────────────
@@ -50,83 +77,133 @@ const AVATAR_GRADIENTS = [
   ["#43e97b", "#38f9d7"],
   ["#fa709a", "#fee140"],
   ["#a18cd1", "#fbc2eb"],
-  ["#ffecd2", "#fcb69f"],
-  ["#ff9a9e", "#fecfef"],
 ];
 
 function getGradient(name: string) {
   let hash = 0;
-  for (let c of name) hash = c.charCodeAt(0) + ((hash << 5) - hash);
+  for (const c of name) hash = c.charCodeAt(0) + ((hash << 5) - hash);
   return AVATAR_GRADIENTS[Math.abs(hash) % AVATAR_GRADIENTS.length];
+}
+
+function detectCategory(content: string): CategoryId {
+  const t = content.toLowerCase();
+  if (/notes|study|exam|assignment|help|tutor|dbms|algorithm|question|quiz|marks|syllabus|lecture/.test(t)) return "study";
+  if (/session|workshop|event|fest|hackathon|register|sunday|monday|tuesday|wednesday|tonight|tomorrow|this week|hosting|seminar/.test(t)) return "events";
+  if (/sell|selling|buy|buying|₹|rs\.|price|condition|pickup|available for sale|dm me/.test(t)) return "buysell";
+  return "social";
 }
 
 // ─── Components ──────────────────────────────────────────────────────────────
 
-function GradientAvatar({ name, avatar, size = 44, ring = false, ringColor = "#5B4FE8" }: any) {
+function GradientAvatar({ name, avatar, size = 44 }: { name: string; avatar?: string; size?: number }) {
   const grad = getGradient(name || "?");
-  const wrap = ring ? { padding: 2, borderRadius: (size + 4) / 2, backgroundColor: ringColor } : {};
-  const inner = (
-    avatar
-      ? <Image source={{ uri: avatar }} style={{ width: size, height: size, borderRadius: size / 2 }} />
-      : (
-        <LinearGradient colors={grad as any} style={{ width: size, height: size, borderRadius: size / 2, alignItems: "center", justifyContent: "center" }}>
-          <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: size * 0.36 }}>{getInitials(name || "?")}</Text>
-        </LinearGradient>
-      )
+  if (avatar) {
+    return <Image source={{ uri: avatar }} style={{ width: size, height: size, borderRadius: size / 2 }} />;
+  }
+  return (
+    <LinearGradient colors={grad as any} style={{ width: size, height: size, borderRadius: size / 2, alignItems: "center", justifyContent: "center" }}>
+      <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: size * 0.36 }}>{getInitials(name || "?")}</Text>
+    </LinearGradient>
   );
-  return ring ? <View style={wrap}>{inner}</View> : inner;
 }
 
-// Skeleton loader
-function SkeletonCard({ C }: any) {
-  const opacity = useRef(new Animated.Value(0.3)).current;
-  React.useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(opacity, { toValue: 0.7, duration: 800, useNativeDriver: true }),
-        Animated.timing(opacity, { toValue: 0.3, duration: 800, useNativeDriver: true }),
-      ])
-    ).start();
-  }, []);
-  const bg = { backgroundColor: C.border };
+// Compact horizontal card for swim-lane strips
+function PostMiniCard({ post, accent }: { post: Post; accent: string }) {
+  const [liked, setLiked] = useState(post.isLiked);
+  const [likes, setLikes] = useState(post.likesCount);
+
+  const handleLike = () => {
+    if (Platform.OS !== "web") ExpoHaptics.impactAsync(ExpoHaptics.ImpactFeedbackStyle.Light);
+    setLiked(!liked);
+    setLikes(l => liked ? l - 1 : l + 1);
+  };
+
   return (
-    <Animated.View style={[styles.skeletonCard, { backgroundColor: C.surface, borderColor: C.border, opacity }]}>
-      <View style={styles.skeletonHeader}>
-        <View style={[styles.skeletonAvatar, bg]} />
-        <View style={{ flex: 1, gap: 6 }}>
-          <View style={[styles.skeletonLine, bg, { width: "50%" }]} />
-          <View style={[styles.skeletonLine, bg, { width: "30%" }]} />
+    <Pressable
+      onPress={() => router.push(`/post/${post.id}`)}
+      style={[styles.miniCard, { borderLeftColor: accent }]}
+    >
+      <View style={styles.miniCardHeader}>
+        <GradientAvatar name={post.author.name} avatar={post.author.avatar} size={26} />
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={styles.miniCardAuthor} numberOfLines={1}>{post.author.name}</Text>
+          <Text style={styles.miniCardBadge} numberOfLines={1}>
+            {post.author.program || post.author.college || "Student"}
+          </Text>
         </View>
       </View>
-      <View style={[styles.skeletonLine, bg, { width: "90%", marginBottom: 8 }]} />
-      <View style={[styles.skeletonLine, bg, { width: "70%" }]} />
-    </Animated.View>
+      <Text style={styles.miniCardContent} numberOfLines={3}>{post.content}</Text>
+      <View style={styles.miniCardFooter}>
+        <Text style={styles.miniCardTime}>{timeAgo(post.createdAt)}</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <TouchableOpacity onPress={handleLike} style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
+            <Feather name="heart" size={11} color={liked ? "#EF4444" : WARM.textTertiary} />
+            <Text style={[styles.miniCardStat, { color: liked ? "#EF4444" : WARM.textTertiary }]}>{likes}</Text>
+          </TouchableOpacity>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
+            <Feather name="message-circle" size={11} color={WARM.textTertiary} />
+            <Text style={styles.miniCardStat}>{post.commentsCount}</Text>
+          </View>
+        </View>
+      </View>
+    </Pressable>
   );
 }
 
-// Post Card
-function PostCard({ post, C, onLike, onComment }: any) {
+// Category swim-lane strip
+function CategoryStrip({ categoryId, posts, onSeeAll }: { categoryId: CategoryId; posts: Post[]; onSeeAll: () => void }) {
+  const cat = getCategoryInfo(categoryId);
+  const icon = categoryId === "study" ? "book-open" :
+    categoryId === "events" ? "calendar" :
+    categoryId === "buysell" ? "shopping-bag" : "message-circle";
+
+  if (posts.length === 0) return null;
+
+  return (
+    <View style={styles.stripSection}>
+      <View style={styles.stripHeader}>
+        <View style={styles.stripTitleRow}>
+          <View style={[styles.stripIconBox, { backgroundColor: cat.bg }]}>
+            <Feather name={icon as any} size={14} color={cat.accent} />
+          </View>
+          <Text style={styles.stripLabel}>{cat.emoji} {cat.label}</Text>
+        </View>
+        <TouchableOpacity onPress={onSeeAll} style={styles.seeAllBtn}>
+          <Text style={[styles.seeAllText, { color: cat.accent }]}>See all</Text>
+          <Feather name="chevron-right" size={13} color={cat.accent} />
+        </TouchableOpacity>
+      </View>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.stripScroll}
+      >
+        {posts.slice(0, 5).map(post => (
+          <PostMiniCard key={post.id} post={post} accent={cat.accent} />
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
+
+// Full-width post card (for the feed section)
+function PostCard({ post, C, onLike, onComment, isDark }: any) {
   const [liked, setLiked] = useState(post.isLiked);
   const [likes, setLikes] = useState(post.likesCount);
   const [saved, setSaved] = useState(false);
   const heartScale = useRef(new Animated.Value(1)).current;
-  const heartOpacity = useRef(new Animated.Value(0)).current;
   const tapRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const taps = useRef(0);
+  const cat = getCategoryInfo(detectCategory(post.content));
 
-  const animateLikeButton = () => {
+  const handleLike = () => {
+    if (Platform.OS !== "web") ExpoHaptics.impactAsync(ExpoHaptics.ImpactFeedbackStyle.Light);
+    setLiked(!liked);
+    setLikes(l => liked ? l - 1 : l + 1);
+    onLike(post.id);
     Animated.sequence([
       Animated.spring(heartScale, { toValue: 1.3, useNativeDriver: true }),
       Animated.spring(heartScale, { toValue: 1, useNativeDriver: true }),
-    ]).start();
-  };
-
-  const showDoubleTapHeart = () => {
-    heartOpacity.setValue(1);
-    Animated.sequence([
-      Animated.timing(heartOpacity, { toValue: 1, duration: 100, useNativeDriver: true }),
-      Animated.delay(600),
-      Animated.timing(heartOpacity, { toValue: 0, duration: 300, useNativeDriver: true }),
     ]).start();
   };
 
@@ -135,12 +212,7 @@ function PostCard({ post, C, onLike, onComment }: any) {
     if (taps.current === 2) {
       if (tapRef.current) clearTimeout(tapRef.current);
       taps.current = 0;
-      if (!liked) {
-        setLiked(true);
-        setLikes(l => l + 1);
-        onLike(post.id);
-      }
-      showDoubleTapHeart();
+      if (!liked) { setLiked(true); setLikes(l => l + 1); onLike(post.id); }
       if (Platform.OS !== "web") ExpoHaptics.impactAsync(ExpoHaptics.ImpactFeedbackStyle.Medium);
     } else {
       tapRef.current = setTimeout(() => {
@@ -150,42 +222,45 @@ function PostCard({ post, C, onLike, onComment }: any) {
     }
   };
 
-  const handleLike = () => {
-    if (Platform.OS !== "web") ExpoHaptics.impactAsync(ExpoHaptics.ImpactFeedbackStyle.Light);
-    setLiked(!liked);
-    setLikes(l => liked ? l - 1 : l + 1);
-    onLike(post.id);
-    animateLikeButton();
-  };
-
   return (
-    <Pressable onPress={handleTap} style={[styles.postCard, { backgroundColor: C.surface }]}>
+    <Pressable
+      onPress={handleTap}
+      style={[
+        styles.postCard,
+        {
+          backgroundColor: isDark ? C.surface : WARM.surface,
+          borderColor: isDark ? C.border : WARM.border,
+          borderLeftColor: cat.accent,
+        },
+      ]}
+    >
       {/* Header */}
       <View style={styles.postHeader}>
         <Pressable onPress={() => router.push(`/profile/${post.author.id}`)}>
-          <GradientAvatar name={post.author.name} avatar={post.author.avatar} size={42} ring={!!post.author.verified} ringColor="#5B4FE8" />
+          <GradientAvatar name={post.author.name} avatar={post.author.avatar} size={40} />
         </Pressable>
         <View style={styles.postHeaderInfo}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-            <Text style={[styles.authorName, { color: C.text }]}>{post.author.name}</Text>
+            <Text style={[styles.authorName, { color: isDark ? C.text : WARM.text }]}>{post.author.name}</Text>
             {post.author.verified && (
               <LinearGradient colors={["#5B4FE8", "#7B73F0"]} style={styles.verifiedBadge}>
                 <Feather name="check" size={9} color="#fff" />
               </LinearGradient>
             )}
           </View>
-          <Text style={[styles.postMeta, { color: C.textTertiary }]}>
+          <Text style={[styles.postMeta, { color: isDark ? C.textTertiary : WARM.textTertiary }]}>
             {post.author.college || post.author.program || "Student"} · {timeAgo(post.createdAt)}
           </Text>
         </View>
-        <Pressable style={[styles.followBtn, { borderColor: C.border }]}>
-          <Text style={[styles.followBtnText, { color: C.primary }]}>Follow</Text>
-        </Pressable>
+        {/* Category pill */}
+        <View style={[styles.catPill, { backgroundColor: cat.bg }]}>
+          <Text style={[styles.catPillText, { color: cat.accent }]}>{cat.emoji}</Text>
+        </View>
       </View>
 
       {/* Content */}
       {post.content ? (
-        <Text style={[styles.postContent, { color: C.text }]}>{post.content}</Text>
+        <Text style={[styles.postContent, { color: isDark ? C.text : WARM.text }]}>{post.content}</Text>
       ) : null}
 
       {/* Media */}
@@ -205,58 +280,58 @@ function PostCard({ post, C, onLike, onComment }: any) {
               ))}
             </View>
           )}
-          {/* Double-tap heart overlay */}
-          <Animated.View style={[StyleSheet.absoluteFill, styles.heartOverlay, { opacity: heartOpacity }]} pointerEvents="none">
-            <Feather name="heart" size={80} color="#fff" />
-          </Animated.View>
         </View>
       )}
 
       {/* Actions */}
-      <View style={[styles.postActions, { borderTopColor: C.borderLight }]}>
+      <View style={[styles.postActions, { borderTopColor: isDark ? C.borderLight : WARM.borderLight }]}>
         <TouchableOpacity style={styles.actionBtn} onPress={handleLike} activeOpacity={0.7}>
           <Animated.View style={{ transform: [{ scale: heartScale }] }}>
-            <Feather name="heart" size={20} color={liked ? "#EF4444" : C.textTertiary} />
+            <Feather name="heart" size={19} color={liked ? "#EF4444" : (isDark ? C.textTertiary : WARM.textTertiary)} />
           </Animated.View>
-          {likes > 0 && <Text style={[styles.actionCount, { color: liked ? "#EF4444" : C.textTertiary }]}>{likes}</Text>}
+          {likes > 0 && <Text style={[styles.actionCount, { color: liked ? "#EF4444" : (isDark ? C.textTertiary : WARM.textTertiary) }]}>{likes}</Text>}
         </TouchableOpacity>
         <TouchableOpacity style={styles.actionBtn} onPress={() => onComment(post.id)} activeOpacity={0.7}>
-          <Feather name="message-circle" size={20} color={C.textTertiary} />
-          {post.commentsCount > 0 && <Text style={[styles.actionCount, { color: C.textTertiary }]}>{post.commentsCount}</Text>}
+          <Feather name="message-circle" size={19} color={isDark ? C.textTertiary : WARM.textTertiary} />
+          {post.commentsCount > 0 && <Text style={[styles.actionCount, { color: isDark ? C.textTertiary : WARM.textTertiary }]}>{post.commentsCount}</Text>}
         </TouchableOpacity>
         <TouchableOpacity style={styles.actionBtn} activeOpacity={0.7}>
-          <Feather name="share-2" size={20} color={C.textTertiary} />
+          <Feather name="share-2" size={19} color={isDark ? C.textTertiary : WARM.textTertiary} />
         </TouchableOpacity>
         <View style={{ flex: 1 }} />
         <TouchableOpacity style={styles.actionBtn} onPress={() => setSaved(!saved)} activeOpacity={0.7}>
-          <Feather name="bookmark" size={20} color={saved ? C.primary : C.textTertiary} />
+          <Feather name="bookmark" size={19} color={saved ? "#F59E0B" : (isDark ? C.textTertiary : WARM.textTertiary)} />
         </TouchableOpacity>
       </View>
     </Pressable>
   );
 }
 
-// Stories bar item
-function StoryItem({ story, C, isMe = false }: any) {
+// Skeleton loader
+function SkeletonStrip({ isDark, C }: any) {
+  const opacity = useRef(new Animated.Value(0.4)).current;
+  React.useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, { toValue: 0.8, duration: 800, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 0.4, duration: 800, useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
+  const bg = { backgroundColor: isDark ? C.border : "#E7E5E4" };
   return (
-    <Pressable style={styles.storyItem} onPress={() => router.push(isMe ? "/new-post" : `/profile/${story.id}`)}>
-      <LinearGradient
-        colors={isMe ? [C.primary, "#7B73F0"] : (getGradient(story.name || "?") as any)}
-        style={styles.storyRing}
-      >
-        <View style={[styles.storyAvatarInner, { backgroundColor: C.background }]}>
-          <GradientAvatar name={story.name} avatar={story.avatar} size={52} />
-        </View>
-      </LinearGradient>
-      {isMe && (
-        <View style={[styles.storyAddBtn, { backgroundColor: C.primary }]}>
-          <Feather name="plus" size={10} color="#fff" />
-        </View>
-      )}
-      <Text style={[styles.storyName, { color: C.text }]} numberOfLines={1}>
-        {isMe ? "Your story" : story.name?.split(" ")[0]}
-      </Text>
-    </Pressable>
+    <Animated.View style={{ opacity, paddingHorizontal: 16, marginBottom: 24 }}>
+      <View style={[{ height: 14, width: 120, borderRadius: 7, marginBottom: 12 }, bg]} />
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} scrollEnabled={false} contentContainerStyle={{ gap: 12 }}>
+        {[1, 2, 3].map(i => (
+          <View key={i} style={[styles.miniCard, { borderLeftColor: "#E7E5E4" }]}>
+            <View style={[{ height: 11, width: "70%", borderRadius: 5, marginBottom: 8 }, bg]} />
+            <View style={[{ height: 11, width: "90%", borderRadius: 5, marginBottom: 6 }, bg]} />
+            <View style={[{ height: 11, width: "60%", borderRadius: 5 }, bg]} />
+          </View>
+        ))}
+      </ScrollView>
+    </Animated.View>
   );
 }
 
@@ -265,15 +340,23 @@ function StoryItem({ story, C, isMe = false }: any) {
 export default function FeedScreen() {
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
-  const C = Colors[colorScheme === "dark" ? "dark" : "light"];
+  const isDark = colorScheme === "dark";
+  const C = Colors[isDark ? "dark" : "light"];
   const { apiRequest, user } = useAuth();
   const queryClient = useQueryClient();
+  const [activeCategory, setActiveCategory] = useState<CategoryId>("all");
 
-  const { data, isLoading, isError, refetch, isRefetching } = useQuery({
+  const bg = isDark ? C.background : WARM.bg;
+  const surfaceBg = isDark ? C.surface : WARM.surface;
+  const borderCol = isDark ? C.border : WARM.border;
+  const textCol = isDark ? C.text : WARM.text;
+  const mutedCol = isDark ? C.textTertiary : WARM.textTertiary;
+
+  const { data, isLoading, refetch, isRefetching } = useQuery({
     queryKey: ["posts"],
     queryFn: async () => {
       const res = await apiRequest("/posts");
-      if (!res.ok) throw new Error("Failed to load posts");
+      if (!res.ok) throw new Error("Failed");
       return res.json() as Promise<{ posts: Post[] }>;
     },
   });
@@ -288,158 +371,301 @@ export default function FeedScreen() {
 
   const posts = data?.posts || [];
 
+  // Group posts by category
+  const postsByCategory = React.useMemo(() => {
+    const groups: Record<string, Post[]> = { study: [], events: [], buysell: [], social: [] };
+    for (const p of posts) {
+      groups[detectCategory(p.content)].push(p);
+    }
+    return groups;
+  }, [posts]);
+
+  // Filtered posts for the feed section
+  const feedPosts = React.useMemo(() => {
+    if (activeCategory === "all") return posts;
+    return postsByCategory[activeCategory] ?? [];
+  }, [posts, postsByCategory, activeCategory]);
+
   const renderPost = useCallback(({ item }: { item: Post }) => (
     <PostCard
       post={item}
       C={C}
+      isDark={isDark}
       onLike={(id: string) => likeMutation.mutate(id)}
       onComment={(id: string) => router.push(`/post/${id}`)}
     />
-  ), [C]);
+  ), [C, isDark]);
 
   const ListHeader = () => (
-    <>
-      {/* Stories */}
-      <FlatList
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        data={[{ id: "me", name: user?.name || "You", avatar: user?.avatar, isMe: true }, ...(posts.slice(0, 8).map(p => p.author))]}
-        keyExtractor={(item, i) => `story-${item.id}-${i}`}
-        contentContainerStyle={styles.storiesContainer}
-        renderItem={({ item, index }) => (
-          <StoryItem key={`s-${index}`} story={item} C={C} isMe={index === 0} />
-        )}
-        style={[styles.storiesList, { borderBottomColor: C.borderLight }]}
-      />
-
+    <View style={{ backgroundColor: bg }}>
       {/* Create post box */}
       <Pressable
-        style={[styles.createBox, { backgroundColor: C.surface, borderColor: C.border }]}
+        style={[styles.createBox, { backgroundColor: surfaceBg, borderColor: borderCol }]}
         onPress={() => router.push("/new-post")}
       >
-        <GradientAvatar name={user?.name || "?"} avatar={user?.avatar} size={38} />
-        <View style={[styles.createInput, { backgroundColor: C.backgroundSecondary, borderColor: C.border }]}>
-          <Text style={[styles.createPlaceholder, { color: C.textTertiary }]}>What's on your mind?</Text>
+        <GradientAvatar name={user?.name || "?"} avatar={user?.avatar} size={36} />
+        <View style={[styles.createInput, { backgroundColor: isDark ? C.backgroundSecondary : "#F5F3EF", borderColor: borderCol }]}>
+          <Text style={[styles.createPlaceholder, { color: mutedCol }]}>What's on your mind?</Text>
         </View>
-        <View style={[styles.createMediaBtn, { backgroundColor: C.primaryLight }]}>
-          <Feather name="image" size={16} color={C.primary} />
+        <View style={[styles.createMediaBtn, { backgroundColor: isDark ? C.primaryLight : "#EFF6FF" }]}>
+          <Feather name="image" size={15} color={isDark ? C.primary : "#3B82F6"} />
         </View>
       </Pressable>
 
-      {posts.length > 0 && (
-        <Text style={[styles.feedLabel, { color: C.textTertiary }]}>RECENT POSTS</Text>
+      {/* Swim-lane strips — only shown in "All" mode */}
+      {activeCategory === "all" && !isLoading && (
+        <View style={{ marginTop: 4 }}>
+          {(["study", "events", "buysell", "social"] as const).map(catId => (
+            postsByCategory[catId].length > 0 && (
+              <CategoryStrip
+                key={catId}
+                categoryId={catId}
+                posts={postsByCategory[catId]}
+                onSeeAll={() => setActiveCategory(catId)}
+              />
+            )
+          ))}
+        </View>
       )}
-    </>
+
+      {/* Loading skeletons */}
+      {isLoading && (
+        <View style={{ marginTop: 8 }}>
+          {[1, 2].map(i => <SkeletonStrip key={i} isDark={isDark} C={C} />)}
+        </View>
+      )}
+
+      {/* Recent posts label */}
+      {feedPosts.length > 0 && (
+        <View style={[styles.feedLabelRow, { borderTopColor: borderCol, backgroundColor: bg }]}>
+          <Text style={[styles.feedLabel, { color: mutedCol }]}>
+            {activeCategory === "all" ? "RECENT POSTS" : getCategoryInfo(activeCategory).label.toUpperCase()}
+          </Text>
+        </View>
+      )}
+    </View>
   );
 
   return (
-    <View style={[styles.container, { backgroundColor: C.background }]}>
+    <View style={[styles.container, { backgroundColor: bg }]}>
       {/* Header */}
-      <View style={[styles.header, { paddingTop: isWeb ? 67 : insets.top + 10, borderBottomColor: C.border, backgroundColor: C.background }]}>
-        <Text style={[styles.headerBrand, { color: C.text }]}>Campus<Text style={{ color: C.primary }}>Connect</Text></Text>
+      <View style={[
+        styles.header,
+        { paddingTop: isWeb ? 67 : insets.top + 10, borderBottomColor: borderCol, backgroundColor: bg },
+      ]}>
+        <View>
+          <Text style={[styles.headerBrand, { color: textCol }]}>Campus Board</Text>
+          <Text style={[styles.headerSub, { color: mutedCol }]}>
+            {user?.college || "Your Campus"}
+          </Text>
+        </View>
         <View style={styles.headerRight}>
-          <Pressable style={[styles.headerIconBtn, { backgroundColor: C.backgroundSecondary }]} onPress={() => router.push("/new-post")}>
-            <Feather name="plus-square" size={20} color={C.text} />
+          <Pressable style={[styles.headerIconBtn, { backgroundColor: surfaceBg, borderColor: borderCol }]}>
+            <Feather name="search" size={18} color={isDark ? C.textSecondary : WARM.textSecondary} />
           </Pressable>
-          <Pressable style={[styles.headerIconBtn, { backgroundColor: C.backgroundSecondary }]}>
-            <Feather name="bell" size={20} color={C.text} />
+          <Pressable
+            style={[styles.headerIconBtn, { backgroundColor: surfaceBg, borderColor: borderCol }]}
+            onPress={() => router.push("/new-post")}
+          >
+            <Feather name="plus" size={18} color={isDark ? C.textSecondary : WARM.textSecondary} />
             <View style={[styles.notifDot, { backgroundColor: C.error }]} />
           </Pressable>
         </View>
       </View>
 
-      {isLoading ? (
-        <FlatList
-          data={[1, 2, 3]}
-          keyExtractor={i => String(i)}
-          renderItem={() => <SkeletonCard C={C} />}
-          contentContainerStyle={{ padding: 12, gap: 12 }}
-          scrollEnabled={false}
-        />
-      ) : (
-        <FlatList
-          data={posts}
-          renderItem={renderPost}
-          keyExtractor={item => item.id}
-          ListHeaderComponent={ListHeader}
-          contentContainerStyle={{ paddingBottom: isWeb ? 120 : 110 }}
-          refreshControl={
-            <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={C.primary} colors={[C.primary]} />
-          }
-          showsVerticalScrollIndicator={false}
-          ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: C.borderLight }} />}
-          ListEmptyComponent={
+      {/* Category filter chips */}
+      <View style={[styles.chipRow, { backgroundColor: bg, borderBottomColor: borderCol }]}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipScroll}>
+          {CATEGORIES.map(cat => {
+            const active = activeCategory === cat.id;
+            return (
+              <Pressable
+                key={cat.id}
+                onPress={() => setActiveCategory(cat.id)}
+                style={[
+                  styles.chip,
+                  {
+                    backgroundColor: active ? cat.bg : (isDark ? C.backgroundSecondary : WARM.surface),
+                    borderColor: active ? cat.accent + "44" : borderCol,
+                  },
+                ]}
+              >
+                <Text style={[styles.chipText, { color: active ? cat.accent : mutedCol }]}>
+                  {cat.emoji} {cat.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
+
+      {/* Feed */}
+      <FlatList
+        data={feedPosts}
+        renderItem={renderPost}
+        keyExtractor={item => item.id}
+        ListHeaderComponent={ListHeader}
+        contentContainerStyle={{ paddingBottom: isWeb ? 120 : 110 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefetching}
+            onRefresh={refetch}
+            tintColor={C.primary}
+            colors={[C.primary]}
+          />
+        }
+        showsVerticalScrollIndicator={false}
+        ItemSeparatorComponent={() => <View style={{ height: 10, backgroundColor: bg }} />}
+        ListEmptyComponent={
+          !isLoading ? (
             <View style={styles.emptyState}>
-              <LinearGradient colors={[C.primaryLight, C.background]} style={styles.emptyGradient}>
-                <Feather name="wind" size={52} color={C.primary} style={{ opacity: 0.6 }} />
-                <Text style={[styles.emptyTitle, { color: C.text }]}>Nothing to see yet</Text>
-                <Text style={[styles.emptyText, { color: C.textSecondary }]}>Be the first to share something with your campus!</Text>
-                <Pressable style={[styles.emptyBtn, { backgroundColor: C.primary }]} onPress={() => router.push("/new-post")}>
-                  <Feather name="plus" size={16} color="#fff" />
-                  <Text style={styles.emptyBtnText}>Create Post</Text>
-                </Pressable>
-              </LinearGradient>
+              <Text style={styles.emptyEmoji}>
+                {activeCategory === "study" ? "📚" : activeCategory === "events" ? "🎪" : activeCategory === "buysell" ? "🛒" : activeCategory === "social" ? "💬" : "✦"}
+              </Text>
+              <Text style={[styles.emptyTitle, { color: textCol }]}>Nothing here yet</Text>
+              <Text style={[styles.emptyText, { color: mutedCol }]}>
+                {activeCategory === "all"
+                  ? "Be the first to post something to your campus board!"
+                  : `No ${getCategoryInfo(activeCategory).label.toLowerCase()} posts yet. Be the first!`}
+              </Text>
+              <Pressable
+                style={[styles.emptyBtn, { backgroundColor: getCategoryInfo(activeCategory).accent }]}
+                onPress={() => router.push("/new-post")}
+              >
+                <Feather name="plus" size={15} color="#fff" />
+                <Text style={styles.emptyBtnText}>Create Post</Text>
+              </Pressable>
             </View>
-          }
-        />
-      )}
+          ) : null
+        }
+      />
     </View>
   );
 }
 
+// ─── Styles ──────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
   container: { flex: 1 },
+
+  // Header
   header: {
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 0.5,
+    flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between",
+    paddingHorizontal: 16, paddingBottom: 10, borderBottomWidth: 0.5,
   },
-  headerBrand: { fontSize: 22, fontFamily: "Inter_700Bold" },
+  headerBrand: { fontSize: 20, fontFamily: "Inter_700Bold", letterSpacing: -0.3 },
+  headerSub: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 1 },
   headerRight: { flexDirection: "row", gap: 8 },
-  headerIconBtn: { width: 38, height: 38, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  notifDot: { position: "absolute", top: 7, right: 7, width: 8, height: 8, borderRadius: 4 },
-  storiesList: { borderBottomWidth: 0.5 },
-  storiesContainer: { paddingHorizontal: 12, paddingVertical: 14, gap: 14 },
-  storyItem: { alignItems: "center", width: 68 },
-  storyRing: { width: 64, height: 64, borderRadius: 32, alignItems: "center", justifyContent: "center", marginBottom: 5 },
-  storyAvatarInner: { width: 58, height: 58, borderRadius: 29, alignItems: "center", justifyContent: "center" },
-  storyAddBtn: { position: "absolute", bottom: 24, right: 2, width: 18, height: 18, borderRadius: 9, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "#fff" },
-  storyName: { fontSize: 11, fontFamily: "Inter_500Medium", textAlign: "center" },
+  headerIconBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    alignItems: "center", justifyContent: "center",
+    borderWidth: 0.5,
+  },
+  notifDot: { position: "absolute", top: 7, right: 7, width: 7, height: 7, borderRadius: 3.5 },
+
+  // Category chips
+  chipRow: { borderBottomWidth: 0.5 },
+  chipScroll: { paddingHorizontal: 14, paddingVertical: 10, gap: 8 },
+  chip: {
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20,
+    borderWidth: 1.5, flexDirection: "row", alignItems: "center",
+  },
+  chipText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
+
+  // Create box
   createBox: {
     flexDirection: "row", alignItems: "center", gap: 10,
-    margin: 12, marginTop: 10, padding: 12, borderRadius: 16, borderWidth: 0.5,
+    margin: 14, padding: 12, borderRadius: 14, borderWidth: 0.5,
   },
-  createInput: { flex: 1, height: 40, borderRadius: 20, justifyContent: "center", paddingHorizontal: 14, borderWidth: 0.5 },
-  createPlaceholder: { fontSize: 14, fontFamily: "Inter_400Regular" },
-  createMediaBtn: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  feedLabel: { fontSize: 11, fontFamily: "Inter_600SemiBold", letterSpacing: 1, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 },
-  postCard: { paddingTop: 14 },
-  postHeader: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 14, paddingBottom: 10 },
+  createInput: {
+    flex: 1, height: 38, borderRadius: 19,
+    justifyContent: "center", paddingHorizontal: 14, borderWidth: 0.5,
+  },
+  createPlaceholder: { fontSize: 13, fontFamily: "Inter_400Regular" },
+  createMediaBtn: { width: 38, height: 38, borderRadius: 11, alignItems: "center", justifyContent: "center" },
+
+  // Category swim-lane strip
+  stripSection: { marginBottom: 20 },
+  stripHeader: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 16, marginBottom: 10,
+  },
+  stripTitleRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  stripIconBox: { width: 26, height: 26, borderRadius: 8, alignItems: "center", justifyContent: "center" },
+  stripLabel: { fontSize: 14, fontFamily: "Inter_700Bold", color: WARM.text },
+  seeAllBtn: { flexDirection: "row", alignItems: "center", gap: 2 },
+  seeAllText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  stripScroll: { paddingLeft: 16, paddingRight: 8, gap: 10 },
+
+  // Mini card (horizontal swim-lane)
+  miniCard: {
+    width: 172,
+    backgroundColor: WARM.surface,
+    borderRadius: 14,
+    borderLeftWidth: 3,
+    padding: 12,
+    shadowColor: "#1C1917",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
+    justifyContent: "space-between",
+    minHeight: 130,
+  },
+  miniCardHeader: { flexDirection: "row", alignItems: "center", gap: 7, marginBottom: 8 },
+  miniCardAuthor: { fontSize: 11, fontFamily: "Inter_600SemiBold", color: WARM.text, maxWidth: 110 },
+  miniCardBadge: { fontSize: 9, fontFamily: "Inter_400Regular", color: WARM.textTertiary },
+  miniCardContent: { fontSize: 12, fontFamily: "Inter_400Regular", color: WARM.textSecondary, lineHeight: 17, flex: 1 },
+  miniCardFooter: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 8 },
+  miniCardTime: { fontSize: 10, fontFamily: "Inter_400Regular", color: WARM.textTertiary },
+  miniCardStat: { fontSize: 10, fontFamily: "Inter_500Medium", color: WARM.textTertiary },
+
+  // Feed label
+  feedLabelRow: { paddingHorizontal: 16, paddingVertical: 10, borderTopWidth: 0.5 },
+  feedLabel: { fontSize: 11, fontFamily: "Inter_600SemiBold", letterSpacing: 0.8 },
+
+  // Post card (full-width feed)
+  postCard: {
+    marginHorizontal: 14,
+    borderRadius: 16,
+    borderWidth: 0.5,
+    borderLeftWidth: 3,
+    overflow: "hidden",
+    shadowColor: "#1C1917",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  postHeader: { flexDirection: "row", alignItems: "center", gap: 10, padding: 14, paddingBottom: 10 },
   postHeaderInfo: { flex: 1 },
   authorName: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  verifiedBadge: { width: 16, height: 16, borderRadius: 8, alignItems: "center", justifyContent: "center" },
-  postMeta: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 1 },
-  followBtn: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, borderWidth: 1 },
-  followBtnText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
-  postContent: { fontSize: 15, lineHeight: 22, fontFamily: "Inter_400Regular", paddingHorizontal: 14, paddingBottom: 12 },
-  mediaContainer: { position: "relative", marginBottom: 12 },
-  mediaSingle: { width: "100%", height: 300 },
+  verifiedBadge: { width: 15, height: 15, borderRadius: 8, alignItems: "center", justifyContent: "center" },
+  postMeta: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 2 },
+  catPill: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10 },
+  catPillText: { fontSize: 14 },
+  postContent: { fontSize: 14, lineHeight: 21, fontFamily: "Inter_400Regular", paddingHorizontal: 14, paddingBottom: 12 },
+  mediaContainer: { marginBottom: 12 },
+  mediaSingle: { width: "100%", height: 260 },
   mediaGrid: { flexDirection: "row", flexWrap: "wrap", gap: 2 },
   mediaGridItem: { borderRadius: 2 },
-  heartOverlay: { alignItems: "center", justifyContent: "center" },
   postActions: {
-    flexDirection: "row", alignItems: "center", paddingHorizontal: 14,
-    paddingVertical: 10, borderTopWidth: 0.5, gap: 2,
+    flexDirection: "row", alignItems: "center",
+    paddingHorizontal: 10, paddingVertical: 8,
+    borderTopWidth: 0.5, gap: 2,
   },
-  actionBtn: { flexDirection: "row", alignItems: "center", gap: 5, paddingVertical: 6, paddingHorizontal: 8, borderRadius: 10 },
+  actionBtn: { flexDirection: "row", alignItems: "center", gap: 5, paddingVertical: 5, paddingHorizontal: 8, borderRadius: 10 },
   actionCount: { fontSize: 13, fontFamily: "Inter_500Medium" },
-  skeletonCard: { padding: 14, borderRadius: 16, borderWidth: 0.5, marginHorizontal: 12 },
-  skeletonHeader: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 14 },
-  skeletonAvatar: { width: 42, height: 42, borderRadius: 21 },
-  skeletonLine: { height: 12, borderRadius: 6, marginBottom: 6 },
-  emptyState: { margin: 16, borderRadius: 20, overflow: "hidden" },
-  emptyGradient: { alignItems: "center", paddingVertical: 60, paddingHorizontal: 24, gap: 12, borderRadius: 20 },
-  emptyTitle: { fontSize: 20, fontFamily: "Inter_700Bold" },
-  emptyText: { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center" },
-  emptyBtn: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 24, marginTop: 8 },
-  emptyBtnText: { color: "#fff", fontSize: 15, fontFamily: "Inter_600SemiBold" },
+
+  // Empty state
+  emptyState: { alignItems: "center", paddingHorizontal: 32, paddingVertical: 52, gap: 10 },
+  emptyEmoji: { fontSize: 44, marginBottom: 4 },
+  emptyTitle: { fontSize: 18, fontFamily: "Inter_700Bold", textAlign: "center" },
+  emptyText: { fontSize: 13, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 20 },
+  emptyBtn: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    paddingHorizontal: 22, paddingVertical: 11,
+    borderRadius: 22, marginTop: 8,
+  },
+  emptyBtnText: { color: "#fff", fontSize: 14, fontFamily: "Inter_600SemiBold" },
 });
