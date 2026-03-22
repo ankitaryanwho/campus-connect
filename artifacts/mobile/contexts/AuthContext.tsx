@@ -2,8 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import createContextHook from "@nkzw/create-context-hook";
 import React, { useState, useEffect, useCallback } from "react";
 
-const DEPLOYED_API = "https://asset-manager-thakurankitedu.replit.app/api";
-const API_BASE = process.env.EXPO_PUBLIC_API_URL || DEPLOYED_API;
+const API_BASE = "https://asset-manager-thakurankitedu.replit.app/api";
 
 export interface User {
   id: string;

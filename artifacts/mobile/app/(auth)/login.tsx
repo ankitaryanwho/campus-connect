@@ -59,6 +59,7 @@ export default function LoginScreen() {
         <Text style={[styles.tagline, { color: C.textSecondary, fontFamily: "Inter_400Regular" }]}>
           Your campus, your community
         </Text>
+        <Text style={{ fontSize: 10, color: C.textTertiary, marginTop: 4 }}>v2.0-prod</Text>
       </View>
 
       <View style={styles.form}>
