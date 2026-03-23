@@ -1,5 +1,5 @@
 import { BlurView } from "expo-blur";
-import { isLiquidGlassAvailable } from "expo-glass-effect";
+import { checkLiquidGlass } from "@/lib/liquidGlass";
 import { Tabs } from "expo-router";
 import { Icon, Label, NativeTabs } from "expo-router/unstable-native-tabs";
 import { SymbolView } from "expo-symbols";
@@ -112,7 +112,7 @@ function ClassicTabLayout() {
 }
 
 export default function TabLayout() {
-  if (isLiquidGlassAvailable()) {
+  if (checkLiquidGlass()) {
     return <NativeTabLayout />;
   }
   return <ClassicTabLayout />;
