@@ -641,6 +641,24 @@ router.post("/tasks", authMiddleware, async (req, res) => {
   }
 });
 
+router.post("/tasks/:id/reject", authMiddleware, async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const { id } = req.params;
+    const rows = await db.select().from(tasksTable).where(eq(tasksTable.id, id)).limit(1);
+    if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
+    if (rows[0].posterId !== userId) { res.status(403).json({ error: "Only the poster can reject" }); return; }
+    await db.update(tasksTable)
+      .set({ status: "open", assignedToId: null })
+      .where(eq(tasksTable.id, id));
+    const updated = await db.select().from(tasksTable).where(eq(tasksTable.id, id)).limit(1);
+    res.json({ ...updated[0], poster: await safeUser(userId), assignedTo: null });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "ServerError", message: "Failed to reject task" });
+  }
+});
+
 router.post("/tasks/:taskId/apply", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;

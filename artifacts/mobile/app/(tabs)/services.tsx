@@ -1460,8 +1460,13 @@ export default function ServicesScreen() {
     mutationFn: async ({ id, action, tab }: { id: string; action: string; tab: string }) => {
       setPendingId(id);
       const res = await apiRequest(`${endpointMap[tab]}/${id}/${action}`, { method: "POST" });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.message || "Action failed");
+      // Safely parse response — server may return HTML on 404/500
+      const text = await res.text();
+      let json: any = {};
+      try { json = JSON.parse(text); } catch {
+        throw new Error(res.ok ? "Unexpected server response" : `Server error (${res.status})`);
+      }
+      if (!res.ok) throw new Error(json.message || json.error || "Action failed");
       return json;
     },
     onSuccess: (_, vars) => {
