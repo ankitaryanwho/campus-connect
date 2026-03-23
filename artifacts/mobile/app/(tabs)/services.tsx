@@ -1032,6 +1032,7 @@ function TaskCard({ item, C, onAction, currentUserId, isPending, hasApplied }: a
 function getStepsForItem(item: any): { labels: string[]; index: number } {
   const s = item.status;
   if (item._type === "assignments" || item._type === "certifications" || item._type === "projects") {
+    if (s === "rejected") return { labels: ["Booking Rejected by Provider"], index: 0 };
     const labels = ["Booked", "Accepted", "In Progress", "Completed", "Delivered"];
     const map: Record<string, number> = { booked: 0, accepted: 1, in_progress: 2, completed: 3, delivered: 4 };
     return { labels, index: map[s] ?? 0 };
@@ -1053,7 +1054,7 @@ function getStepsForItem(item: any): { labels: string[]; index: number } {
 
 // ─── Compact Active Job Card (matches Priority Lane mockup exactly) ────────────
 
-function CompactActiveCard({ item, C, user, onTrackPress, onAccept, onReject, isPending }: any) {
+function CompactActiveCard({ item, C, user, onTrackPress, onAccept, onReject, onDismissRejection, isPending }: any) {
   const meta = CAT_META[item._type] || CAT_META.tasks;
   const { labels, index } = getStepsForItem(item);
   const progress = labels.length > 1 ? index / (labels.length - 1) : 1;
@@ -1095,69 +1096,94 @@ function CompactActiveCard({ item, C, user, onTrackPress, onAccept, onReject, is
         </View>
       </View>
 
-      {/* ── Progress area ── */}
+      {/* ── Progress / Rejection area ── */}
       <View style={{ backgroundColor: C.surface, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 12 }}>
-        {/* Horizontal bar */}
-        <View style={{ height: 6, borderRadius: 3, backgroundColor: meta.bg, marginBottom: 12 }}>
-          <View style={{ height: 6, borderRadius: 3, backgroundColor: meta.accent, width: `${progress * 100}%` as any }} />
-        </View>
 
-        {/* Step dots */}
-        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-          {labels.map((label, i) => {
-            const done = i < index;
-            const active = i === index;
-            return (
-              <View key={i} style={{ alignItems: "center", flex: 1 }}>
-                {done ? (
-                  <Feather name="check-circle" size={15} color={meta.accent} />
-                ) : active ? (
-                  <View style={{ width: 15, height: 15, borderRadius: 8, borderWidth: 2, borderColor: meta.accent, alignItems: "center", justifyContent: "center" }}>
-                    <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: meta.accent }} />
-                  </View>
-                ) : (
-                  <Feather name="circle" size={15} color="#D6D3D1" />
-                )}
-                <Text
-                  numberOfLines={2}
-                  style={{ fontSize: 8, textAlign: "center", marginTop: 3, lineHeight: 10,
-                    color: active ? meta.accent : done ? "#78716C" : "#D6D3D1",
-                    fontFamily: active ? "Inter_700Bold" : "Inter_400Regular" }}
-                >{label}</Text>
+        {item.status === "rejected" ? (
+          /* ── Rejection notice ── */
+          <>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#FEF2F2", borderRadius: 10, padding: 10, marginBottom: 12 }}>
+              <Feather name="x-circle" size={20} color="#EF4444" />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 12, fontFamily: "Inter_700Bold", color: "#EF4444" }}>Booking Rejected by Provider</Text>
+                <Text style={{ fontSize: 10, color: "#78716C", marginTop: 2 }}>The provider declined your booking. You can dismiss and try another.</Text>
               </View>
-            );
-          })}
-        </View>
-
-        {/* CTA — Accept/Reject for provider awaiting acceptance; status button otherwise */}
-        {awaitingAcceptance ? (
-          <View style={{ marginTop: 12, flexDirection: "row", gap: 8 }}>
+            </View>
             <Pressable
-              style={{ flex: 1, paddingVertical: 9, borderRadius: 12, backgroundColor: "#10B981", alignItems: "center" }}
-              onPress={() => onAccept(item.id, item._type)}
+              style={{ paddingVertical: 9, borderRadius: 12, backgroundColor: "#EF4444", alignItems: "center" }}
+              onPress={() => onDismissRejection(item.id, item._type)}
               disabled={isPending}
             >
               {isPending
                 ? <ActivityIndicator size="small" color="#fff" />
-                : <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 12 }}>✓ Accept</Text>}
+                : <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 12 }}>Dismiss & Find Another Provider</Text>}
             </Pressable>
-            <Pressable
-              style={{ flex: 1, paddingVertical: 9, borderRadius: 12, backgroundColor: "#FEE2E2", alignItems: "center" }}
-              onPress={() => onReject(item.id, item._type)}
-              disabled={isPending}
-            >
-              <Text style={{ color: "#EF4444", fontFamily: "Inter_700Bold", fontSize: 12 }}>✕ Reject</Text>
-            </Pressable>
-          </View>
+          </>
         ) : (
-          <Pressable
-            style={{ marginTop: 12, paddingVertical: 9, borderRadius: 12, backgroundColor: meta.accent, alignItems: "center" }}
-            onPress={() => onTrackPress(item)}
-          >
-            <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 12 }}>
-              {isProvider ? "Update Order Status" : "Track Order →"}
-            </Text>
-          </Pressable>
+          <>
+            {/* Horizontal bar */}
+            <View style={{ height: 6, borderRadius: 3, backgroundColor: meta.bg, marginBottom: 12 }}>
+              <View style={{ height: 6, borderRadius: 3, backgroundColor: meta.accent, width: `${progress * 100}%` as any }} />
+            </View>
+
+            {/* Step dots */}
+            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+              {labels.map((label, i) => {
+                const done = i < index;
+                const active = i === index;
+                return (
+                  <View key={i} style={{ alignItems: "center", flex: 1 }}>
+                    {done ? (
+                      <Feather name="check-circle" size={15} color={meta.accent} />
+                    ) : active ? (
+                      <View style={{ width: 15, height: 15, borderRadius: 8, borderWidth: 2, borderColor: meta.accent, alignItems: "center", justifyContent: "center" }}>
+                        <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: meta.accent }} />
+                      </View>
+                    ) : (
+                      <Feather name="circle" size={15} color="#D6D3D1" />
+                    )}
+                    <Text
+                      numberOfLines={2}
+                      style={{ fontSize: 8, textAlign: "center", marginTop: 3, lineHeight: 10,
+                        color: active ? meta.accent : done ? "#78716C" : "#D6D3D1",
+                        fontFamily: active ? "Inter_700Bold" : "Inter_400Regular" }}
+                    >{label}</Text>
+                  </View>
+                );
+              })}
+            </View>
+
+            {/* CTA — Accept/Reject for provider awaiting acceptance; status button otherwise */}
+            {awaitingAcceptance ? (
+              <View style={{ marginTop: 12, flexDirection: "row", gap: 8 }}>
+                <Pressable
+                  style={{ flex: 1, paddingVertical: 9, borderRadius: 12, backgroundColor: "#10B981", alignItems: "center" }}
+                  onPress={() => onAccept(item.id, item._type)}
+                  disabled={isPending}
+                >
+                  {isPending
+                    ? <ActivityIndicator size="small" color="#fff" />
+                    : <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 12 }}>✓ Accept</Text>}
+                </Pressable>
+                <Pressable
+                  style={{ flex: 1, paddingVertical: 9, borderRadius: 12, backgroundColor: "#FEE2E2", alignItems: "center" }}
+                  onPress={() => onReject(item.id, item._type)}
+                  disabled={isPending}
+                >
+                  <Text style={{ color: "#EF4444", fontFamily: "Inter_700Bold", fontSize: 12 }}>✕ Reject</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <Pressable
+                style={{ marginTop: 12, paddingVertical: 9, borderRadius: 12, backgroundColor: meta.accent, alignItems: "center" }}
+                onPress={() => onTrackPress(item)}
+              >
+                <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 12 }}>
+                  {isProvider ? "Update Order Status" : "Track Order →"}
+                </Text>
+              </Pressable>
+            )}
+          </>
         )}
       </View>
     </View>
@@ -1429,10 +1455,13 @@ export default function ServicesScreen() {
 
   // Active job = ONLY the student who placed it OR the provider who accepted it
   // A third user with no relation to the order must never see it here.
+  // "rejected" items are also active for the original booker until they dismiss.
   const isActiveJob = (item: any) => {
     const idle = ["open", "pending", "delivered", "cancelled"];
     if (idle.includes(item.status)) return false;
     const uid = user?.id;
+    // Rejected bookings: only visible to the student who was rejected
+    if (item.status === "rejected") return item.bookedBy?.id === uid;
     const isStudent  = item.bookedBy?.id === uid || item.requester?.id === uid;
     const isProvider = item.poster?.id === uid || item.deliveryAgent?.id === uid || item.assignedTo?.id === uid;
     return isStudent || isProvider;
@@ -1456,6 +1485,9 @@ export default function ServicesScreen() {
     projects:       "/services/projects",
   };
 
+  const onDismissRejection = (id: string, tab: string) =>
+    actionMutation.mutate({ id, action: "dismiss-rejection", tab });
+
   const actionMutation = useMutation({
     mutationFn: async ({ id, action, tab }: { id: string; action: string; tab: string }) => {
       setPendingId(id);
@@ -1473,8 +1505,9 @@ export default function ServicesScreen() {
       queryClient.invalidateQueries({ queryKey: ["services", vars.tab] });
       const msgs: Record<string, string> = {
         book: "Booked successfully!", apply: "Application sent!",
-        accept: "Accepted!", reject: "Request declined", progress: "Status updated!", confirm: "Confirmed received! 🎉",
+        accept: "Accepted!", reject: "Request declined", progress: "Status updated!", confirm: "Confirmed received!",
         "mark-paid": "Marked as paid!", "confirm-payment": "Payment confirmed!", complete: "Marked as arrived!",
+        "dismiss-rejection": "Booking dismissed — you can book another provider.",
       };
       showToast(msgs[vars.action] || "Done!", "success");
     },
@@ -1632,6 +1665,7 @@ export default function ServicesScreen() {
                     onTrackPress={(i: any) => setSelectedItem(i)}
                     onAccept={(id: string, type: string) => actionMutation.mutate({ id, action: "accept", tab: type })}
                     onReject={(id: string, type: string) => actionMutation.mutate({ id, action: "reject", tab: type })}
+                    onDismissRejection={onDismissRejection}
                   />
                 ))}
               </View>

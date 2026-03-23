@@ -148,12 +148,29 @@ router.post("/assignments/:id/reject", authMiddleware, async (req, res) => {
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].posterId !== userId) { res.status(403).json({ error: "Only the poster can reject bookings" }); return; }
     if (rows[0].status !== "booked") { res.status(400).json({ error: "Must be in booked status to reject" }); return; }
+    const history = appendHistory(rows[0].statusHistory, "rejected");
+    // Keep bookedById so student can see the rejection — they dismiss to re-open
+    await db.update(assignmentsTable)
+      .set({ status: "rejected", statusHistory: history })
+      .where(eq(assignmentsTable.id, id));
+    res.json({ message: "Booking rejected" });
+  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to reject" }); }
+});
+
+router.post("/assignments/:id/dismiss-rejection", authMiddleware, async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const { id } = req.params;
+    const rows = await db.select().from(assignmentsTable).where(eq(assignmentsTable.id, id)).limit(1);
+    if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
+    if (rows[0].bookedById !== userId) { res.status(403).json({ error: "Only the original booker can dismiss" }); return; }
+    if (rows[0].status !== "rejected") { res.status(400).json({ error: "Not in rejected status" }); return; }
     const history = appendHistory(rows[0].statusHistory, "open");
     await db.update(assignmentsTable)
       .set({ status: "open", bookedById: null, statusHistory: history })
       .where(eq(assignmentsTable.id, id));
-    res.json({ message: "Booking rejected, listing is open again" });
-  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to reject" }); }
+    res.json({ message: "Rejection dismissed, listing is open again" });
+  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to dismiss" }); }
 });
 
 router.post("/assignments/:id/progress", authMiddleware, async (req, res) => {
@@ -294,12 +311,28 @@ router.post("/certifications/:id/reject", authMiddleware, async (req, res) => {
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].posterId !== userId) { res.status(403).json({ error: "Only the poster can reject bookings" }); return; }
     if (rows[0].status !== "booked") { res.status(400).json({ error: "Must be in booked status to reject" }); return; }
+    const history = appendHistory(rows[0].statusHistory, "rejected");
+    await db.update(certificationsTable)
+      .set({ status: "rejected", statusHistory: history })
+      .where(eq(certificationsTable.id, id));
+    res.json({ message: "Booking rejected" });
+  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to reject" }); }
+});
+
+router.post("/certifications/:id/dismiss-rejection", authMiddleware, async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const { id } = req.params;
+    const rows = await db.select().from(certificationsTable).where(eq(certificationsTable.id, id)).limit(1);
+    if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
+    if (rows[0].bookedById !== userId) { res.status(403).json({ error: "Only the original booker can dismiss" }); return; }
+    if (rows[0].status !== "rejected") { res.status(400).json({ error: "Not in rejected status" }); return; }
     const history = appendHistory(rows[0].statusHistory, "open");
     await db.update(certificationsTable)
       .set({ status: "open", bookedById: null, statusHistory: history })
       .where(eq(certificationsTable.id, id));
-    res.json({ message: "Booking rejected, listing is open again" });
-  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to reject" }); }
+    res.json({ message: "Rejection dismissed, listing is open again" });
+  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to dismiss" }); }
 });
 
 router.post("/certifications/:id/progress", authMiddleware, async (req, res) => {
@@ -802,10 +835,24 @@ router.post("/projects/:id/reject", authMiddleware, async (req, res) => {
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].posterId !== userId) { res.status(403).json({ error: "Only the poster can reject bookings" }); return; }
     if (rows[0].status !== "booked") { res.status(400).json({ error: "Must be in booked status to reject" }); return; }
+    const history = appendHistory(rows[0].statusHistory, "rejected");
+    await db.update(projectsTable).set({ status: "rejected", statusHistory: history }).where(eq(projectsTable.id, id));
+    res.json({ message: "Booking rejected" });
+  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to reject" }); }
+});
+
+router.post("/projects/:id/dismiss-rejection", authMiddleware, async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const { id } = req.params;
+    const rows = await db.select().from(projectsTable).where(eq(projectsTable.id, id)).limit(1);
+    if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
+    if (rows[0].bookedById !== userId) { res.status(403).json({ error: "Only the original booker can dismiss" }); return; }
+    if (rows[0].status !== "rejected") { res.status(400).json({ error: "Not in rejected status" }); return; }
     const history = appendHistory(rows[0].statusHistory, "open");
     await db.update(projectsTable).set({ status: "open", bookedById: null, statusHistory: history }).where(eq(projectsTable.id, id));
-    res.json({ message: "Booking rejected, listing is open again" });
-  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to reject" }); }
+    res.json({ message: "Rejection dismissed, listing is open again" });
+  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to dismiss" }); }
 });
 
 router.post("/projects/:id/progress", authMiddleware, async (req, res) => {
