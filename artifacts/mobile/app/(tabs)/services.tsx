@@ -60,7 +60,6 @@ const CAT_META: Record<string, { label: string; emoji: string; accent: string; b
   projects:       { label: "Projects",       emoji: "💼", accent: "#6366F1", bg: "#EEF2FF" },
 };
 
-const PROJECT_TYPES = ["web", "mobile", "data", "research", "design", "content", "other"];
 
 const GATE_LOCATIONS = ["Gate No 3 (prepaid only)", "Gate No 1 (prepaid only)"];
 const OUTLET_LOCATIONS = ["Southern Stories", "Hotspot", "Snapeats", "Kathi Junction", "Dominos", "Subway"];
@@ -412,15 +411,19 @@ function PostAssignmentModal({ visible, onClose, C, apiRequest, queryClient, sho
 
   const userYear = user?.year || 4;
   const userProgram = user?.program || "BCA";
-  const endpoint = serviceType === "certifications" ? "/services/certifications" : "/services/assignments";
+  const endpoint = serviceType === "certifications"
+    ? "/services/certifications"
+    : serviceType === "projects"
+      ? "/services/projects"
+      : "/services/assignments";
 
   const reset = () => { setTitle(""); setDescription(""); setPrice(""); setSubject(""); setTargetYear(user?.year || 1); };
 
-  const yearOptions = serviceType === "certifications"
+  const yearOptions = (serviceType === "certifications" || serviceType === "projects")
     ? [1, 2, 3, 4]
     : Array.from({ length: userYear }, (_, i) => i + 1);
 
-  const programOptions = serviceType === "certifications" ? PROGRAMS : [userProgram];
+  const programOptions = (serviceType === "certifications" || serviceType === "projects") ? PROGRAMS : [userProgram];
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -448,17 +451,23 @@ function PostAssignmentModal({ visible, onClose, C, apiRequest, queryClient, sho
         <View style={[FS.modalSheet, { backgroundColor: C.surface }]}>
           <View style={FS.modalHandle} />
           <View style={FS.modalHeader}>
-            <Text style={[FS.modalTitle, { color: C.text }]}>Post {serviceType === "certifications" ? "Certification" : "Assignment"}</Text>
+            <Text style={[FS.modalTitle, { color: C.text }]}>
+              {serviceType === "certifications" ? "Post Certification" : serviceType === "projects" ? "Post Project" : "Post Assignment"}
+            </Text>
             <Pressable onPress={() => { reset(); onClose(); }}><Feather name="x" size={22} color={C.text} /></Pressable>
           </View>
           <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-            <Field label="Title" value={title} onChange={setTitle} placeholder="e.g. BCA Sem 3 DBMS Assignment" C={C} icon="type" />
+            <Field
+              label="Title" value={title} onChange={setTitle}
+              placeholder={serviceType === "projects" ? "e.g. E-commerce Website for NGO" : serviceType === "certifications" ? "e.g. AWS Cloud Practitioner Prep" : "e.g. BCA Sem 3 DBMS Assignment"}
+              C={C} icon="type"
+            />
             <Field label="Description" value={description} onChange={setDescription} placeholder="What's included, timeline, format..." C={C} icon="align-left" multiline />
             <Field label="Price (₹)" value={price} onChange={setPrice} placeholder="e.g. 299" C={C} icon="credit-card" keyboard="numeric" />
             <Field label="Subject Name" value={subject} onChange={setSubject} placeholder="e.g. DBMS, Data Structures" C={C} icon="book" />
 
             <Text style={[FS.sectionLabel, { color: C.textSecondary }]}>
-              For Year {serviceType === "assignments" ? `(max: Year ${userYear})` : ""}
+              For Year {serviceType === "assignments" ? `(max: Year ${userYear})` : serviceType === "projects" ? "(all years)" : ""}
             </Text>
             <View style={FS.chipRow}>
               {yearOptions.map(y => (
@@ -673,67 +682,6 @@ function PostTaskModal({ visible, onClose, C, apiRequest, queryClient, showToast
   );
 }
 
-function PostProjectModal({ visible, onClose, C, apiRequest, queryClient, showToast }: any) {
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [price, setPrice] = useState("");
-  const [skills, setSkills] = useState("");
-  const [projectType, setProjectType] = useState("web");
-  const [techStack, setTechStack] = useState("");
-
-  const reset = () => { setTitle(""); setDescription(""); setPrice(""); setSkills(""); setProjectType("web"); setTechStack(""); };
-
-  const mutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("/services/projects", {
-        method: "POST",
-        body: JSON.stringify({ title, description, price: parseFloat(price), skills, projectType, techStack }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed to post");
-      return data;
-    },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["services", "projects"] }); reset(); onClose(); showToast("Project listing posted!", "success"); },
-    onError: (err: any) => showToast(err.message || "Failed to post project", "error"),
-  });
-
-  const isValid = title.trim() && description.trim() && price.trim() && parseFloat(price) > 0 && skills.trim();
-
-  return (
-    <Modal visible={visible} animationType="slide" transparent>
-      <View style={FS.modalOverlay}>
-        <View style={[FS.modalSheet, { backgroundColor: C.surface }]}>
-          <View style={FS.modalHandle} />
-          <View style={FS.modalHeader}>
-            <Text style={[FS.modalTitle, { color: C.text }]}>Post a Project</Text>
-            <Pressable onPress={() => { reset(); onClose(); }}><Feather name="x" size={22} color={C.text} /></Pressable>
-          </View>
-          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-            <Field label="Project Title" value={title} onChange={setTitle} placeholder="e.g. E-commerce Website for NGO" C={C} icon="briefcase" />
-            <Field label="Description" value={description} onChange={setDescription} placeholder="What needs to be built, expected deliverables..." C={C} icon="align-left" multiline />
-            <Field label="Budget (₹)" value={price} onChange={setPrice} placeholder="e.g. 2000" C={C} icon="credit-card" keyboard="numeric" />
-            <Field label="Required Skills" value={skills} onChange={setSkills} placeholder="e.g. React, Node.js, Figma" C={C} icon="zap" />
-            <Field label="Tech Stack (optional)" value={techStack} onChange={setTechStack} placeholder="e.g. React + Express + PostgreSQL" C={C} icon="layers" />
-            <Text style={[FS.sectionLabel, { color: C.textSecondary }]}>Project Type</Text>
-            <View style={FS.chipRow}>
-              {PROJECT_TYPES.map(pt => (
-                <Pressable key={pt} style={[FS.chip, { borderColor: C.border, backgroundColor: projectType === pt ? "#6366F1" : C.backgroundSecondary }]} onPress={() => setProjectType(pt)}>
-                  <Text style={[FS.chipText, { color: projectType === pt ? "#fff" : C.textSecondary }]}>{pt}</Text>
-                </Pressable>
-              ))}
-            </View>
-            <Pressable
-              style={[FS.submitBtn, { backgroundColor: "#6366F1" }, (!isValid || mutation.isPending) && { opacity: 0.5 }]}
-              onPress={() => mutation.mutate()} disabled={!isValid || mutation.isPending}>
-              {mutation.isPending ? <ActivityIndicator color="#fff" /> : <Text style={FS.submitBtnText}>Post Project</Text>}
-            </Pressable>
-          </ScrollView>
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
 // ─── Service Cards ─────────────────────────────────────────────────────────────
 
 function AcademicCard({ item, C, onAction, currentUserId, isPending, serviceType }: any) {
@@ -773,41 +721,21 @@ function AcademicCard({ item, C, onAction, currentUserId, isPending, serviceType
       </View>
       {item.description && <Text style={[CS.cardDesc, { color: C.textSecondary }]} numberOfLines={2}>{item.description}</Text>}
       <View style={CS.tagsRow}>
-        {/* Assignments / Certifications */}
-        {item.subject && serviceType !== "projects" && (
+        {item.subject && (
           <View style={[CS.tag, { backgroundColor: C.primaryLight }]}>
             <Feather name="book" size={10} color={C.primary} />
             <Text style={[CS.tagText, { color: C.primary }]}>{item.subject}</Text>
           </View>
         )}
-        {item.program && serviceType !== "projects" && (
+        {item.program && (
           <View style={[CS.tag, { backgroundColor: C.backgroundSecondary }]}>
             <Feather name="layers" size={10} color={C.textTertiary} />
             <Text style={[CS.tagText, { color: C.textSecondary }]}>{item.program}</Text>
           </View>
         )}
-        {item.targetYear && serviceType !== "projects" && (
+        {item.targetYear && (
           <View style={[CS.tag, { backgroundColor: C.backgroundSecondary }]}>
             <Text style={[CS.tagText, { color: C.textSecondary }]}>Year {item.targetYear}</Text>
-          </View>
-        )}
-        {/* Projects */}
-        {serviceType === "projects" && item.projectType && (
-          <View style={[CS.tag, { backgroundColor: "#EEF2FF" }]}>
-            <Feather name="briefcase" size={10} color="#6366F1" />
-            <Text style={[CS.tagText, { color: "#6366F1" }]}>{item.projectType}</Text>
-          </View>
-        )}
-        {serviceType === "projects" && item.skills && (
-          <View style={[CS.tag, { backgroundColor: C.backgroundSecondary }]}>
-            <Feather name="zap" size={10} color={C.textTertiary} />
-            <Text style={[CS.tagText, { color: C.textSecondary }]} numberOfLines={1}>{item.skills}</Text>
-          </View>
-        )}
-        {serviceType === "projects" && item.techStack && (
-          <View style={[CS.tag, { backgroundColor: C.backgroundSecondary }]}>
-            <Feather name="code" size={10} color={C.textTertiary} />
-            <Text style={[CS.tagText, { color: C.textSecondary }]} numberOfLines={1}>{item.techStack}</Text>
           </View>
         )}
       </View>
@@ -1237,9 +1165,7 @@ function CompactListingRow({ item, C, user, onBook, onAccept, onReject, onApply,
 
   const title = item.title || item.pickupLocation || "Delivery Request";
   const author = item.poster?.name || item.requester?.name || "—";
-  const subject = item._type === "projects"
-    ? (item.projectType || item.skills || null)
-    : (item.subject || item.category || (item._type === "deliveries" ? item.pickupLocation : null));
+  const subject = item.subject || item.category || (item._type === "deliveries" ? item.pickupLocation : null);
   const rawPrice = parseFloat(item.price || item.deliveryFee || "20");
   const price = `₹${rawPrice.toFixed(0)}`;
   const urgent = item._type === "deliveries" && item.status === "pending";
@@ -1742,7 +1668,7 @@ export default function ServicesScreen() {
       )}
 
       {/* ── Post Modals ── */}
-      {(postType === "assignments" || postType === "certifications") && (
+      {(postType === "assignments" || postType === "certifications" || postType === "projects") && (
         <PostAssignmentModal
           visible={showPostModal} onClose={() => setShowPostModal(false)}
           C={C} apiRequest={apiRequest} queryClient={queryClient} showToast={showToast}
@@ -1758,12 +1684,6 @@ export default function ServicesScreen() {
       )}
       {postType === "tasks" && (
         <PostTaskModal
-          visible={showPostModal} onClose={() => setShowPostModal(false)}
-          C={C} apiRequest={apiRequest} queryClient={queryClient} showToast={showToast}
-        />
-      )}
-      {postType === "projects" && (
-        <PostProjectModal
           visible={showPostModal} onClose={() => setShowPostModal(false)}
           C={C} apiRequest={apiRequest} queryClient={queryClient} showToast={showToast}
         />

@@ -719,15 +719,20 @@ router.post("/projects", authMiddleware, async (req, res) => {
       res.status(403).json({ error: "Forbidden", message: "Only service providers can post projects" });
       return;
     }
-    const { title, description, price, skills, projectType, techStack, deadline } = req.body;
-    if (!title || !description || !price || !skills || !projectType) {
-      res.status(400).json({ error: "ValidationError", message: "Title, description, price, skills and project type are required" });
+    const { title, description, price, subject, targetYear, program, deadline } = req.body;
+    if (!title || !description || !price || !subject || !targetYear || !program) {
+      res.status(400).json({ error: "ValidationError", message: "Title, description, price, subject, year and program are required" });
+      return;
+    }
+    const year = parseInt(targetYear);
+    if (year < 1 || year > 4) {
+      res.status(400).json({ error: "ValidationError", message: "Year must be 1-4" });
       return;
     }
     const id = generateId();
     await db.insert(projectsTable).values({
-      id, title, description, price: price.toString(), skills,
-      projectType, techStack: techStack || null,
+      id, title, description, price: price.toString(), subject,
+      program, targetYear: year,
       posterId: userId,
       deadline: deadline ? new Date(deadline) : null,
     });
