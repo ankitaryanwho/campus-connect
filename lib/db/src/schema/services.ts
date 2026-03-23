@@ -126,6 +126,27 @@ export const taskApplicationsTable = pgTable("task_applications", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// ─── Projects ─────────────────────────────────────────────────────────────────
+export const projectsTable = pgTable("projects", {
+  id: text("id").primaryKey(),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  price: numeric("price", { precision: 10, scale: 2 }).notNull(),
+  skills: text("skills").notNull(),
+  projectType: text("project_type").notNull().default("other"),
+  techStack: text("tech_stack"),
+  status: text("status").notNull().default("open"),
+  posterId: text("poster_id").notNull().references(() => usersTable.id),
+  bookedById: text("booked_by_id").references(() => usersTable.id),
+  deadline: timestamp("deadline"),
+  statusHistory: text("status_history"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertProjectSchema = createInsertSchema(projectsTable).omit({ createdAt: true, status: true });
+export type InsertProject = z.infer<typeof insertProjectSchema>;
+export type Project = typeof projectsTable.$inferSelect;
+
 // Keep for backward compat — not used in new UI
 export const coachingSessionsTable = pgTable("coaching_sessions", {
   id: text("id").primaryKey(),

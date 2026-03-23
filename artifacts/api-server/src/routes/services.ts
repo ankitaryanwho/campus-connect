@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import {
   assignmentsTable, certificationsTable, deliveriesTable, outletItemsTable,
-  tasksTable, taskApplicationsTable, usersTable,
+  tasksTable, taskApplicationsTable, projectsTable, usersTable,
 } from "@workspace/db/schema";
 import { eq, desc, sql, and } from "drizzle-orm";
 import { authMiddleware } from "../lib/auth";
@@ -691,6 +691,130 @@ router.get("/my-earnings", authMiddleware, async (req, res) => {
     console.error(err);
     res.json({ total: 0, today: 0, orders: 0 });
   }
+});
+
+// ─── Projects ─────────────────────────────────────────────────────────────────
+
+router.get("/projects", authMiddleware, async (req, res) => {
+  try {
+    const rows = await db.select().from(projectsTable).orderBy(desc(projectsTable.createdAt));
+    const formatted = await Promise.all(rows.map(async p => ({
+      ...p,
+      poster: await safeUser(p.posterId),
+      bookedBy: p.bookedById ? await safeUser(p.bookedById) : null,
+    })));
+    res.json({ projects: formatted });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "ServerError", message: "Failed to get projects" });
+  }
+});
+
+router.post("/projects", authMiddleware, async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const me = await currentUser(userId);
+    if (!me) { res.status(401).json({ error: "Unauthorized" }); return; }
+    if (me.role !== "provider") {
+      res.status(403).json({ error: "Forbidden", message: "Only service providers can post projects" });
+      return;
+    }
+    const { title, description, price, skills, projectType, techStack, deadline } = req.body;
+    if (!title || !description || !price || !skills || !projectType) {
+      res.status(400).json({ error: "ValidationError", message: "Title, description, price, skills and project type are required" });
+      return;
+    }
+    const id = generateId();
+    await db.insert(projectsTable).values({
+      id, title, description, price: price.toString(), skills,
+      projectType, techStack: techStack || null,
+      posterId: userId,
+      deadline: deadline ? new Date(deadline) : null,
+    });
+    const rows = await db.select().from(projectsTable).where(eq(projectsTable.id, id)).limit(1);
+    res.status(201).json({ ...rows[0], poster: await safeUser(userId), bookedBy: null });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "ServerError", message: "Failed to create project" });
+  }
+});
+
+router.post("/projects/:id/book", authMiddleware, async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const { id } = req.params;
+    const rows = await db.select().from(projectsTable).where(eq(projectsTable.id, id)).limit(1);
+    if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
+    if (rows[0].posterId === userId) { res.status(400).json({ error: "Cannot book your own listing" }); return; }
+    if (rows[0].status !== "open") { res.status(400).json({ error: "Already booked" }); return; }
+    const history = appendHistory(rows[0].statusHistory, "booked");
+    await db.update(projectsTable).set({ bookedById: userId, status: "booked", statusHistory: history }).where(eq(projectsTable.id, id));
+    const updated = await db.select().from(projectsTable).where(eq(projectsTable.id, id)).limit(1);
+    res.json({ ...updated[0], poster: await safeUser(updated[0].posterId), bookedBy: await safeUser(userId) });
+  } catch (err) {
+    res.status(500).json({ error: "ServerError", message: "Failed to book project" });
+  }
+});
+
+router.post("/projects/:id/accept", authMiddleware, async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const { id } = req.params;
+    const rows = await db.select().from(projectsTable).where(eq(projectsTable.id, id)).limit(1);
+    if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
+    if (rows[0].posterId !== userId) { res.status(403).json({ error: "Only the poster can accept bookings" }); return; }
+    if (rows[0].status !== "booked") { res.status(400).json({ error: "Must be in booked status" }); return; }
+    const history = appendHistory(rows[0].statusHistory, "accepted");
+    await db.update(projectsTable).set({ status: "accepted", statusHistory: history }).where(eq(projectsTable.id, id));
+    const updated = await db.select().from(projectsTable).where(eq(projectsTable.id, id)).limit(1);
+    res.json({ ...updated[0], poster: await safeUser(updated[0].posterId), bookedBy: updated[0].bookedById ? await safeUser(updated[0].bookedById) : null });
+  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to accept" }); }
+});
+
+router.post("/projects/:id/reject", authMiddleware, async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const { id } = req.params;
+    const rows = await db.select().from(projectsTable).where(eq(projectsTable.id, id)).limit(1);
+    if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
+    if (rows[0].posterId !== userId) { res.status(403).json({ error: "Only the poster can reject bookings" }); return; }
+    if (rows[0].status !== "booked") { res.status(400).json({ error: "Must be in booked status to reject" }); return; }
+    const history = appendHistory(rows[0].statusHistory, "open");
+    await db.update(projectsTable).set({ status: "open", bookedById: null, statusHistory: history }).where(eq(projectsTable.id, id));
+    res.json({ message: "Booking rejected, listing is open again" });
+  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to reject" }); }
+});
+
+router.post("/projects/:id/progress", authMiddleware, async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const { id } = req.params;
+    const rows = await db.select().from(projectsTable).where(eq(projectsTable.id, id)).limit(1);
+    if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
+    if (rows[0].posterId !== userId) { res.status(403).json({ error: "Only the poster can update status" }); return; }
+    const next: Record<string, string> = { accepted: "in_progress", in_progress: "completed" };
+    const nextStatus = next[rows[0].status];
+    if (!nextStatus) { res.status(400).json({ error: "Cannot advance from status: " + rows[0].status }); return; }
+    const history = appendHistory(rows[0].statusHistory, nextStatus);
+    await db.update(projectsTable).set({ status: nextStatus, statusHistory: history }).where(eq(projectsTable.id, id));
+    const updated = await db.select().from(projectsTable).where(eq(projectsTable.id, id)).limit(1);
+    res.json({ ...updated[0], poster: await safeUser(updated[0].posterId), bookedBy: updated[0].bookedById ? await safeUser(updated[0].bookedById) : null });
+  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to update status" }); }
+});
+
+router.post("/projects/:id/confirm", authMiddleware, async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const { id } = req.params;
+    const rows = await db.select().from(projectsTable).where(eq(projectsTable.id, id)).limit(1);
+    if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
+    if (rows[0].bookedById !== userId) { res.status(403).json({ error: "Only the student can confirm delivery" }); return; }
+    if (rows[0].status !== "completed") { res.status(400).json({ error: "Provider must mark as completed first" }); return; }
+    const history = appendHistory(rows[0].statusHistory, "delivered");
+    await db.update(projectsTable).set({ status: "delivered", statusHistory: history }).where(eq(projectsTable.id, id));
+    const updated = await db.select().from(projectsTable).where(eq(projectsTable.id, id)).limit(1);
+    res.json({ ...updated[0], poster: await safeUser(updated[0].posterId), bookedBy: await safeUser(userId) });
+  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to confirm delivery" }); }
 });
 
 export default router;

@@ -18,6 +18,7 @@ const SERVICE_TABS = [
   { id: "certifications", label: "Certifications", icon: "award", color: "#10B981" },
   { id: "deliveries", label: "Delivery", icon: "package", color: "#F59E0B" },
   { id: "tasks", label: "Tasks", icon: "check-square", color: "#EF4444" },
+  { id: "projects", label: "Projects", icon: "briefcase", color: "#6366F1" },
 ];
 
 // ─── Status Tracking Steps ──────────────────────────────────────────────────
@@ -56,7 +57,10 @@ const CAT_META: Record<string, { label: string; emoji: string; accent: string; b
   certifications: { label: "Certifications", emoji: "🏆", accent: "#10B981", bg: "#D1FAE5" },
   deliveries:     { label: "Delivery",       emoji: "🚀", accent: "#F59E0B", bg: "#FEF3C7" },
   tasks:          { label: "Tasks",          emoji: "⚡", accent: "#EF4444", bg: "#FEE2E2" },
+  projects:       { label: "Projects",       emoji: "💼", accent: "#6366F1", bg: "#EEF2FF" },
 };
+
+const PROJECT_TYPES = ["web", "mobile", "data", "research", "design", "content", "other"];
 
 const GATE_LOCATIONS = ["Gate No 3 (prepaid only)", "Gate No 1 (prepaid only)"];
 const OUTLET_LOCATIONS = ["Southern Stories", "Hotspot", "Snapeats", "Kathi Junction", "Dominos", "Subway"];
@@ -669,6 +673,67 @@ function PostTaskModal({ visible, onClose, C, apiRequest, queryClient, showToast
   );
 }
 
+function PostProjectModal({ visible, onClose, C, apiRequest, queryClient, showToast }: any) {
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [price, setPrice] = useState("");
+  const [skills, setSkills] = useState("");
+  const [projectType, setProjectType] = useState("web");
+  const [techStack, setTechStack] = useState("");
+
+  const reset = () => { setTitle(""); setDescription(""); setPrice(""); setSkills(""); setProjectType("web"); setTechStack(""); };
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("/services/projects", {
+        method: "POST",
+        body: JSON.stringify({ title, description, price: parseFloat(price), skills, projectType, techStack }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to post");
+      return data;
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["services", "projects"] }); reset(); onClose(); showToast("Project listing posted!", "success"); },
+    onError: (err: any) => showToast(err.message || "Failed to post project", "error"),
+  });
+
+  const isValid = title.trim() && description.trim() && price.trim() && parseFloat(price) > 0 && skills.trim();
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent>
+      <View style={FS.modalOverlay}>
+        <View style={[FS.modalSheet, { backgroundColor: C.surface }]}>
+          <View style={FS.modalHandle} />
+          <View style={FS.modalHeader}>
+            <Text style={[FS.modalTitle, { color: C.text }]}>Post a Project</Text>
+            <Pressable onPress={() => { reset(); onClose(); }}><Feather name="x" size={22} color={C.text} /></Pressable>
+          </View>
+          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <Field label="Project Title" value={title} onChange={setTitle} placeholder="e.g. E-commerce Website for NGO" C={C} icon="briefcase" />
+            <Field label="Description" value={description} onChange={setDescription} placeholder="What needs to be built, expected deliverables..." C={C} icon="align-left" multiline />
+            <Field label="Budget (₹)" value={price} onChange={setPrice} placeholder="e.g. 2000" C={C} icon="credit-card" keyboard="numeric" />
+            <Field label="Required Skills" value={skills} onChange={setSkills} placeholder="e.g. React, Node.js, Figma" C={C} icon="zap" />
+            <Field label="Tech Stack (optional)" value={techStack} onChange={setTechStack} placeholder="e.g. React + Express + PostgreSQL" C={C} icon="layers" />
+            <Text style={[FS.sectionLabel, { color: C.textSecondary }]}>Project Type</Text>
+            <View style={FS.chipRow}>
+              {PROJECT_TYPES.map(pt => (
+                <Pressable key={pt} style={[FS.chip, { borderColor: C.border, backgroundColor: projectType === pt ? "#6366F1" : C.backgroundSecondary }]} onPress={() => setProjectType(pt)}>
+                  <Text style={[FS.chipText, { color: projectType === pt ? "#fff" : C.textSecondary }]}>{pt}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <Pressable
+              style={[FS.submitBtn, { backgroundColor: "#6366F1" }, (!isValid || mutation.isPending) && { opacity: 0.5 }]}
+              onPress={() => mutation.mutate()} disabled={!isValid || mutation.isPending}>
+              {mutation.isPending ? <ActivityIndicator color="#fff" /> : <Text style={FS.submitBtnText}>Post Project</Text>}
+            </Pressable>
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 // ─── Service Cards ─────────────────────────────────────────────────────────────
 
 function AcademicCard({ item, C, onAction, currentUserId, isPending, serviceType }: any) {
@@ -676,7 +741,7 @@ function AcademicCard({ item, C, onAction, currentUserId, isPending, serviceType
   const isBooker = item.bookedBy?.id === currentUserId;
   const isBooked = item.bookedById != null;
   const canBook = !isOwner && !isBooked && item.status === "open";
-  const accentColor = serviceType === "certifications" ? "#10B981" : "#5B4FE8";
+  const accentColor = serviceType === "certifications" ? "#10B981" : serviceType === "projects" ? "#6366F1" : "#5B4FE8";
   const showTracker = item.status !== "open" && isBooked;
 
   // Provider action buttons
@@ -708,21 +773,41 @@ function AcademicCard({ item, C, onAction, currentUserId, isPending, serviceType
       </View>
       {item.description && <Text style={[CS.cardDesc, { color: C.textSecondary }]} numberOfLines={2}>{item.description}</Text>}
       <View style={CS.tagsRow}>
-        {item.subject && (
+        {/* Assignments / Certifications */}
+        {item.subject && serviceType !== "projects" && (
           <View style={[CS.tag, { backgroundColor: C.primaryLight }]}>
             <Feather name="book" size={10} color={C.primary} />
             <Text style={[CS.tagText, { color: C.primary }]}>{item.subject}</Text>
           </View>
         )}
-        {item.program && (
+        {item.program && serviceType !== "projects" && (
           <View style={[CS.tag, { backgroundColor: C.backgroundSecondary }]}>
             <Feather name="layers" size={10} color={C.textTertiary} />
             <Text style={[CS.tagText, { color: C.textSecondary }]}>{item.program}</Text>
           </View>
         )}
-        {item.targetYear && (
+        {item.targetYear && serviceType !== "projects" && (
           <View style={[CS.tag, { backgroundColor: C.backgroundSecondary }]}>
             <Text style={[CS.tagText, { color: C.textSecondary }]}>Year {item.targetYear}</Text>
+          </View>
+        )}
+        {/* Projects */}
+        {serviceType === "projects" && item.projectType && (
+          <View style={[CS.tag, { backgroundColor: "#EEF2FF" }]}>
+            <Feather name="briefcase" size={10} color="#6366F1" />
+            <Text style={[CS.tagText, { color: "#6366F1" }]}>{item.projectType}</Text>
+          </View>
+        )}
+        {serviceType === "projects" && item.skills && (
+          <View style={[CS.tag, { backgroundColor: C.backgroundSecondary }]}>
+            <Feather name="zap" size={10} color={C.textTertiary} />
+            <Text style={[CS.tagText, { color: C.textSecondary }]} numberOfLines={1}>{item.skills}</Text>
+          </View>
+        )}
+        {serviceType === "projects" && item.techStack && (
+          <View style={[CS.tag, { backgroundColor: C.backgroundSecondary }]}>
+            <Feather name="code" size={10} color={C.textTertiary} />
+            <Text style={[CS.tagText, { color: C.textSecondary }]} numberOfLines={1}>{item.techStack}</Text>
           </View>
         )}
       </View>
@@ -1019,7 +1104,7 @@ function TaskCard({ item, C, onAction, currentUserId, isPending, hasApplied }: a
 
 function getStepsForItem(item: any): { labels: string[]; index: number } {
   const s = item.status;
-  if (item._type === "assignments" || item._type === "certifications") {
+  if (item._type === "assignments" || item._type === "certifications" || item._type === "projects") {
     const labels = ["Booked", "Accepted", "In Progress", "Completed", "Delivered"];
     const map: Record<string, number> = { booked: 0, accepted: 1, in_progress: 2, completed: 3, delivered: 4 };
     return { labels, index: map[s] ?? 0 };
@@ -1152,7 +1237,9 @@ function CompactListingRow({ item, C, user, onBook, onAccept, onReject, onApply,
 
   const title = item.title || item.pickupLocation || "Delivery Request";
   const author = item.poster?.name || item.requester?.name || "—";
-  const subject = item.subject || item.category || (item._type === "deliveries" ? item.pickupLocation : null);
+  const subject = item._type === "projects"
+    ? (item.projectType || item.skills || null)
+    : (item.subject || item.category || (item._type === "deliveries" ? item.pickupLocation : null));
   const rawPrice = parseFloat(item.price || item.deliveryFee || "20");
   const price = `₹${rawPrice.toFixed(0)}`;
   const urgent = item._type === "deliveries" && item.status === "pending";
@@ -1162,9 +1249,9 @@ function CompactListingRow({ item, C, user, onBook, onAccept, onReject, onApply,
   const canAcceptReject = isProviderRole && !isOwnListing && item._type === "deliveries" && item.status === "pending";
   // Tasks: provider (not poster) can Apply
   const canApply = isProviderRole && !isOwnListing && item._type === "tasks" && item.status === "open";
-  // Assignments/Certifications: student (not poster) can Book
+  // Assignments/Certifications/Projects: student (not poster) can Book
   const canBook = !isProviderRole && !isOwnListing && !item.bookedById && item.status === "open"
-    && (item._type === "assignments" || item._type === "certifications");
+    && (item._type === "assignments" || item._type === "certifications" || item._type === "projects");
 
   const timeLabel = (() => {
     if (!item.createdAt) return null;
@@ -1278,7 +1365,7 @@ function DetailModal({ item, C, user, onClose, onAction, onRate, isPending }: an
             <Pressable onPress={onClose}><Feather name="x" size={22} color={C.text} /></Pressable>
           </View>
           <ScrollView showsVerticalScrollIndicator={false}>
-            {(type === "assignments" || type === "certifications") && (
+            {(type === "assignments" || type === "certifications" || type === "projects") && (
               <AcademicCard item={item} C={C} serviceType={type} currentUserId={user?.id} onAction={onAction} isPending={isPending} />
             )}
             {type === "deliveries" && (
@@ -1302,6 +1389,7 @@ const CHIPS = [
   { id: "certifications", label: "Certifications", emoji: "🏆", accent: "#10B981", bg: "#D1FAE5" },
   { id: "deliveries",     label: "Delivery",       emoji: "🚀", accent: "#F59E0B", bg: "#FEF3C7" },
   { id: "tasks",          label: "Tasks",          emoji: "⚡", accent: "#EF4444", bg: "#FEE2E2" },
+  { id: "projects",       label: "Projects",       emoji: "💼", accent: "#6366F1", bg: "#EEF2FF" },
 ];
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
@@ -1325,6 +1413,7 @@ export default function ServicesScreen() {
   const canPost = (cat: string) => {
     if (cat === "deliveries") return user?.role === "student";
     if (cat === "tasks") return true;
+    if (cat === "projects") return isProvider;
     return isProvider && (userServices.includes(cat) || userServices.length === 0);
   };
 
@@ -1342,6 +1431,7 @@ export default function ServicesScreen() {
   const { data: certData,   isLoading: cLoading, refetch: rC } = useQuery(mkQuery("certifications", "/services/certifications"));
   const { data: delivData,  isLoading: dLoading, refetch: rD } = useQuery(mkQuery("deliveries", "/services/deliveries"));
   const { data: taskData,   isLoading: tLoading, refetch: rT } = useQuery(mkQuery("tasks", "/services/tasks"));
+  const { data: projData,   isLoading: pLoading, refetch: rP } = useQuery(mkQuery("projects", "/services/projects"));
 
   const { data: outletData } = useQuery({
     queryKey: ["outlet-items"],
@@ -1354,20 +1444,22 @@ export default function ServicesScreen() {
   });
   const outletItems = outletData?.items || [];
 
-  const isLoading = aLoading || cLoading || dLoading || tLoading;
+  const isLoading = aLoading || cLoading || dLoading || tLoading || pLoading;
 
   // Tag each item with its _type so renderCard can dispatch correctly
   const assignments    = (assignData?.assignments    || []).map((i: any) => ({ ...i, _type: "assignments" }));
   const certifications = (certData?.certifications   || []).map((i: any) => ({ ...i, _type: "certifications" }));
   const deliveries     = (delivData?.deliveries       || []).map((i: any) => ({ ...i, _type: "deliveries" }));
   const tasks          = (taskData?.tasks             || []).map((i: any) => ({ ...i, _type: "tasks" }));
-  const allItems       = [...assignments, ...certifications, ...deliveries, ...tasks];
+  const projects       = (projData?.projects          || []).map((i: any) => ({ ...i, _type: "projects" }));
+  const allItems       = [...assignments, ...certifications, ...deliveries, ...tasks, ...projects];
 
   const getItemsForCat = (cat: string) => {
     if (cat === "assignments")    return assignments;
     if (cat === "certifications") return certifications;
     if (cat === "deliveries")     return deliveries;
     if (cat === "tasks")          return tasks;
+    if (cat === "projects")       return projects;
     return allItems;
   };
 
@@ -1397,6 +1489,7 @@ export default function ServicesScreen() {
     certifications: "/services/certifications",
     deliveries:     "/services/deliveries",
     tasks:          "/services/tasks",
+    projects:       "/services/projects",
   };
 
   const actionMutation = useMutation({
@@ -1434,7 +1527,7 @@ export default function ServicesScreen() {
   // ── Render a single item card ──────────────────────────────────────────────
   const renderCard = useCallback((item: any) => {
     const type = item._type;
-    if (type === "assignments" || type === "certifications") {
+    if (type === "assignments" || type === "certifications" || type === "projects") {
       return (
         <AcademicCard
           key={item.id} item={item} C={C} serviceType={type} currentUserId={user?.id}
@@ -1467,7 +1560,7 @@ export default function ServicesScreen() {
   }, [C, user, pendingId, actionMutation.isPending, rateMutation.isPending]);
 
   // ── Post helpers ───────────────────────────────────────────────────────────
-  const postableCats = ["assignments", "certifications", "deliveries", "tasks"].filter(canPost);
+  const postableCats = ["assignments", "certifications", "deliveries", "tasks", "projects"].filter(canPost);
   const openPostFor = (type: string) => { setPostType(type); setShowPostModal(true); };
   const handleFAB = () => {
     const target = activeCat !== "all" ? activeCat : postableCats.length === 1 ? postableCats[0] : "tasks";
@@ -1665,6 +1758,12 @@ export default function ServicesScreen() {
       )}
       {postType === "tasks" && (
         <PostTaskModal
+          visible={showPostModal} onClose={() => setShowPostModal(false)}
+          C={C} apiRequest={apiRequest} queryClient={queryClient} showToast={showToast}
+        />
+      )}
+      {postType === "projects" && (
+        <PostProjectModal
           visible={showPostModal} onClose={() => setShowPostModal(false)}
           C={C} apiRequest={apiRequest} queryClient={queryClient} showToast={showToast}
         />
