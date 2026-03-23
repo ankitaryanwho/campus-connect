@@ -1105,13 +1105,15 @@ function CompactActiveCard({ item, C, user, onTrackPress }: any) {
           })}
         </View>
 
-        {/* CTA — differs by role */}
+        {/* CTA — differs by role and acceptance state */}
         <Pressable
           style={{ marginTop: 12, paddingVertical: 9, borderRadius: 12, backgroundColor: meta.accent, alignItems: "center" }}
           onPress={() => onTrackPress(item)}
         >
           <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 12 }}>
-            {isProvider ? "Update Order Status" : "Track Order →"}
+            {isProvider
+              ? (["booked", "pending"].includes(item.status) ? "Review Booking" : "Update Order Status")
+              : "Track Order →"}
           </Text>
         </Pressable>
       </View>
@@ -1121,15 +1123,27 @@ function CompactActiveCard({ item, C, user, onTrackPress }: any) {
 
 // ─── Compact Open Listing Row (matches Priority Lane mockup exactly) ───────────
 
-function CompactListingRow({ item, C, onBook, isPending, isLast }: any) {
+function CompactListingRow({ item, C, user, onBook, onAccept, onReject, onApply, isPending, isLast }: any) {
   const meta = CAT_META[item._type] || CAT_META.tasks;
+  const uid = user?.id;
+  const isProviderRole = user?.role === "provider";
+  const isOwnListing = item.poster?.id === uid || item.requester?.id === uid;
+
   const title = item.title || item.pickupLocation || "Delivery Request";
   const author = item.poster?.name || item.requester?.name || "—";
   const subject = item.subject || item.category || (item._type === "deliveries" ? item.pickupLocation : null);
   const rawPrice = parseFloat(item.price || item.deliveryFee || "20");
   const price = `₹${rawPrice.toFixed(0)}`;
   const urgent = item._type === "deliveries" && item.status === "pending";
-  const canBook = !item.bookedById && item.status === "open";
+
+  // ── Determine which action(s) to show ──
+  // Deliveries: provider (not requester) can Accept + Reject
+  const canAcceptReject = isProviderRole && !isOwnListing && item._type === "deliveries" && item.status === "pending";
+  // Tasks: provider (not poster) can Apply
+  const canApply = isProviderRole && !isOwnListing && item._type === "tasks" && item.status === "open";
+  // Assignments/Certifications: student (not poster) can Book
+  const canBook = !isProviderRole && !isOwnListing && !item.bookedById && item.status === "open"
+    && (item._type === "assignments" || item._type === "certifications");
 
   const timeLabel = (() => {
     if (!item.createdAt) return null;
@@ -1173,9 +1187,46 @@ function CompactListingRow({ item, C, onBook, isPending, isLast }: any) {
         ) : null}
       </View>
 
-      {/* Price + Book */}
+      {/* Price + action buttons */}
       <View style={{ alignItems: "flex-end", gap: 5 }}>
         <Text style={{ fontSize: 15, fontFamily: "Inter_800ExtraBold", color: meta.accent }}>{price}</Text>
+
+        {/* Provider: Accept + Reject for deliveries */}
+        {canAcceptReject && (
+          <View style={{ flexDirection: "row", gap: 5 }}>
+            <Pressable
+              style={{ backgroundColor: "#D1FAE5", paddingHorizontal: 9, paddingVertical: 4, borderRadius: 8 }}
+              onPress={() => onAccept(item.id, item._type)}
+              disabled={isPending}
+            >
+              {isPending
+                ? <ActivityIndicator size="small" color="#10B981" />
+                : <Text style={{ color: "#10B981", fontSize: 10, fontFamily: "Inter_700Bold" }}>Accept</Text>}
+            </Pressable>
+            <Pressable
+              style={{ backgroundColor: "#FEE2E2", paddingHorizontal: 9, paddingVertical: 4, borderRadius: 8 }}
+              onPress={() => onReject(item.id, item._type)}
+              disabled={isPending}
+            >
+              <Text style={{ color: "#EF4444", fontSize: 10, fontFamily: "Inter_700Bold" }}>Reject</Text>
+            </Pressable>
+          </View>
+        )}
+
+        {/* Provider: Apply for tasks */}
+        {canApply && (
+          <Pressable
+            style={{ backgroundColor: meta.bg, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 }}
+            onPress={() => onApply(item.id, item._type)}
+            disabled={isPending}
+          >
+            {isPending
+              ? <ActivityIndicator size="small" color={meta.accent} />
+              : <Text style={{ color: meta.accent, fontSize: 10, fontFamily: "Inter_700Bold" }}>Apply</Text>}
+          </Pressable>
+        )}
+
+        {/* Student: Book assignments/certifications */}
         {canBook && (
           <Pressable
             style={{ backgroundColor: meta.bg, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 }}
@@ -1339,7 +1390,7 @@ export default function ServicesScreen() {
       queryClient.invalidateQueries({ queryKey: ["services", vars.tab] });
       const msgs: Record<string, string> = {
         book: "Booked successfully!", apply: "Application sent!",
-        accept: "Accepted!", progress: "Status updated!", confirm: "Confirmed received! 🎉",
+        accept: "Accepted!", reject: "Request declined", progress: "Status updated!", confirm: "Confirmed received! 🎉",
         "mark-paid": "Marked as paid!", "confirm-payment": "Payment confirmed!", complete: "Marked as arrived!",
       };
       showToast(msgs[vars.action] || "Done!", "success");
@@ -1520,9 +1571,13 @@ export default function ServicesScreen() {
                     key={item.id}
                     item={item}
                     C={C}
+                    user={user}
                     isLast={i === openListings.length - 1}
                     isPending={pendingId === item.id && actionMutation.isPending}
                     onBook={(id: string, type: string) => actionMutation.mutate({ id, action: "book", tab: type })}
+                    onAccept={(id: string, type: string) => actionMutation.mutate({ id, action: "accept", tab: type })}
+                    onReject={(id: string, type: string) => actionMutation.mutate({ id, action: "reject", tab: type })}
+                    onApply={(id: string, type: string) => actionMutation.mutate({ id, action: "apply", tab: type })}
                   />
                 ))}
               </View>
