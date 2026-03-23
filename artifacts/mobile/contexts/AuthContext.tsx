@@ -2,10 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import createContextHook from "@nkzw/create-context-hook";
 import React, { useState, useEffect, useCallback } from "react";
 
-const DEV_DOMAIN = process.env.EXPO_PUBLIC_DOMAIN;
-const API_BASE = DEV_DOMAIN
-  ? `https://${DEV_DOMAIN}/api`
-  : "https://asset-manager-thakurankitedu.replit.app/api";
+const API_BASE = "https://asset-manager-thakurankitedu.replit.app/api";
 
 export interface User {
   id: string;
