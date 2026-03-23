@@ -140,6 +140,22 @@ router.post("/assignments/:id/accept", authMiddleware, async (req, res) => {
   } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to accept" }); }
 });
 
+router.post("/assignments/:id/reject", authMiddleware, async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const { id } = req.params;
+    const rows = await db.select().from(assignmentsTable).where(eq(assignmentsTable.id, id)).limit(1);
+    if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
+    if (rows[0].posterId !== userId) { res.status(403).json({ error: "Only the poster can reject bookings" }); return; }
+    if (rows[0].status !== "booked") { res.status(400).json({ error: "Must be in booked status to reject" }); return; }
+    const history = appendHistory(rows[0].statusHistory, "open");
+    await db.update(assignmentsTable)
+      .set({ status: "open", bookedById: null, statusHistory: history })
+      .where(eq(assignmentsTable.id, id));
+    res.json({ message: "Booking rejected, listing is open again" });
+  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to reject" }); }
+});
+
 router.post("/assignments/:id/progress", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
@@ -268,6 +284,22 @@ router.post("/certifications/:id/accept", authMiddleware, async (req, res) => {
     const updated = await db.select().from(certificationsTable).where(eq(certificationsTable.id, id)).limit(1);
     res.json({ ...updated[0], poster: await safeUser(updated[0].posterId), bookedBy: updated[0].bookedById ? await safeUser(updated[0].bookedById) : null });
   } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to accept" }); }
+});
+
+router.post("/certifications/:id/reject", authMiddleware, async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const { id } = req.params;
+    const rows = await db.select().from(certificationsTable).where(eq(certificationsTable.id, id)).limit(1);
+    if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
+    if (rows[0].posterId !== userId) { res.status(403).json({ error: "Only the poster can reject bookings" }); return; }
+    if (rows[0].status !== "booked") { res.status(400).json({ error: "Must be in booked status to reject" }); return; }
+    const history = appendHistory(rows[0].statusHistory, "open");
+    await db.update(certificationsTable)
+      .set({ status: "open", bookedById: null, statusHistory: history })
+      .where(eq(certificationsTable.id, id));
+    res.json({ message: "Booking rejected, listing is open again" });
+  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to reject" }); }
 });
 
 router.post("/certifications/:id/progress", authMiddleware, async (req, res) => {

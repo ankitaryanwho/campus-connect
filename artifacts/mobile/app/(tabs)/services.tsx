@@ -1041,13 +1041,15 @@ function getStepsForItem(item: any): { labels: string[]; index: number } {
 
 // ─── Compact Active Job Card (matches Priority Lane mockup exactly) ────────────
 
-function CompactActiveCard({ item, C, user, onTrackPress }: any) {
+function CompactActiveCard({ item, C, user, onTrackPress, onAccept, onReject, isPending }: any) {
   const meta = CAT_META[item._type] || CAT_META.tasks;
   const { labels, index } = getStepsForItem(item);
   const progress = labels.length > 1 ? index / (labels.length - 1) : 1;
 
   const uid = user?.id;
   const isProvider = item.poster?.id === uid || item.deliveryAgent?.id === uid || item.assignedTo?.id === uid;
+  // Provider has not yet accepted — needs to review the booking
+  const awaitingAcceptance = isProvider && ["booked", "pending"].includes(item.status);
 
   const title = item.title || item.pickupLocation || "Delivery Request";
   const provider = item.poster?.name || item.deliveryAgent?.name || item.assignedTo?.name || "—";
@@ -1105,17 +1107,36 @@ function CompactActiveCard({ item, C, user, onTrackPress }: any) {
           })}
         </View>
 
-        {/* CTA — differs by role and acceptance state */}
-        <Pressable
-          style={{ marginTop: 12, paddingVertical: 9, borderRadius: 12, backgroundColor: meta.accent, alignItems: "center" }}
-          onPress={() => onTrackPress(item)}
-        >
-          <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 12 }}>
-            {isProvider
-              ? (["booked", "pending"].includes(item.status) ? "Review Booking" : "Update Order Status")
-              : "Track Order →"}
-          </Text>
-        </Pressable>
+        {/* CTA — Accept/Reject for provider awaiting acceptance; status button otherwise */}
+        {awaitingAcceptance ? (
+          <View style={{ marginTop: 12, flexDirection: "row", gap: 8 }}>
+            <Pressable
+              style={{ flex: 1, paddingVertical: 9, borderRadius: 12, backgroundColor: "#10B981", alignItems: "center" }}
+              onPress={() => onAccept(item.id, item._type)}
+              disabled={isPending}
+            >
+              {isPending
+                ? <ActivityIndicator size="small" color="#fff" />
+                : <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 12 }}>✓ Accept</Text>}
+            </Pressable>
+            <Pressable
+              style={{ flex: 1, paddingVertical: 9, borderRadius: 12, backgroundColor: "#FEE2E2", alignItems: "center" }}
+              onPress={() => onReject(item.id, item._type)}
+              disabled={isPending}
+            >
+              <Text style={{ color: "#EF4444", fontFamily: "Inter_700Bold", fontSize: 12 }}>✕ Reject</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <Pressable
+            style={{ marginTop: 12, paddingVertical: 9, borderRadius: 12, backgroundColor: meta.accent, alignItems: "center" }}
+            onPress={() => onTrackPress(item)}
+          >
+            <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 12 }}>
+              {isProvider ? "Update Order Status" : "Track Order →"}
+            </Text>
+          </Pressable>
+        )}
       </View>
     </View>
   );
@@ -1542,7 +1563,10 @@ export default function ServicesScreen() {
                     item={item}
                     C={C}
                     user={user}
+                    isPending={pendingId === item.id && actionMutation.isPending}
                     onTrackPress={(i: any) => setSelectedItem(i)}
+                    onAccept={(id: string, type: string) => actionMutation.mutate({ id, action: "accept", tab: type })}
+                    onReject={(id: string, type: string) => actionMutation.mutate({ id, action: "reject", tab: type })}
                   />
                 ))}
               </View>
