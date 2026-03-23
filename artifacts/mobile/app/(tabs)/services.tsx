@@ -1065,7 +1065,12 @@ function CompactActiveCard({ item, C, user, onTrackPress, onAccept, onReject, is
   const awaitingAcceptance = isProvider && ["booked", "pending"].includes(item.status);
 
   const title = item.title || item.pickupLocation || "Delivery Request";
-  const provider = item.poster?.name || item.deliveryAgent?.name || item.assignedTo?.name || "—";
+  // Who placed/requested the order (student side)
+  const studentName = item.bookedBy?.name || item.requester?.name || null;
+  // Who is handling the order (provider/agent side)
+  const agentName = item.poster?.name || item.deliveryAgent?.name || item.assignedTo?.name || null;
+  // Short order ID
+  const orderId = `#${item.id.substring(0, 8).toUpperCase()}`;
   const rawPrice = item._type === "deliveries"
     ? (item.subtotal ? parseFloat(item.subtotal) + 30 : parseFloat(item.deliveryFee || "20"))
     : parseFloat(item.price || "0");
@@ -1077,13 +1082,18 @@ function CompactActiveCard({ item, C, user, onTrackPress, onAccept, onReject, is
       <View style={{ backgroundColor: meta.bg, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 8, flexDirection: "row", alignItems: "center", gap: 8 }}>
         <Text style={{ fontSize: 18 }}>{meta.emoji}</Text>
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 12, fontFamily: "Inter_700Bold", color: "#1C1917" }} numberOfLines={1}>{title}</Text>
-          <Text style={{ fontSize: 10, color: "#78716C" }}>
-            {"by "}{provider}{"  ·  "}
-            <Text style={{ fontFamily: "Inter_600SemiBold", color: meta.accent }}>In Progress</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+            <Text style={{ fontSize: 12, fontFamily: "Inter_700Bold", color: "#1C1917", flex: 1 }} numberOfLines={1}>{title}</Text>
+            <Text style={{ fontSize: 9, fontFamily: "Inter_500Medium", color: "#A8A29E" }}>{orderId}</Text>
+          </View>
+          <Text style={{ fontSize: 10, color: "#78716C", marginTop: 1 }}>
+            {studentName ? `Order by ${studentName}` : ""}
           </Text>
         </View>
-        {price ? <Text style={{ fontSize: 15, fontFamily: "Inter_800ExtraBold", color: meta.accent }}>{price}</Text> : null}
+        <View style={{ alignItems: "flex-end", gap: 2 }}>
+          {price ? <Text style={{ fontSize: 15, fontFamily: "Inter_800ExtraBold", color: meta.accent }}>{price}</Text> : null}
+          {agentName ? <Text style={{ fontSize: 9, color: "#78716C" }}>Agent {agentName}</Text> : null}
+        </View>
       </View>
 
       {/* ── Progress area ── */}
@@ -1164,11 +1174,15 @@ function CompactListingRow({ item, C, user, onBook, onAccept, onReject, onApply,
   const isOwnListing = item.poster?.id === uid || item.requester?.id === uid;
 
   const title = item.title || item.pickupLocation || "Delivery Request";
-  const author = item.poster?.name || item.requester?.name || "—";
+  // Deliveries are posted by students — show requester name. All others posted by providers — show poster name.
+  const author = item._type === "deliveries"
+    ? (item.requester?.name || "—")
+    : (item.poster?.name || "—");
   const subject = item.subject || item.category || (item._type === "deliveries" ? item.pickupLocation : null);
   const rawPrice = parseFloat(item.price || item.deliveryFee || "20");
   const price = `₹${rawPrice.toFixed(0)}`;
   const urgent = item._type === "deliveries" && item.status === "pending";
+  const orderId = `#${item.id.substring(0, 8).toUpperCase()}`;
 
   // ── Determine which action(s) to show ──
   // Deliveries: provider (not requester) can Accept + Reject
@@ -1208,9 +1222,10 @@ function CompactListingRow({ item, C, user, onBook, onAccept, onReject, onApply,
             </View>
           )}
           <Text style={{ fontSize: 12, fontFamily: "Inter_700Bold", color: C.text, flex: 1 }} numberOfLines={1}>{title}</Text>
+          <Text style={{ fontSize: 9, fontFamily: "Inter_400Regular", color: C.textTertiary }}>{orderId}</Text>
         </View>
         <Text style={{ fontSize: 10, color: C.textSecondary }} numberOfLines={1}>
-          {author}{subject ? "  ·  " : ""}
+          {item._type === "deliveries" ? "By " : "Provider: "}{author}{subject ? "  ·  " : ""}
           {subject ? <Text style={{ color: meta.accent, fontFamily: "Inter_500Medium" }}>{subject}</Text> : null}
         </Text>
         {timeLabel ? (
