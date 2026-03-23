@@ -1041,10 +1041,13 @@ function getStepsForItem(item: any): { labels: string[]; index: number } {
 
 // ─── Compact Active Job Card (matches Priority Lane mockup exactly) ────────────
 
-function CompactActiveCard({ item, C, onTrackPress }: any) {
+function CompactActiveCard({ item, C, user, onTrackPress }: any) {
   const meta = CAT_META[item._type] || CAT_META.tasks;
   const { labels, index } = getStepsForItem(item);
   const progress = labels.length > 1 ? index / (labels.length - 1) : 1;
+
+  const uid = user?.id;
+  const isProvider = item.poster?.id === uid || item.deliveryAgent?.id === uid || item.assignedTo?.id === uid;
 
   const title = item.title || item.pickupLocation || "Delivery Request";
   const provider = item.poster?.name || item.deliveryAgent?.name || item.assignedTo?.name || "—";
@@ -1102,12 +1105,14 @@ function CompactActiveCard({ item, C, onTrackPress }: any) {
           })}
         </View>
 
-        {/* Track CTA */}
+        {/* CTA — differs by role */}
         <Pressable
           style={{ marginTop: 12, paddingVertical: 9, borderRadius: 12, backgroundColor: meta.accent, alignItems: "center" }}
           onPress={() => onTrackPress(item)}
         >
-          <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 12 }}>Track Order →</Text>
+          <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 12 }}>
+            {isProvider ? "Update Order Status" : "Track Order →"}
+          </Text>
         </Pressable>
       </View>
     </View>
@@ -1294,17 +1299,15 @@ export default function ServicesScreen() {
     return allItems;
   };
 
-  // Active job = user is involved AND status is not open/pending/delivered/cancelled
+  // Active job = ONLY the student who placed it OR the provider who accepted it
+  // A third user with no relation to the order must never see it here.
   const isActiveJob = (item: any) => {
     const idle = ["open", "pending", "delivered", "cancelled"];
     if (idle.includes(item.status)) return false;
-    return (
-      item.poster?.id         === user?.id ||
-      item.bookedBy?.id       === user?.id ||
-      item.requester?.id      === user?.id ||
-      item.deliveryAgent?.id  === user?.id ||
-      item.assignedTo?.id     === user?.id
-    );
+    const uid = user?.id;
+    const isStudent  = item.bookedBy?.id === uid || item.requester?.id === uid;
+    const isProvider = item.poster?.id === uid || item.deliveryAgent?.id === uid || item.assignedTo?.id === uid;
+    return isStudent || isProvider;
   };
 
   const isOpenListing = (item: any) => ["open", "pending"].includes(item.status);
@@ -1487,6 +1490,7 @@ export default function ServicesScreen() {
                     key={item.id}
                     item={item}
                     C={C}
+                    user={user}
                     onTrackPress={(i: any) => setSelectedItem(i)}
                   />
                 ))}
