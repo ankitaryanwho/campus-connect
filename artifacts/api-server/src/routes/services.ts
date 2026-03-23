@@ -670,11 +670,11 @@ router.get("/my-earnings", authMiddleware, async (req, res) => {
 
     // Gather completed assignments as provider
     const completedAssignments = await db.select().from(assignmentsTable)
-      .where(and(eq(assignmentsTable.providerId, userId), eq(assignmentsTable.status, "delivered")));
+      .where(and(eq(assignmentsTable.bookedById, userId), eq(assignmentsTable.status, "delivered")));
 
     // Gather completed deliveries as provider
     const completedDeliveries = await db.select().from(deliveriesTable)
-      .where(and(eq(deliveriesTable.providerId, userId), eq(deliveriesTable.status, "delivered")));
+      .where(and(eq(deliveriesTable.deliveryAgentId, userId), eq(deliveriesTable.status, "delivered")));
 
     const allOrders = [
       ...completedAssignments.map(a => ({ amount: a.price, createdAt: a.createdAt, type: "assignment" })),

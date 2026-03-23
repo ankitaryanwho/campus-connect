@@ -11,7 +11,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import Colors from "@/constants/colors";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 
-const API_BASE = process.env.EXPO_PUBLIC_API_URL || "/api";
+const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
 
 const PROGRAMS = ["BCA", "BTech", "MBA", "MTech", "BSc", "BCom", "BA", "Other"];
 
