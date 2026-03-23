@@ -419,11 +419,10 @@ function PostAssignmentModal({ visible, onClose, C, apiRequest, queryClient, sho
 
   const reset = () => { setTitle(""); setDescription(""); setPrice(""); setSubject(""); setTargetYear(user?.year || 1); };
 
-  const yearOptions = (serviceType === "certifications" || serviceType === "projects")
-    ? [1, 2, 3, 4]
-    : Array.from({ length: userYear }, (_, i) => i + 1);
-
-  const programOptions = (serviceType === "certifications" || serviceType === "projects") ? PROGRAMS : [userProgram];
+  // Providers can only post for their own program and for years ≤ their year
+  // (same rule applies to assignments, certifications, and projects)
+  const yearOptions = Array.from({ length: userYear }, (_, i) => i + 1);
+  const programOptions = [userProgram];
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -467,7 +466,7 @@ function PostAssignmentModal({ visible, onClose, C, apiRequest, queryClient, sho
             <Field label="Subject Name" value={subject} onChange={setSubject} placeholder="e.g. DBMS, Data Structures" C={C} icon="book" />
 
             <Text style={[FS.sectionLabel, { color: C.textSecondary }]}>
-              For Year {serviceType === "assignments" ? `(max: Year ${userYear})` : serviceType === "projects" ? "(all years)" : ""}
+              For Year (up to Year {userYear} — your year)
             </Text>
             <View style={FS.chipRow}>
               {yearOptions.map(y => (
@@ -478,7 +477,7 @@ function PostAssignmentModal({ visible, onClose, C, apiRequest, queryClient, sho
             </View>
 
             <Text style={[FS.sectionLabel, { color: C.textSecondary }]}>
-              Program {serviceType === "assignments" ? "(your program only)" : ""}
+              Program (your program only)
             </Text>
             <View style={FS.chipRow}>
               {programOptions.map(p => (
@@ -1185,12 +1184,12 @@ function CompactListingRow({ item, C, user, onBook, onAccept, onReject, onApply,
   const orderId = `#${item.id.substring(0, 8).toUpperCase()}`;
 
   // ── Determine which action(s) to show ──
-  // Deliveries: provider (not requester) can Accept + Reject
-  const canAcceptReject = isProviderRole && !isOwnListing && item._type === "deliveries" && item.status === "pending";
-  // Tasks: provider (not poster) can Apply
-  const canApply = isProviderRole && !isOwnListing && item._type === "tasks" && item.status === "open";
-  // Assignments/Certifications/Projects: student (not poster) can Book
-  const canBook = !isProviderRole && !isOwnListing && !item.bookedById && item.status === "open"
+  // Deliveries: anyone (not requester) can Accept + Reject a pending pickup
+  const canAcceptReject = !isOwnListing && item._type === "deliveries" && item.status === "pending";
+  // Tasks: anyone (not poster) can Apply
+  const canApply = !isOwnListing && item._type === "tasks" && item.status === "open";
+  // Assignments/Certifications/Projects: anyone (not poster) can Book — providers are also students
+  const canBook = !isOwnListing && !item.bookedById && item.status === "open"
     && (item._type === "assignments" || item._type === "certifications" || item._type === "projects");
 
   const timeLabel = (() => {
@@ -1352,10 +1351,10 @@ export default function ServicesScreen() {
   const isProvider = user?.role === "provider";
   const userServices: string[] = user?.services ? JSON.parse(user.services) : [];
   const canPost = (cat: string) => {
-    if (cat === "deliveries") return user?.role === "student";
-    if (cat === "tasks") return true;
-    if (cat === "projects") return isProvider;
-    return isProvider && (userServices.includes(cat) || userServices.length === 0);
+    // Delivery and tasks: anyone can post
+    if (cat === "deliveries" || cat === "tasks") return true;
+    // Assignments, certifications, projects: providers only
+    return isProvider;
   };
 
   // ── Parallel queries for all 4 categories ─────────────────────────────────
@@ -1388,11 +1387,35 @@ export default function ServicesScreen() {
   const isLoading = aLoading || cLoading || dLoading || tLoading || pLoading;
 
   // Tag each item with its _type so renderCard can dispatch correctly
-  const assignments    = (assignData?.assignments    || []).map((i: any) => ({ ...i, _type: "assignments" }));
-  const certifications = (certData?.certifications   || []).map((i: any) => ({ ...i, _type: "certifications" }));
-  const deliveries     = (delivData?.deliveries       || []).map((i: any) => ({ ...i, _type: "deliveries" }));
-  const tasks          = (taskData?.tasks             || []).map((i: any) => ({ ...i, _type: "tasks" }));
-  const projects       = (projData?.projects          || []).map((i: any) => ({ ...i, _type: "projects" }));
+  const rawAssignments    = (assignData?.assignments    || []).map((i: any) => ({ ...i, _type: "assignments" }));
+  const rawCertifications = (certData?.certifications   || []).map((i: any) => ({ ...i, _type: "certifications" }));
+  const rawProjects       = (projData?.projects         || []).map((i: any) => ({ ...i, _type: "projects" }));
+  const deliveries        = (delivData?.deliveries       || []).map((i: any) => ({ ...i, _type: "deliveries" }));
+  const tasks             = (taskData?.tasks             || []).map((i: any) => ({ ...i, _type: "tasks" }));
+
+  // ── Academic visibility filter ──────────────────────────────────────────────
+  // Students: only see listings for their exact program AND year.
+  // Providers: see all listings in their program with year ≤ their year (they can book those).
+  const filterAcademic = (items: any[]) => {
+    const uid = user?.id;
+    if (!uid) return items;
+    if (isProvider) {
+      // Provider sees same program, year <= theirs (eligible to book/handle)
+      return items.filter(i =>
+        i.program === user?.program && (i.targetYear ?? i.target_year ?? 0) <= (user?.year ?? 4)
+        // Also always show their own listings (they posted it)
+        || i.poster?.id === uid
+      );
+    }
+    // Student: strict program + year match only
+    return items.filter(i =>
+      i.program === user?.program && (i.targetYear ?? i.target_year ?? 0) === user?.year
+    );
+  };
+
+  const assignments    = filterAcademic(rawAssignments);
+  const certifications = filterAcademic(rawCertifications);
+  const projects       = filterAcademic(rawProjects);
   const allItems       = [...assignments, ...certifications, ...deliveries, ...tasks, ...projects];
 
   const getItemsForCat = (cat: string) => {
@@ -1501,10 +1524,13 @@ export default function ServicesScreen() {
   }, [C, user, pendingId, actionMutation.isPending, rateMutation.isPending]);
 
   // ── Post helpers ───────────────────────────────────────────────────────────
-  const postableCats = ["assignments", "certifications", "deliveries", "tasks", "projects"].filter(canPost);
+  const postableCats = ["deliveries", "assignments", "certifications", "tasks", "projects"].filter(canPost);
   const openPostFor = (type: string) => { setPostType(type); setShowPostModal(true); };
   const handleFAB = () => {
-    const target = activeCat !== "all" ? activeCat : postableCats.length === 1 ? postableCats[0] : "tasks";
+    // If current tab is postable, post there; otherwise redirect to first postable cat
+    const target = (activeCat !== "all" && canPost(activeCat))
+      ? activeCat
+      : (postableCats[0] || "deliveries");
     openPostFor(target);
   };
 
