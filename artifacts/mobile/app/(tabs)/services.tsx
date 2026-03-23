@@ -14,11 +14,11 @@ import { useToast } from "@/contexts/ToastContext";
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const SERVICE_TABS = [
+  { id: "deliveries", label: "Delivery", icon: "package", color: "#F59E0B" },
   { id: "assignments", label: "Assignments", icon: "file-text", color: "#5B4FE8" },
   { id: "certifications", label: "Certifications", icon: "award", color: "#10B981" },
-  { id: "deliveries", label: "Delivery", icon: "package", color: "#F59E0B" },
-  { id: "tasks", label: "Tasks", icon: "check-square", color: "#EF4444" },
   { id: "projects", label: "Projects", icon: "briefcase", color: "#6366F1" },
+  { id: "tasks", label: "Tasks", icon: "check-square", color: "#EF4444" },
 ];
 
 // ─── Status Tracking Steps ──────────────────────────────────────────────────
@@ -1311,11 +1311,11 @@ function DetailModal({ item, C, user, onClose, onAction, onRate, isPending }: an
 
 const CHIPS = [
   { id: "all",            label: "All",            emoji: "✦", accent: "#1C1917", bg: "#F0EDEA" },
+  { id: "deliveries",     label: "Delivery",       emoji: "🚀", accent: "#F59E0B", bg: "#FEF3C7" },
   { id: "assignments",    label: "Assignments",    emoji: "📝", accent: "#5B4FE8", bg: "#EDE9FE" },
   { id: "certifications", label: "Certifications", emoji: "🏆", accent: "#10B981", bg: "#D1FAE5" },
-  { id: "deliveries",     label: "Delivery",       emoji: "🚀", accent: "#F59E0B", bg: "#FEF3C7" },
-  { id: "tasks",          label: "Tasks",          emoji: "⚡", accent: "#EF4444", bg: "#FEE2E2" },
   { id: "projects",       label: "Projects",       emoji: "💼", accent: "#6366F1", bg: "#EEF2FF" },
+  { id: "tasks",          label: "Tasks",          emoji: "⚡", accent: "#EF4444", bg: "#FEE2E2" },
 ];
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
