@@ -768,8 +768,8 @@ function AcademicCard({ item, C, onAction, currentUserId, isPending, serviceType
 }
 
 function DeliveryCard({ item, C, currentUser, onAction, onRate, isPending }: any) {
-  const isRequester = item.requester?.id === currentUser?.id;
-  const isAgent = item.deliveryAgent?.id === currentUser?.id;
+  const isRequester = item.requester?.id === currentUser?.id || item.requesterId === currentUser?.id;
+  const isAgent = item.deliveryAgent?.id === currentUser?.id || item.deliveryAgentId === currentUser?.id;
   const [showRating, setShowRating] = useState(false);
   const isOutlet = item.pickupType === "outlet";
 
@@ -1027,7 +1027,7 @@ function CompactActiveCard({ item, C, user, onTrackPress, onAccept, onReject, on
   const progress = labels.length > 1 ? index / (labels.length - 1) : 1;
 
   const uid = user?.id;
-  const isProvider = item.poster?.id === uid || item.deliveryAgent?.id === uid || item.assignedTo?.id === uid;
+  const isProvider = item.poster?.id === uid || item.deliveryAgent?.id === uid || item.assignedTo?.id === uid || item.deliveryAgentId === uid;
   // Provider has not yet accepted — needs to review the booking
   const awaitingAcceptance = isProvider && ["booked", "pending"].includes(item.status);
 
@@ -1163,7 +1163,7 @@ function CompactListingRow({ item, C, user, onBook, onAccept, onReject, onApply,
   const meta = CAT_META[item._type] || CAT_META.tasks;
   const uid = user?.id;
   const isProviderRole = user?.role === "provider";
-  const isOwnListing = item.poster?.id === uid || item.requester?.id === uid;
+  const isOwnListing = item.poster?.id === uid || item.requester?.id === uid || item.requesterId === uid;
 
   const title = item.title || item.pickupLocation || "Delivery Request";
   // Deliveries are posted by students — show requester name. All others posted by providers — show poster name.
@@ -1473,8 +1473,9 @@ export default function ServicesScreen() {
     const idle = ["open", "pending", "delivered", "cancelled"];
     if (idle.includes(item.status)) return false;
     const uid = user?.id;
-    const isStudent  = item.bookedBy?.id === uid || item.requester?.id === uid;
-    const isProvider = item.poster?.id === uid || item.deliveryAgent?.id === uid || item.assignedTo?.id === uid;
+    // Use both populated user objects AND raw ID fields as fallback (populated may be null)
+    const isStudent  = item.bookedBy?.id === uid || item.requester?.id === uid || item.requesterId === uid;
+    const isProvider = item.poster?.id === uid || item.deliveryAgent?.id === uid || item.assignedTo?.id === uid || item.deliveryAgentId === uid;
     return isStudent || isProvider;
   };
 
@@ -1485,9 +1486,9 @@ export default function ServicesScreen() {
       return item.poster?.id !== user?.id;
     }
     if (!["open", "pending"].includes(item.status)) return false;
-    // Delivery: students only see their own request
+    // Delivery: students only see their own request (use raw ID as fallback if populated object is null)
     if (item._type === "deliveries" && !isProvider) {
-      return item.requester?.id === user?.id;
+      return item.requester?.id === user?.id || item.requesterId === user?.id;
     }
     return true;
   };
