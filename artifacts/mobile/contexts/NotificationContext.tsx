@@ -5,14 +5,18 @@ import { Platform } from "react-native";
 import { useRouter } from "expo-router";
 import { useAuth } from "./AuthContext";
 
-// Tell Expo how to show notifications when the app is in the foreground
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
-});
+const IS_NATIVE = Platform.OS !== "web";
+
+// Only set the notification handler on native — not supported on web
+if (IS_NATIVE) {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+    }),
+  });
+}
 
 interface NotificationContextType {
   expoPushToken: string | null;
@@ -35,15 +39,14 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const notificationListener = useRef<Notifications.EventSubscription | null>(null);
   const responseListener = useRef<Notifications.EventSubscription | null>(null);
 
-  // ── Register push token ────────────────────────────────────────────────────
+  // ── Register push token (native only) ─────────────────────────────────────
   useEffect(() => {
-    if (!user || !authToken) return;
+    if (!IS_NATIVE || !user || !authToken) return;
 
     registerForPushNotificationsAsync().then(async (token) => {
       if (!token) return;
       setExpoPushToken(token);
 
-      // Save token to backend
       try {
         const API_BASE = "https://asset-manager-thakurankitedu.replit.app/api";
         await fetch(`${API_BASE}/notifications/push-token`, {
@@ -64,7 +67,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       setUnreadCount((n) => n + 1);
     });
 
-    // Tap on notification listener
+    // Tap on notification listener (app foregrounded from notification)
     responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
       handleNotificationTap(response.notification.request.content.data);
     });
@@ -76,13 +79,17 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, authToken]);
 
-  // ── Handle taps on notifications while app was killed / backgrounded ───────
+  // ── Handle taps when app was killed / backgrounded (native only) ───────────
   useEffect(() => {
-    Notifications.getLastNotificationResponseAsync().then((response) => {
-      if (response) {
-        handleNotificationTap(response.notification.request.content.data);
-      }
-    });
+    if (!IS_NATIVE) return;
+
+    Notifications.getLastNotificationResponseAsync()
+      .then((response) => {
+        if (response) {
+          handleNotificationTap(response.notification.request.content.data);
+        }
+      })
+      .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -92,11 +99,9 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
     if (!screen) return;
 
-    // Small delay to let the navigator mount
     setTimeout(() => {
       try {
         if (screen === "/(tabs)/services" && tab) {
-          // Navigate to services tab with filter pre-set via query param
           router.push({ pathname: "/(tabs)/services" as any, params: { tab, itemId: itemId ?? "" } });
         } else if (screen === "/(tabs)/wallet") {
           router.push("/(tabs)/wallet" as any);
@@ -124,8 +129,7 @@ export const useNotifications = () => useContext(NotificationContext);
 
 async function registerForPushNotificationsAsync(): Promise<string | null> {
   if (!Device.isDevice) {
-    // Simulators / web don't support real push
-    console.log("[push] Must use physical device for push notifications");
+    console.log("[push] Must use a physical device for push notifications");
     return null;
   }
 
@@ -147,7 +151,7 @@ async function registerForPushNotificationsAsync(): Promise<string | null> {
   }
 
   if (finalStatus !== "granted") {
-    console.log("[push] Permission not granted for notifications");
+    console.log("[push] Permission not granted");
     return null;
   }
 
