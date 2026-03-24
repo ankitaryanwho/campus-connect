@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useLocalSearchParams } from "expo-router";
 import {
   View, Text, ScrollView, Pressable, StyleSheet, Modal,
   useColorScheme, FlatList, ActivityIndicator, Platform,
@@ -1332,7 +1333,16 @@ export default function ServicesScreen() {
   const C = Colors[colorScheme === "dark" ? "dark" : "light"];
   const { apiRequest, user } = useAuth();
   const queryClient = useQueryClient();
+  const { tab: tabParam } = useLocalSearchParams<{ tab?: string; itemId?: string }>();
   const [activeCat, setActiveCat] = useState("all");
+
+  // Deep-link from notification: auto-switch to the relevant tab
+  useEffect(() => {
+    if (tabParam && SERVICE_TABS.some(t => t.id === tabParam)) {
+      setActiveCat(tabParam);
+    }
+  }, [tabParam]);
+
   const [showPostModal, setShowPostModal] = useState(false);
   const [postType, setPostType] = useState("tasks");
   const [pendingId, setPendingId] = useState<string | null>(null);

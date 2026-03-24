@@ -4,6 +4,7 @@ import { walletsTable, transactionsTable } from "@workspace/db/schema";
 import { eq, desc, sql } from "drizzle-orm";
 import { authMiddleware } from "../lib/auth";
 import { generateId } from "../lib/id";
+import { notifyUser } from "../lib/pushNotifications";
 
 const router = Router();
 
@@ -110,6 +111,25 @@ router.post("/transfer", authMiddleware, async (req, res) => {
 
     const updated = await db.select().from(walletsTable).where(eq(walletsTable.userId, userId)).limit(1);
     res.json(updated[0]);
+
+    // Notify both parties about the wallet change
+    try {
+      const formattedAmt = `₹${parseFloat(amount.toString()).toFixed(2)}`;
+      await Promise.all([
+        notifyUser(userId, {
+          type: "wallet_debit",
+          title: "💸 Wallet Debited",
+          body: `Your wallet has been debited with ${formattedAmt}. ${note || ""}`,
+          data: { screen: "/(tabs)/wallet" },
+        }),
+        notifyUser(recipientId, {
+          type: "wallet_credit",
+          title: "💰 Wallet Credited!",
+          body: `Your wallet has been credited with ${formattedAmt}. ${note || ""}`,
+          data: { screen: "/(tabs)/wallet" },
+        }),
+      ]);
+    } catch {}
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "ServerError", message: "Failed to transfer money" });

@@ -7,6 +7,7 @@ import {
 import { eq, desc, sql, and, inArray } from "drizzle-orm";
 import { authMiddleware } from "../lib/auth";
 import { generateId } from "../lib/id";
+import { notifyUser, notifyUsers } from "../lib/pushNotifications";
 
 const router = Router();
 
@@ -131,6 +132,15 @@ router.post("/assignments/:id/book", authMiddleware, async (req, res) => {
     const booking = await db.select().from(serviceBookingsTable).where(eq(serviceBookingsTable.id, bookingId)).limit(1);
     const listing = rows[0];
     res.json({ ...booking[0], listing: { ...listing, poster: await safeUser(listing.posterId) }, student: await safeUser(userId) });
+    try {
+      const student = await safeUser(userId);
+      await notifyUser(listing.posterId, {
+        type: "new_booking",
+        title: "📚 New Assignment Booking!",
+        body: `${student?.name ?? "A student"} just booked your assignment. Act now!`,
+        data: { screen: "/(tabs)/services", tab: "assignments", itemId: bookingId },
+      });
+    } catch {}
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "ServerError", message: "Failed to book assignment" });
@@ -224,6 +234,15 @@ router.post("/certifications/:id/book", authMiddleware, async (req, res) => {
     });
     const booking = await db.select().from(serviceBookingsTable).where(eq(serviceBookingsTable.id, bookingId)).limit(1);
     res.json({ ...booking[0], listing: { ...rows[0], poster: await safeUser(rows[0].posterId) }, student: await safeUser(userId) });
+    try {
+      const student = await safeUser(userId);
+      await notifyUser(rows[0].posterId, {
+        type: "new_booking",
+        title: "🏆 New Certification Booking!",
+        body: `${student?.name ?? "A student"} just booked your certification course. Act now!`,
+        data: { screen: "/(tabs)/services", tab: "certifications", itemId: bookingId },
+      });
+    } catch {}
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "ServerError", message: "Failed to book certification" });
@@ -358,7 +377,25 @@ router.post("/deliveries", authMiddleware, async (req, res) => {
     } as any);
 
     const rows = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
-    res.status(201).json({ ...rows[0], requester: await safeUser(userId), deliveryAgent: null });
+    const delivery = rows[0];
+    res.status(201).json({ ...delivery, requester: await safeUser(userId), deliveryAgent: null });
+
+    // Notify all providers of the new delivery request (async, after response sent)
+    try {
+      const me = await safeUser(userId);
+      const providers = await db.select({ id: usersTable.id })
+        .from(usersTable).where(eq(usersTable.role, "provider"));
+      const providerIds = providers.map((p: any) => p.id).filter((pid: string) => pid !== userId);
+      const pickupLabel = delivery.pickupType === "outlet"
+        ? delivery.pickupLocation
+        : delivery.pickupLocation;
+      await notifyUsers(providerIds, {
+        type: "new_delivery",
+        title: "📦 New Delivery Request!",
+        body: `Someone just posted a delivery request from ${pickupLabel}. Act now!`,
+        data: { screen: "/(tabs)/services", tab: "deliveries", itemId: id },
+      });
+    } catch {}
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "ServerError", message: "Failed to create delivery" });
@@ -380,7 +417,17 @@ router.post("/deliveries/:id/accept", authMiddleware, async (req, res) => {
       statusHistory: history,
     }).where(eq(deliveriesTable.id, id));
     const updated = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
-    res.json({ ...updated[0], requester: await safeUser(updated[0].requesterId), deliveryAgent: await safeUser(userId) });
+    const agent = await safeUser(userId);
+    res.json({ ...updated[0], requester: await safeUser(updated[0].requesterId), deliveryAgent: agent });
+    // Notify requester
+    try {
+      await notifyUser(updated[0].requesterId, {
+        type: "delivery_accepted",
+        title: "🎉 Delivery Request Accepted!",
+        body: `${agent?.name ?? "An agent"} has accepted your delivery from ${updated[0].pickupLocation}. They're on it!`,
+        data: { screen: "/(tabs)/services", tab: "deliveries", itemId: id },
+      });
+    } catch {}
   } catch (err) {
     res.status(500).json({ error: "ServerError", message: "Failed to accept delivery" });
   }
@@ -407,7 +454,29 @@ router.post("/deliveries/:id/progress", authMiddleware, async (req, res) => {
     const history = appendHistory(rows[0].statusHistory, nextStatus);
     await db.update(deliveriesTable).set({ status: nextStatus, statusHistory: history }).where(eq(deliveriesTable.id, id));
     const updated = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
-    res.json({ ...updated[0], requester: await safeUser(updated[0].requesterId), deliveryAgent: await safeUser(userId) });
+    const agentUser = await safeUser(userId);
+    res.json({ ...updated[0], requester: await safeUser(updated[0].requesterId), deliveryAgent: agentUser });
+    // Status-specific notification to requester
+    try {
+      const agentName = agentUser?.name ?? "Your agent";
+      const pickup = updated[0].pickupLocation;
+      const drop = updated[0].dropLocation;
+      const msgMap: Record<string, { title: string; body: string }> = {
+        reaching_pickup: { title: "🏃 Agent is on the way!", body: `${agentName} is heading to ${pickup} to pick up your order.` },
+        placed_order:    { title: "✅ Order Placed!", body: `${agentName} has confirmed your payment & placed your order at ${pickup}.` },
+        collecting_order:{ title: "🛍️ Collecting Your Order", body: `${agentName} is collecting your order from ${pickup}.` },
+        reaching_drop:   { title: "🚚 On the Way!", body: `${agentName} is on the way to your drop location at ${drop}.` },
+        completed:       { title: "📍 Agent Has Arrived!", body: `${agentName} has arrived at your location. Please confirm the item received!` },
+      };
+      const msg = msgMap[nextStatus];
+      if (msg) {
+        await notifyUser(updated[0].requesterId, {
+          type: `delivery_${nextStatus}`,
+          ...msg,
+          data: { screen: "/(tabs)/services", tab: "deliveries", itemId: id },
+        });
+      }
+    } catch {}
   } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to progress delivery" }); }
 });
 
@@ -448,6 +517,18 @@ router.post("/deliveries/:id/mark-paid", authMiddleware, async (req, res) => {
     await db.update(deliveriesTable).set({ status: "payment_marked", paymentMarkedAt: new Date() }).where(eq(deliveriesTable.id, id));
     const updated = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
     res.json({ ...updated[0], requester: await safeUser(updated[0].requesterId), deliveryAgent: updated[0].deliveryAgentId ? await safeUser(updated[0].deliveryAgentId) : null });
+    // Notify the delivery agent
+    try {
+      const requester = await safeUser(userId);
+      if (updated[0].deliveryAgentId) {
+        await notifyUser(updated[0].deliveryAgentId, {
+          type: "payment_marked",
+          title: "💳 Payment Screenshot Uploaded!",
+          body: `${requester?.name ?? "The student"} has uploaded the payment screenshot. Verify now!`,
+          data: { screen: "/(tabs)/services", tab: "deliveries", itemId: id },
+        });
+      }
+    } catch {}
   } catch (err) {
     res.status(500).json({ error: "ServerError", message: "Failed to mark as paid" });
   }
@@ -463,6 +544,15 @@ router.post("/deliveries/:id/confirm-payment", authMiddleware, async (req, res) 
     await db.update(deliveriesTable).set({ status: "in_progress" }).where(eq(deliveriesTable.id, id));
     const updated = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
     res.json({ ...updated[0], requester: await safeUser(updated[0].requesterId), deliveryAgent: await safeUser(userId) });
+    try {
+      const agentUser = await safeUser(userId);
+      await notifyUser(updated[0].requesterId, {
+        type: "payment_confirmed",
+        title: "✅ Payment Confirmed!",
+        body: `${agentUser?.name ?? "Your agent"} has confirmed your payment & placed the order at ${updated[0].pickupLocation}.`,
+        data: { screen: "/(tabs)/services", tab: "deliveries", itemId: id },
+      });
+    } catch {}
   } catch (err) {
     res.status(500).json({ error: "ServerError", message: "Failed to confirm payment" });
   }
@@ -477,7 +567,16 @@ router.post("/deliveries/:id/complete", authMiddleware, async (req, res) => {
     if (rows[0].deliveryAgentId !== userId) { res.status(403).json({ error: "Only the delivery agent can mark complete" }); return; }
     await db.update(deliveriesTable).set({ status: "completed" }).where(eq(deliveriesTable.id, id));
     const updated = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
-    res.json({ ...updated[0], requester: await safeUser(updated[0].requesterId), deliveryAgent: await safeUser(userId) });
+    const agentComp = await safeUser(userId);
+    res.json({ ...updated[0], requester: await safeUser(updated[0].requesterId), deliveryAgent: agentComp });
+    try {
+      await notifyUser(updated[0].requesterId, {
+        type: "delivery_completed",
+        title: "🎊 Hurray! Order Delivered!",
+        body: `Your order has been delivered by ${agentComp?.name ?? "your agent"}. Rate them now!`,
+        data: { screen: "/(tabs)/services", tab: "deliveries", itemId: id },
+      });
+    } catch {}
   } catch (err) {
     res.status(500).json({ error: "ServerError", message: "Failed to complete delivery" });
   }
@@ -679,6 +778,15 @@ router.post("/projects/:id/book", authMiddleware, async (req, res) => {
     });
     const booking = await db.select().from(serviceBookingsTable).where(eq(serviceBookingsTable.id, bookingId)).limit(1);
     res.json({ ...booking[0], listing: { ...rows[0], poster: await safeUser(rows[0].posterId) }, student: await safeUser(userId) });
+    try {
+      const student = await safeUser(userId);
+      await notifyUser(rows[0].posterId, {
+        type: "new_booking",
+        title: "💼 New Project Booking!",
+        body: `${student?.name ?? "A student"} just booked your project. Act now!`,
+        data: { screen: "/(tabs)/services", tab: "projects", itemId: bookingId },
+      });
+    } catch {}
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "ServerError", message: "Failed to book project" });
@@ -772,7 +880,17 @@ router.post("/bookings/:id/accept", authMiddleware, async (req, res) => {
     const history = appendHistory(rows[0].statusHistory, "accepted");
     await db.update(serviceBookingsTable).set({ status: "accepted", statusHistory: history }).where(eq(serviceBookingsTable.id, id));
     const updated = await db.select().from(serviceBookingsTable).where(eq(serviceBookingsTable.id, id)).limit(1);
-    res.json({ ...updated[0], _type: updated[0].serviceType, listing: { ...listing, poster: await safeUser(listing.posterId) }, student: await safeUser(updated[0].studentId) });
+    const providerUser = await safeUser(userId);
+    res.json({ ...updated[0], _type: updated[0].serviceType, listing: { ...listing, poster: providerUser }, student: await safeUser(updated[0].studentId) });
+    try {
+      const typeLabel = updated[0].serviceType === "assignments" ? "assignment" : updated[0].serviceType === "certifications" ? "certification course" : "project";
+      await notifyUser(updated[0].studentId, {
+        type: "booking_accepted",
+        title: "🎉 Booking Accepted!",
+        body: `${providerUser?.name ?? "The provider"} accepted your ${typeLabel} booking. Work has started!`,
+        data: { screen: "/(tabs)/services", tab: updated[0].serviceType, itemId: id },
+      });
+    } catch {}
   } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to accept booking" }); }
 });
 
@@ -788,6 +906,16 @@ router.post("/bookings/:id/reject", authMiddleware, async (req, res) => {
     const history = appendHistory(rows[0].statusHistory, "rejected");
     await db.update(serviceBookingsTable).set({ status: "rejected", statusHistory: history }).where(eq(serviceBookingsTable.id, id));
     res.json({ message: "Booking rejected" });
+    try {
+      const typeLabel = rows[0].serviceType === "assignments" ? "assignment" : rows[0].serviceType === "certifications" ? "certification course" : "project";
+      const providerU = await safeUser(userId);
+      await notifyUser(rows[0].studentId, {
+        type: "booking_rejected",
+        title: "❌ Booking Rejected",
+        body: `${providerU?.name ?? "The provider"} rejected your ${typeLabel} booking. You can find another provider.`,
+        data: { screen: "/(tabs)/services", tab: rows[0].serviceType, itemId: id },
+      });
+    } catch {}
   } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to reject booking" }); }
 });
 
@@ -805,7 +933,23 @@ router.post("/bookings/:id/progress", authMiddleware, async (req, res) => {
     const history = appendHistory(rows[0].statusHistory, nextStatus);
     await db.update(serviceBookingsTable).set({ status: nextStatus, statusHistory: history }).where(eq(serviceBookingsTable.id, id));
     const updated = await db.select().from(serviceBookingsTable).where(eq(serviceBookingsTable.id, id)).limit(1);
-    res.json({ ...updated[0], _type: updated[0].serviceType, listing: { ...listing, poster: await safeUser(listing.posterId) }, student: await safeUser(updated[0].studentId) });
+    const provProg = await safeUser(userId);
+    res.json({ ...updated[0], _type: updated[0].serviceType, listing: { ...listing, poster: provProg }, student: await safeUser(updated[0].studentId) });
+    try {
+      const typeLabel = updated[0].serviceType === "assignments" ? "assignment" : updated[0].serviceType === "certifications" ? "certification course" : "project";
+      const progressMsg: Record<string, { title: string; body: string }> = {
+        in_progress: { title: "🔨 Work Started!", body: `${provProg?.name ?? "The provider"} has started working on your ${typeLabel}.` },
+        completed:   { title: "✅ Work Completed!", body: `${provProg?.name ?? "The provider"} has completed your ${typeLabel}. Please confirm to release payment.` },
+      };
+      const msg = progressMsg[nextStatus];
+      if (msg) {
+        await notifyUser(updated[0].studentId, {
+          type: `booking_${nextStatus}`,
+          ...msg,
+          data: { screen: "/(tabs)/services", tab: updated[0].serviceType, itemId: id },
+        });
+      }
+    } catch {}
   } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to update booking status" }); }
 });
 
@@ -822,6 +966,19 @@ router.post("/bookings/:id/confirm", authMiddleware, async (req, res) => {
     const updated = await db.select().from(serviceBookingsTable).where(eq(serviceBookingsTable.id, id)).limit(1);
     const listing = await getListing(updated[0].serviceType, updated[0].listingId);
     res.json({ ...updated[0], _type: updated[0].serviceType, listing: listing ? { ...listing, poster: await safeUser(listing.posterId) } : null, student: await safeUser(userId) });
+    // Notify provider that student confirmed delivery
+    try {
+      if (listing) {
+        const studentU = await safeUser(userId);
+        const typeLabel = updated[0].serviceType === "assignments" ? "assignment" : updated[0].serviceType === "certifications" ? "certification course" : "project";
+        await notifyUser(listing.posterId, {
+          type: "booking_confirmed",
+          title: "💰 Payment Released!",
+          body: `${studentU?.name ?? "The student"} confirmed receipt of your ${typeLabel}. Payment has been credited to your wallet!`,
+          data: { screen: "/(tabs)/wallet", itemId: id },
+        });
+      }
+    } catch {}
   } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to confirm booking" }); }
 });
 
