@@ -147,6 +147,20 @@ export const insertProjectSchema = createInsertSchema(projectsTable).omit({ crea
 export type InsertProject = z.infer<typeof insertProjectSchema>;
 export type Project = typeof projectsTable.$inferSelect;
 
+// ─── Service Bookings (multi-booking for assignments / certifications / projects) ─
+// Each booking is an independent record; the listing stays "open" forever
+export const serviceBookingsTable = pgTable("service_bookings", {
+  id: text("id").primaryKey(),
+  serviceType: text("service_type").notNull(), // "assignments" | "certifications" | "projects"
+  listingId: text("listing_id").notNull(),
+  studentId: text("student_id").notNull().references(() => usersTable.id),
+  status: text("status").notNull().default("booked"), // booked | accepted | in_progress | completed | delivered | rejected
+  statusHistory: text("status_history"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type ServiceBooking = typeof serviceBookingsTable.$inferSelect;
+
 // Keep for backward compat — not used in new UI
 export const coachingSessionsTable = pgTable("coaching_sessions", {
   id: text("id").primaryKey(),

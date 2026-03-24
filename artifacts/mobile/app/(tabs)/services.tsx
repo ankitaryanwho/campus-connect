@@ -683,24 +683,12 @@ function PostTaskModal({ visible, onClose, C, apiRequest, queryClient, showToast
 
 // ─── Service Cards ─────────────────────────────────────────────────────────────
 
-function AcademicCard({ item, C, onAction, currentUserId, isPending, serviceType }: any) {
+function AcademicCard({ item, C, onAction, currentUserId, isPending, serviceType, myBooking, bookingCount }: any) {
   const isOwner = item.poster?.id === currentUserId;
-  const isBooker = item.bookedBy?.id === currentUserId;
-  const isBooked = item.bookedById != null;
-  const canBook = !isOwner && !isBooked && item.status === "open";
   const accentColor = serviceType === "certifications" ? "#10B981" : serviceType === "projects" ? "#6366F1" : "#5B4FE8";
-  const showTracker = item.status !== "open" && isBooked;
-
-  // Provider action buttons
-  const providerAction = (() => {
-    if (!isOwner) return null;
-    if (item.status === "booked") return { label: "Accept Booking", action: "accept", color: "#10B981" };
-    if (item.status === "accepted") return { label: "Start Work", action: "progress", color: accentColor };
-    if (item.status === "in_progress") return { label: "Mark Work Completed", action: "progress", color: "#F59E0B" };
-    return null;
-  })();
-
-  const studentCanConfirm = isBooker && item.status === "completed";
+  // In multi-booking model: listings always stay "open"; booking state comes from myBooking
+  const hasActiveBooking = !!myBooking && !["delivered", "dismissed"].includes(myBooking.status);
+  const canBook = !isOwner && !hasActiveBooking;
 
   return (
     <View style={[CS.card, { backgroundColor: C.surface, borderColor: C.border }]}>
@@ -713,9 +701,16 @@ function AcademicCard({ item, C, onAction, currentUserId, isPending, serviceType
         </View>
         <View style={{ alignItems: "flex-end", gap: 6 }}>
           <Text style={[CS.cardPrice, { color: C.primary }]}>₹{parseFloat(item.price).toFixed(0)}</Text>
-          <View style={[CS.badge, { backgroundColor: statusColor(item.status, C) + "22" }]}>
-            <Text style={[CS.badgeText, { color: statusColor(item.status, C) }]}>{statusLabel(item.status)}</Text>
-          </View>
+          {/* Listings are always open — show booking count for providers */}
+          {isOwner && bookingCount != null ? (
+            <View style={[CS.badge, { backgroundColor: accentColor + "22" }]}>
+              <Text style={[CS.badgeText, { color: accentColor }]}>{bookingCount} booking{bookingCount !== 1 ? "s" : ""}</Text>
+            </View>
+          ) : (
+            <View style={[CS.badge, { backgroundColor: "#10B98122" }]}>
+              <Text style={[CS.badgeText, { color: "#10B981" }]}>Open</Text>
+            </View>
+          )}
         </View>
       </View>
       {item.description && <Text style={[CS.cardDesc, { color: C.textSecondary }]} numberOfLines={2}>{item.description}</Text>}
@@ -739,60 +734,31 @@ function AcademicCard({ item, C, onAction, currentUserId, isPending, serviceType
         )}
       </View>
 
-      {/* Booking info badge */}
-      {item.bookedBy && (
-        <View style={[CS.ownerBadge, { backgroundColor: C.successLight || "#D1FAE5", marginBottom: 4 }]}>
-          <Feather name="user-check" size={11} color={C.success} />
-          <Text style={[CS.ownerBadgeText, { color: C.success }]}>Booked by {item.bookedBy.name}</Text>
-        </View>
-      )}
-
-      {/* Zomato-style Status Tracker */}
-      {showTracker && (
-        <View style={{ borderTopWidth: 1, borderTopColor: C.border, marginTop: 8, paddingTop: 12 }}>
-          <Text style={{ fontSize: 12, fontFamily: "Inter_600SemiBold", color: C.textSecondary, marginBottom: 8, letterSpacing: 0.4, textTransform: "uppercase" }}>
-            Work Status
+      {/* Already booked badge for this student */}
+      {hasActiveBooking && (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: accentColor + "15", borderRadius: 8, padding: 8, marginTop: 6 }}>
+          <Feather name="check-circle" size={13} color={accentColor} />
+          <Text style={{ fontSize: 11, fontFamily: "Inter_600SemiBold", color: accentColor }}>
+            You booked this · {statusLabel(myBooking.status)}
           </Text>
-          <StatusTracker
-            steps={ACADEMIC_STEPS}
-            currentStatus={item.status}
-            history={item.statusHistory}
-            accentColor={accentColor}
-            C={C}
-          />
         </View>
       )}
 
       {/* Action buttons */}
       <View style={{ gap: 8, marginTop: 8 }}>
-        {canBook && (
+        {canBook && !isOwner && (
           <Pressable
             style={[CS.actionBtn, { backgroundColor: accentColor }, isPending && { opacity: 0.6 }]}
             onPress={() => onAction(item.id, "book")} disabled={isPending}>
             {isPending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={CS.actionBtnText}>Book Now</Text>}
           </Pressable>
         )}
-
-        {providerAction && (
-          <Pressable
-            style={[CS.actionBtn, { backgroundColor: providerAction.color }, isPending && { opacity: 0.6 }]}
-            onPress={() => onAction(item.id, providerAction.action)} disabled={isPending}>
-            {isPending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={CS.actionBtnText}>{providerAction.label}</Text>}
-          </Pressable>
-        )}
-
-        {studentCanConfirm && (
-          <Pressable
-            style={[CS.actionBtn, { backgroundColor: "#10B981" }, isPending && { opacity: 0.6 }]}
-            onPress={() => onAction(item.id, "confirm")} disabled={isPending}>
-            {isPending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={CS.actionBtnText}>Confirm Received</Text>}
-          </Pressable>
-        )}
-
-        {item.status === "delivered" && (
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#D1FAE5", borderRadius: 10, padding: 10 }}>
-            <Feather name="check-circle" size={16} color="#059669" />
-            <Text style={{ color: "#059669", fontFamily: "Inter_600SemiBold", fontSize: 13 }}>Delivered successfully!</Text>
+        {isOwner && (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: C.backgroundSecondary, borderRadius: 8, padding: 8 }}>
+            <Feather name="users" size={13} color={C.textSecondary} />
+            <Text style={{ fontSize: 11, color: C.textSecondary, fontFamily: "Inter_500Medium" }}>
+              {bookingCount ?? 0} student{(bookingCount ?? 0) !== 1 ? "s" : ""} booked · check Active Now
+            </Text>
           </View>
         )}
       </View>
@@ -1399,6 +1365,15 @@ export default function ServicesScreen() {
   const { data: taskData,   isLoading: tLoading, refetch: rT } = useQuery(mkQuery("tasks", "/services/tasks"));
   const { data: projData,   isLoading: pLoading, refetch: rP } = useQuery(mkQuery("projects", "/services/projects"));
 
+  const { data: bookingsData, refetch: rBookings } = useQuery({
+    queryKey: ["services", "bookings"],
+    queryFn: async () => {
+      const res = await apiRequest("/services/bookings");
+      if (!res.ok) throw new Error("Failed to load bookings");
+      return res.json();
+    },
+  });
+
   const { data: outletData } = useQuery({
     queryKey: ["outlet-items"],
     queryFn: async () => {
@@ -1426,14 +1401,11 @@ export default function ServicesScreen() {
     const uid = user?.id;
     if (!uid) return items;
     if (isProvider) {
-      // Provider sees same program, year <= theirs (eligible to book/handle)
       return items.filter(i =>
-        i.program === user?.program && (i.targetYear ?? i.target_year ?? 0) <= (user?.year ?? 4)
-        // Also always show their own listings (they posted it)
+        (i.program === user?.program && (i.targetYear ?? i.target_year ?? 0) <= (user?.year ?? 4))
         || i.poster?.id === uid
       );
     }
-    // Student: strict program + year match only
     return items.filter(i =>
       i.program === user?.program && (i.targetYear ?? i.target_year ?? 0) === user?.year
     );
@@ -1444,6 +1416,33 @@ export default function ServicesScreen() {
   const projects       = filterAcademic(rawProjects);
   const allItems       = [...assignments, ...certifications, ...deliveries, ...tasks, ...projects];
 
+  // ── Booking records (multi-booking for academic types) ─────────────────────
+  // Transform each booking into the same item shape CompactActiveCard expects
+  const ACADEMIC_CATS = ["assignments", "certifications", "projects"];
+  const myBookings: any[] = (bookingsData?.bookings || []).map((b: any) => ({
+    id: b.id,
+    _type: b.serviceType,
+    _isBooking: true,
+    status: b.status,
+    statusHistory: b.statusHistory,
+    createdAt: b.createdAt,
+    title: b.listing?.title,
+    price: b.listing?.price,
+    subject: b.listing?.subject,
+    program: b.listing?.program,
+    deadline: b.listing?.deadline,
+    poster: b.listing?.poster,   // provider who posted the listing
+    bookedBy: b.student,         // student who made this booking
+    listingId: b.listingId,
+  }));
+
+  // Map listingId → booking for quick lookup (to show "Already Booked" on cards)
+  const myActiveBookingByListing = new Map<string, any>(
+    myBookings
+      .filter(b => !["delivered", "dismissed"].includes(b.status))
+      .map(b => [b.listingId, b])
+  );
+
   const getItemsForCat = (cat: string) => {
     if (cat === "assignments")    return assignments;
     if (cat === "certifications") return certifications;
@@ -1453,35 +1452,46 @@ export default function ServicesScreen() {
     return allItems;
   };
 
-  // Active job = ONLY the student who placed it OR the provider who accepted it
-  // A third user with no relation to the order must never see it here.
-  // "rejected" items are also active for the original booker until they dismiss.
-  const isActiveJob = (item: any) => {
+  // Active jobs:
+  //  - Academic tabs → use booking records (myBookings) — one card per booking
+  //  - Delivery / task tabs → use listing-level status (original logic)
+  const isActiveJobLegacy = (item: any) => {
     const idle = ["open", "pending", "delivered", "cancelled"];
     if (idle.includes(item.status)) return false;
     const uid = user?.id;
-    // Rejected bookings: only visible to the student who was rejected
-    if (item.status === "rejected") return item.bookedBy?.id === uid;
     const isStudent  = item.bookedBy?.id === uid || item.requester?.id === uid;
     const isProvider = item.poster?.id === uid || item.deliveryAgent?.id === uid || item.assignedTo?.id === uid;
     return isStudent || isProvider;
   };
 
   const isOpenListing = (item: any) => {
+    // Academic listings always stay "open" (multi-booking model)
+    if (ACADEMIC_CATS.includes(item._type)) {
+      // Hide the poster's own listing from open listings (they can't book their own)
+      return item.poster?.id !== user?.id;
+    }
     if (!["open", "pending"].includes(item.status)) return false;
-    // Delivery open listings: students can only see their own request; providers see all
+    // Delivery: students only see their own request
     if (item._type === "deliveries" && !isProvider) {
       return item.requester?.id === user?.id;
     }
     return true;
   };
 
-  const filteredItems  = getItemsForCat(activeCat);
-  const activeJobs     = filteredItems.filter(isActiveJob);
-  const openListings   = filteredItems.filter(isOpenListing);
-  const totalActive    = allItems.filter(isActiveJob).length;
-  const totalCompleted = allItems.filter((i: any) => i.status === "delivered").length;
-  const totalOpen      = allItems.filter(isOpenListing).length;
+  const filteredItems   = getItemsForCat(activeCat);
+  // For academic tabs, active jobs come from booking records
+  const catBookings     = ACADEMIC_CATS.includes(activeCat)
+    ? myBookings.filter(b => b._type === activeCat)
+    : [];
+  const activeJobs      = ACADEMIC_CATS.includes(activeCat)
+    ? catBookings
+    : filteredItems.filter(isActiveJobLegacy);
+  const openListings    = filteredItems.filter(isOpenListing);
+
+  const allDeliveriesAndTasks = [...deliveries, ...tasks];
+  const totalActive     = allDeliveriesAndTasks.filter(isActiveJobLegacy).length + myBookings.filter(b => ["booked", "accepted", "in_progress", "completed", "rejected"].includes(b.status)).length;
+  const totalCompleted  = allDeliveriesAndTasks.filter((i: any) => i.status === "delivered").length + myBookings.filter(b => b.status === "delivered").length;
+  const totalOpen       = allItems.filter(isOpenListing).length;
 
   // ── Mutations ─────────────────────────────────────────────────────────────
   const endpointMap: Record<string, string> = {
@@ -1490,16 +1500,17 @@ export default function ServicesScreen() {
     deliveries:     "/services/deliveries",
     tasks:          "/services/tasks",
     projects:       "/services/projects",
+    bookings:       "/services/bookings",
   };
 
-  const onDismissRejection = (id: string, tab: string) =>
-    actionMutation.mutate({ id, action: "dismiss-rejection", tab });
+  // Dismiss rejection always operates on the booking record
+  const onDismissRejection = (id: string, _type: string) =>
+    actionMutation.mutate({ id, action: "dismiss-rejection", tab: "bookings" });
 
   const actionMutation = useMutation({
     mutationFn: async ({ id, action, tab }: { id: string; action: string; tab: string }) => {
       setPendingId(id);
       const res = await apiRequest(`${endpointMap[tab]}/${id}/${action}`, { method: "POST" });
-      // Safely parse response — server may return HTML on 404/500
       const text = await res.text();
       let json: any = {};
       try { json = JSON.parse(text); } catch {
@@ -1510,6 +1521,7 @@ export default function ServicesScreen() {
     },
     onSuccess: (_, vars) => {
       queryClient.invalidateQueries({ queryKey: ["services", vars.tab] });
+      queryClient.invalidateQueries({ queryKey: ["services", "bookings"] });
       const msgs: Record<string, string> = {
         book: "Booked successfully!", apply: "Application sent!",
         accept: "Accepted!", reject: "Request declined", progress: "Status updated!", confirm: "Confirmed received!",
@@ -1537,11 +1549,16 @@ export default function ServicesScreen() {
   const renderCard = useCallback((item: any) => {
     const type = item._type;
     if (type === "assignments" || type === "certifications" || type === "projects") {
+      // For each listing: find the current user's active booking + count of all active bookings
+      const myBooking = myActiveBookingByListing.get(item.id);
+      const bookingCount = myBookings.filter(b => b.listingId === item.id && !["delivered", "dismissed"].includes(b.status)).length;
       return (
         <AcademicCard
           key={item.id} item={item} C={C} serviceType={type} currentUserId={user?.id}
           onAction={(id: string, action: string) => actionMutation.mutate({ id, action, tab: type })}
           isPending={pendingId === item.id && actionMutation.isPending}
+          myBooking={myBooking}
+          bookingCount={bookingCount}
         />
       );
     }
@@ -1566,7 +1583,7 @@ export default function ServicesScreen() {
       );
     }
     return null;
-  }, [C, user, pendingId, actionMutation.isPending, rateMutation.isPending]);
+  }, [C, user, pendingId, actionMutation.isPending, rateMutation.isPending, myActiveBookingByListing, myBookings]);
 
   // ── Post helpers ───────────────────────────────────────────────────────────
   const postableCats = ["deliveries", "assignments", "certifications", "tasks", "projects"].filter(canPost);
@@ -1670,8 +1687,8 @@ export default function ServicesScreen() {
                     user={user}
                     isPending={pendingId === item.id && actionMutation.isPending}
                     onTrackPress={(i: any) => setSelectedItem(i)}
-                    onAccept={(id: string, type: string) => actionMutation.mutate({ id, action: "accept", tab: type })}
-                    onReject={(id: string, type: string) => actionMutation.mutate({ id, action: "reject", tab: type })}
+                    onAccept={(id: string) => actionMutation.mutate({ id, action: "accept", tab: item._isBooking ? "bookings" : item._type })}
+                    onReject={(id: string) => actionMutation.mutate({ id, action: "reject", tab: item._isBooking ? "bookings" : item._type })}
                     onDismissRejection={onDismissRejection}
                   />
                 ))}

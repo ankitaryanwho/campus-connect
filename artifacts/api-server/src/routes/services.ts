@@ -2,9 +2,9 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import {
   assignmentsTable, certificationsTable, deliveriesTable, outletItemsTable,
-  tasksTable, taskApplicationsTable, projectsTable, usersTable,
+  tasksTable, taskApplicationsTable, projectsTable, usersTable, serviceBookingsTable,
 } from "@workspace/db/schema";
-import { eq, desc, sql, and } from "drizzle-orm";
+import { eq, desc, sql, and, inArray } from "drizzle-orm";
 import { authMiddleware } from "../lib/auth";
 import { generateId } from "../lib/id";
 
@@ -115,94 +115,26 @@ router.post("/assignments/:id/book", authMiddleware, async (req, res) => {
     const rows = await db.select().from(assignmentsTable).where(eq(assignmentsTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].posterId === userId) { res.status(400).json({ error: "Cannot book your own listing" }); return; }
-    if (rows[0].status !== "open") { res.status(400).json({ error: "Already booked" }); return; }
-    const history = appendHistory(rows[0].statusHistory, "booked");
-    await db.update(assignmentsTable).set({ bookedById: userId, status: "booked", statusHistory: history }).where(eq(assignmentsTable.id, id));
-    const updated = await db.select().from(assignmentsTable).where(eq(assignmentsTable.id, id)).limit(1);
-    res.json({ ...updated[0], poster: await safeUser(updated[0].posterId), bookedBy: await safeUser(userId) });
+    // Check if student already has an active (non-delivered, non-dismissed) booking
+    const existing = await db.select().from(serviceBookingsTable)
+      .where(and(eq(serviceBookingsTable.listingId, id), eq(serviceBookingsTable.studentId, userId)))
+      .limit(1);
+    if (existing.length && !["delivered", "dismissed"].includes(existing[0].status)) {
+      res.status(400).json({ error: "AlreadyBooked", message: "You already have an active booking for this listing" }); return;
+    }
+    const bookingId = generateId();
+    const history = appendHistory(null, "booked");
+    await db.insert(serviceBookingsTable).values({
+      id: bookingId, serviceType: "assignments", listingId: id,
+      studentId: userId, status: "booked", statusHistory: history,
+    });
+    const booking = await db.select().from(serviceBookingsTable).where(eq(serviceBookingsTable.id, bookingId)).limit(1);
+    const listing = rows[0];
+    res.json({ ...booking[0], listing: { ...listing, poster: await safeUser(listing.posterId) }, student: await safeUser(userId) });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "ServerError", message: "Failed to book assignment" });
   }
-});
-
-router.post("/assignments/:id/accept", authMiddleware, async (req, res) => {
-  try {
-    const userId = (req as any).userId;
-    const { id } = req.params;
-    const rows = await db.select().from(assignmentsTable).where(eq(assignmentsTable.id, id)).limit(1);
-    if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
-    if (rows[0].posterId !== userId) { res.status(403).json({ error: "Only the poster can accept bookings" }); return; }
-    if (rows[0].status !== "booked") { res.status(400).json({ error: "Must be in booked status" }); return; }
-    const history = appendHistory(rows[0].statusHistory, "accepted");
-    await db.update(assignmentsTable).set({ status: "accepted", statusHistory: history }).where(eq(assignmentsTable.id, id));
-    const updated = await db.select().from(assignmentsTable).where(eq(assignmentsTable.id, id)).limit(1);
-    res.json({ ...updated[0], poster: await safeUser(updated[0].posterId), bookedBy: updated[0].bookedById ? await safeUser(updated[0].bookedById) : null });
-  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to accept" }); }
-});
-
-router.post("/assignments/:id/reject", authMiddleware, async (req, res) => {
-  try {
-    const userId = (req as any).userId;
-    const { id } = req.params;
-    const rows = await db.select().from(assignmentsTable).where(eq(assignmentsTable.id, id)).limit(1);
-    if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
-    if (rows[0].posterId !== userId) { res.status(403).json({ error: "Only the poster can reject bookings" }); return; }
-    if (rows[0].status !== "booked") { res.status(400).json({ error: "Must be in booked status to reject" }); return; }
-    const history = appendHistory(rows[0].statusHistory, "rejected");
-    // Keep bookedById so student can see the rejection — they dismiss to re-open
-    await db.update(assignmentsTable)
-      .set({ status: "rejected", statusHistory: history })
-      .where(eq(assignmentsTable.id, id));
-    res.json({ message: "Booking rejected" });
-  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to reject" }); }
-});
-
-router.post("/assignments/:id/dismiss-rejection", authMiddleware, async (req, res) => {
-  try {
-    const userId = (req as any).userId;
-    const { id } = req.params;
-    const rows = await db.select().from(assignmentsTable).where(eq(assignmentsTable.id, id)).limit(1);
-    if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
-    if (rows[0].bookedById !== userId) { res.status(403).json({ error: "Only the original booker can dismiss" }); return; }
-    if (rows[0].status !== "rejected") { res.status(400).json({ error: "Not in rejected status" }); return; }
-    const history = appendHistory(rows[0].statusHistory, "open");
-    await db.update(assignmentsTable)
-      .set({ status: "open", bookedById: null, statusHistory: history })
-      .where(eq(assignmentsTable.id, id));
-    res.json({ message: "Rejection dismissed, listing is open again" });
-  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to dismiss" }); }
-});
-
-router.post("/assignments/:id/progress", authMiddleware, async (req, res) => {
-  try {
-    const userId = (req as any).userId;
-    const { id } = req.params;
-    const rows = await db.select().from(assignmentsTable).where(eq(assignmentsTable.id, id)).limit(1);
-    if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
-    if (rows[0].posterId !== userId) { res.status(403).json({ error: "Only the poster can update status" }); return; }
-    const next: Record<string, string> = { accepted: "in_progress", in_progress: "completed" };
-    const nextStatus = next[rows[0].status];
-    if (!nextStatus) { res.status(400).json({ error: "Cannot advance from status: " + rows[0].status }); return; }
-    const history = appendHistory(rows[0].statusHistory, nextStatus);
-    await db.update(assignmentsTable).set({ status: nextStatus, statusHistory: history }).where(eq(assignmentsTable.id, id));
-    const updated = await db.select().from(assignmentsTable).where(eq(assignmentsTable.id, id)).limit(1);
-    res.json({ ...updated[0], poster: await safeUser(updated[0].posterId), bookedBy: updated[0].bookedById ? await safeUser(updated[0].bookedById) : null });
-  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to update status" }); }
-});
-
-router.post("/assignments/:id/confirm", authMiddleware, async (req, res) => {
-  try {
-    const userId = (req as any).userId;
-    const { id } = req.params;
-    const rows = await db.select().from(assignmentsTable).where(eq(assignmentsTable.id, id)).limit(1);
-    if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
-    if (rows[0].bookedById !== userId) { res.status(403).json({ error: "Only the student can confirm delivery" }); return; }
-    if (rows[0].status !== "completed") { res.status(400).json({ error: "Provider must mark as completed first" }); return; }
-    const history = appendHistory(rows[0].statusHistory, "delivered");
-    await db.update(assignmentsTable).set({ status: "delivered", statusHistory: history }).where(eq(assignmentsTable.id, id));
-    const updated = await db.select().from(assignmentsTable).where(eq(assignmentsTable.id, id)).limit(1);
-    res.json({ ...updated[0], poster: await safeUser(updated[0].posterId), bookedBy: await safeUser(userId) });
-  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to confirm delivery" }); }
 });
 
 // ─── Certifications ───────────────────────────────────────────────────────────
@@ -278,93 +210,24 @@ router.post("/certifications/:id/book", authMiddleware, async (req, res) => {
     const rows = await db.select().from(certificationsTable).where(eq(certificationsTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].posterId === userId) { res.status(400).json({ error: "Cannot book your own listing" }); return; }
-    if (rows[0].status !== "open") { res.status(400).json({ error: "Already booked" }); return; }
-    const history = appendHistory(rows[0].statusHistory, "booked");
-    await db.update(certificationsTable).set({ bookedById: userId, status: "booked", statusHistory: history }).where(eq(certificationsTable.id, id));
-    const updated = await db.select().from(certificationsTable).where(eq(certificationsTable.id, id)).limit(1);
-    res.json({ ...updated[0], poster: await safeUser(updated[0].posterId), bookedBy: await safeUser(userId) });
+    const existing = await db.select().from(serviceBookingsTable)
+      .where(and(eq(serviceBookingsTable.listingId, id), eq(serviceBookingsTable.studentId, userId)))
+      .limit(1);
+    if (existing.length && !["delivered", "dismissed"].includes(existing[0].status)) {
+      res.status(400).json({ error: "AlreadyBooked", message: "You already have an active booking for this listing" }); return;
+    }
+    const bookingId = generateId();
+    const history = appendHistory(null, "booked");
+    await db.insert(serviceBookingsTable).values({
+      id: bookingId, serviceType: "certifications", listingId: id,
+      studentId: userId, status: "booked", statusHistory: history,
+    });
+    const booking = await db.select().from(serviceBookingsTable).where(eq(serviceBookingsTable.id, bookingId)).limit(1);
+    res.json({ ...booking[0], listing: { ...rows[0], poster: await safeUser(rows[0].posterId) }, student: await safeUser(userId) });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "ServerError", message: "Failed to book certification" });
   }
-});
-
-router.post("/certifications/:id/accept", authMiddleware, async (req, res) => {
-  try {
-    const userId = (req as any).userId;
-    const { id } = req.params;
-    const rows = await db.select().from(certificationsTable).where(eq(certificationsTable.id, id)).limit(1);
-    if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
-    if (rows[0].posterId !== userId) { res.status(403).json({ error: "Only the poster can accept bookings" }); return; }
-    if (rows[0].status !== "booked") { res.status(400).json({ error: "Must be in booked status" }); return; }
-    const history = appendHistory(rows[0].statusHistory, "accepted");
-    await db.update(certificationsTable).set({ status: "accepted", statusHistory: history }).where(eq(certificationsTable.id, id));
-    const updated = await db.select().from(certificationsTable).where(eq(certificationsTable.id, id)).limit(1);
-    res.json({ ...updated[0], poster: await safeUser(updated[0].posterId), bookedBy: updated[0].bookedById ? await safeUser(updated[0].bookedById) : null });
-  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to accept" }); }
-});
-
-router.post("/certifications/:id/reject", authMiddleware, async (req, res) => {
-  try {
-    const userId = (req as any).userId;
-    const { id } = req.params;
-    const rows = await db.select().from(certificationsTable).where(eq(certificationsTable.id, id)).limit(1);
-    if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
-    if (rows[0].posterId !== userId) { res.status(403).json({ error: "Only the poster can reject bookings" }); return; }
-    if (rows[0].status !== "booked") { res.status(400).json({ error: "Must be in booked status to reject" }); return; }
-    const history = appendHistory(rows[0].statusHistory, "rejected");
-    await db.update(certificationsTable)
-      .set({ status: "rejected", statusHistory: history })
-      .where(eq(certificationsTable.id, id));
-    res.json({ message: "Booking rejected" });
-  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to reject" }); }
-});
-
-router.post("/certifications/:id/dismiss-rejection", authMiddleware, async (req, res) => {
-  try {
-    const userId = (req as any).userId;
-    const { id } = req.params;
-    const rows = await db.select().from(certificationsTable).where(eq(certificationsTable.id, id)).limit(1);
-    if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
-    if (rows[0].bookedById !== userId) { res.status(403).json({ error: "Only the original booker can dismiss" }); return; }
-    if (rows[0].status !== "rejected") { res.status(400).json({ error: "Not in rejected status" }); return; }
-    const history = appendHistory(rows[0].statusHistory, "open");
-    await db.update(certificationsTable)
-      .set({ status: "open", bookedById: null, statusHistory: history })
-      .where(eq(certificationsTable.id, id));
-    res.json({ message: "Rejection dismissed, listing is open again" });
-  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to dismiss" }); }
-});
-
-router.post("/certifications/:id/progress", authMiddleware, async (req, res) => {
-  try {
-    const userId = (req as any).userId;
-    const { id } = req.params;
-    const rows = await db.select().from(certificationsTable).where(eq(certificationsTable.id, id)).limit(1);
-    if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
-    if (rows[0].posterId !== userId) { res.status(403).json({ error: "Only the poster can update status" }); return; }
-    const next: Record<string, string> = { accepted: "in_progress", in_progress: "completed" };
-    const nextStatus = next[rows[0].status];
-    if (!nextStatus) { res.status(400).json({ error: "Cannot advance from status: " + rows[0].status }); return; }
-    const history = appendHistory(rows[0].statusHistory, nextStatus);
-    await db.update(certificationsTable).set({ status: nextStatus, statusHistory: history }).where(eq(certificationsTable.id, id));
-    const updated = await db.select().from(certificationsTable).where(eq(certificationsTable.id, id)).limit(1);
-    res.json({ ...updated[0], poster: await safeUser(updated[0].posterId), bookedBy: updated[0].bookedById ? await safeUser(updated[0].bookedById) : null });
-  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to update status" }); }
-});
-
-router.post("/certifications/:id/confirm", authMiddleware, async (req, res) => {
-  try {
-    const userId = (req as any).userId;
-    const { id } = req.params;
-    const rows = await db.select().from(certificationsTable).where(eq(certificationsTable.id, id)).limit(1);
-    if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
-    if (rows[0].bookedById !== userId) { res.status(403).json({ error: "Only the student can confirm delivery" }); return; }
-    if (rows[0].status !== "completed") { res.status(400).json({ error: "Provider must mark as completed first" }); return; }
-    const history = appendHistory(rows[0].statusHistory, "delivered");
-    await db.update(certificationsTable).set({ status: "delivered", statusHistory: history }).where(eq(certificationsTable.id, id));
-    const updated = await db.select().from(certificationsTable).where(eq(certificationsTable.id, id)).limit(1);
-    res.json({ ...updated[0], poster: await safeUser(updated[0].posterId), bookedBy: await safeUser(userId) });
-  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to confirm delivery" }); }
 });
 
 // ─── Outlet Items ─────────────────────────────────────────────────────────────
@@ -802,89 +665,177 @@ router.post("/projects/:id/book", authMiddleware, async (req, res) => {
     const rows = await db.select().from(projectsTable).where(eq(projectsTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].posterId === userId) { res.status(400).json({ error: "Cannot book your own listing" }); return; }
-    if (rows[0].status !== "open") { res.status(400).json({ error: "Already booked" }); return; }
-    const history = appendHistory(rows[0].statusHistory, "booked");
-    await db.update(projectsTable).set({ bookedById: userId, status: "booked", statusHistory: history }).where(eq(projectsTable.id, id));
-    const updated = await db.select().from(projectsTable).where(eq(projectsTable.id, id)).limit(1);
-    res.json({ ...updated[0], poster: await safeUser(updated[0].posterId), bookedBy: await safeUser(userId) });
+    const existing = await db.select().from(serviceBookingsTable)
+      .where(and(eq(serviceBookingsTable.listingId, id), eq(serviceBookingsTable.studentId, userId)))
+      .limit(1);
+    if (existing.length && !["delivered", "dismissed"].includes(existing[0].status)) {
+      res.status(400).json({ error: "AlreadyBooked", message: "You already have an active booking for this listing" }); return;
+    }
+    const bookingId = generateId();
+    const history = appendHistory(null, "booked");
+    await db.insert(serviceBookingsTable).values({
+      id: bookingId, serviceType: "projects", listingId: id,
+      studentId: userId, status: "booked", statusHistory: history,
+    });
+    const booking = await db.select().from(serviceBookingsTable).where(eq(serviceBookingsTable.id, bookingId)).limit(1);
+    res.json({ ...booking[0], listing: { ...rows[0], poster: await safeUser(rows[0].posterId) }, student: await safeUser(userId) });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "ServerError", message: "Failed to book project" });
   }
 });
 
-router.post("/projects/:id/accept", authMiddleware, async (req, res) => {
+// ─── Service Bookings — unified CRUD for assignments/certifications/projects ──
+// Each booking lives in service_bookings; listing stays "open" for multi-booking
+
+async function getListing(serviceType: string, listingId: string) {
+  if (serviceType === "assignments") {
+    const r = await db.select().from(assignmentsTable).where(eq(assignmentsTable.id, listingId)).limit(1);
+    return r[0] || null;
+  }
+  if (serviceType === "certifications") {
+    const r = await db.select().from(certificationsTable).where(eq(certificationsTable.id, listingId)).limit(1);
+    return r[0] || null;
+  }
+  if (serviceType === "projects") {
+    const r = await db.select().from(projectsTable).where(eq(projectsTable.id, listingId)).limit(1);
+    return r[0] || null;
+  }
+  return null;
+}
+
+router.get("/bookings", authMiddleware, async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const me = await currentUser(userId);
+    if (!me) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    let bookings: any[];
+
+    if (me.role === "provider") {
+      // Provider: get all bookings on their own listings
+      const [myAssignments, myCertifications, myProjects] = await Promise.all([
+        db.select().from(assignmentsTable).where(eq(assignmentsTable.posterId, userId)),
+        db.select().from(certificationsTable).where(eq(certificationsTable.posterId, userId)),
+        db.select().from(projectsTable).where(eq(projectsTable.posterId, userId)),
+      ]);
+      const myListingIds = [
+        ...myAssignments.map(a => a.id),
+        ...myCertifications.map(c => c.id),
+        ...myProjects.map(p => p.id),
+      ];
+      if (!myListingIds.length) { res.json({ bookings: [] }); return; }
+      const rawBookings = await db.select().from(serviceBookingsTable)
+        .where(and(
+          inArray(serviceBookingsTable.listingId, myListingIds),
+          inArray(serviceBookingsTable.status, ["booked", "accepted", "in_progress", "completed", "rejected"])
+        ))
+        .orderBy(desc(serviceBookingsTable.createdAt));
+      bookings = rawBookings;
+    } else {
+      // Student: get their own bookings
+      bookings = await db.select().from(serviceBookingsTable)
+        .where(and(
+          eq(serviceBookingsTable.studentId, userId),
+          inArray(serviceBookingsTable.status, ["booked", "accepted", "in_progress", "completed", "rejected"])
+        ))
+        .orderBy(desc(serviceBookingsTable.createdAt));
+    }
+
+    // Attach listing and user data
+    const formatted = await Promise.all(bookings.map(async (b: any) => {
+      const listing = await getListing(b.serviceType, b.listingId);
+      return {
+        ...b,
+        _type: b.serviceType,
+        listing: listing ? { ...listing, poster: await safeUser(listing.posterId) } : null,
+        student: await safeUser(b.studentId),
+      };
+    }));
+
+    res.json({ bookings: formatted });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "ServerError", message: "Failed to get bookings" });
+  }
+});
+
+router.post("/bookings/:id/accept", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
     const { id } = req.params;
-    const rows = await db.select().from(projectsTable).where(eq(projectsTable.id, id)).limit(1);
+    const rows = await db.select().from(serviceBookingsTable).where(eq(serviceBookingsTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
-    if (rows[0].posterId !== userId) { res.status(403).json({ error: "Only the poster can accept bookings" }); return; }
+    const listing = await getListing(rows[0].serviceType, rows[0].listingId);
+    if (!listing || listing.posterId !== userId) { res.status(403).json({ error: "Only the provider can accept" }); return; }
     if (rows[0].status !== "booked") { res.status(400).json({ error: "Must be in booked status" }); return; }
     const history = appendHistory(rows[0].statusHistory, "accepted");
-    await db.update(projectsTable).set({ status: "accepted", statusHistory: history }).where(eq(projectsTable.id, id));
-    const updated = await db.select().from(projectsTable).where(eq(projectsTable.id, id)).limit(1);
-    res.json({ ...updated[0], poster: await safeUser(updated[0].posterId), bookedBy: updated[0].bookedById ? await safeUser(updated[0].bookedById) : null });
-  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to accept" }); }
+    await db.update(serviceBookingsTable).set({ status: "accepted", statusHistory: history }).where(eq(serviceBookingsTable.id, id));
+    const updated = await db.select().from(serviceBookingsTable).where(eq(serviceBookingsTable.id, id)).limit(1);
+    res.json({ ...updated[0], _type: updated[0].serviceType, listing: { ...listing, poster: await safeUser(listing.posterId) }, student: await safeUser(updated[0].studentId) });
+  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to accept booking" }); }
 });
 
-router.post("/projects/:id/reject", authMiddleware, async (req, res) => {
+router.post("/bookings/:id/reject", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
     const { id } = req.params;
-    const rows = await db.select().from(projectsTable).where(eq(projectsTable.id, id)).limit(1);
+    const rows = await db.select().from(serviceBookingsTable).where(eq(serviceBookingsTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
-    if (rows[0].posterId !== userId) { res.status(403).json({ error: "Only the poster can reject bookings" }); return; }
+    const listing = await getListing(rows[0].serviceType, rows[0].listingId);
+    if (!listing || listing.posterId !== userId) { res.status(403).json({ error: "Only the provider can reject" }); return; }
     if (rows[0].status !== "booked") { res.status(400).json({ error: "Must be in booked status to reject" }); return; }
     const history = appendHistory(rows[0].statusHistory, "rejected");
-    await db.update(projectsTable).set({ status: "rejected", statusHistory: history }).where(eq(projectsTable.id, id));
+    await db.update(serviceBookingsTable).set({ status: "rejected", statusHistory: history }).where(eq(serviceBookingsTable.id, id));
     res.json({ message: "Booking rejected" });
-  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to reject" }); }
+  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to reject booking" }); }
 });
 
-router.post("/projects/:id/dismiss-rejection", authMiddleware, async (req, res) => {
+router.post("/bookings/:id/progress", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
     const { id } = req.params;
-    const rows = await db.select().from(projectsTable).where(eq(projectsTable.id, id)).limit(1);
+    const rows = await db.select().from(serviceBookingsTable).where(eq(serviceBookingsTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
-    if (rows[0].bookedById !== userId) { res.status(403).json({ error: "Only the original booker can dismiss" }); return; }
-    if (rows[0].status !== "rejected") { res.status(400).json({ error: "Not in rejected status" }); return; }
-    const history = appendHistory(rows[0].statusHistory, "open");
-    await db.update(projectsTable).set({ status: "open", bookedById: null, statusHistory: history }).where(eq(projectsTable.id, id));
-    res.json({ message: "Rejection dismissed, listing is open again" });
-  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to dismiss" }); }
-});
-
-router.post("/projects/:id/progress", authMiddleware, async (req, res) => {
-  try {
-    const userId = (req as any).userId;
-    const { id } = req.params;
-    const rows = await db.select().from(projectsTable).where(eq(projectsTable.id, id)).limit(1);
-    if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
-    if (rows[0].posterId !== userId) { res.status(403).json({ error: "Only the poster can update status" }); return; }
+    const listing = await getListing(rows[0].serviceType, rows[0].listingId);
+    if (!listing || listing.posterId !== userId) { res.status(403).json({ error: "Only the provider can update status" }); return; }
     const next: Record<string, string> = { accepted: "in_progress", in_progress: "completed" };
     const nextStatus = next[rows[0].status];
     if (!nextStatus) { res.status(400).json({ error: "Cannot advance from status: " + rows[0].status }); return; }
     const history = appendHistory(rows[0].statusHistory, nextStatus);
-    await db.update(projectsTable).set({ status: nextStatus, statusHistory: history }).where(eq(projectsTable.id, id));
-    const updated = await db.select().from(projectsTable).where(eq(projectsTable.id, id)).limit(1);
-    res.json({ ...updated[0], poster: await safeUser(updated[0].posterId), bookedBy: updated[0].bookedById ? await safeUser(updated[0].bookedById) : null });
-  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to update status" }); }
+    await db.update(serviceBookingsTable).set({ status: nextStatus, statusHistory: history }).where(eq(serviceBookingsTable.id, id));
+    const updated = await db.select().from(serviceBookingsTable).where(eq(serviceBookingsTable.id, id)).limit(1);
+    res.json({ ...updated[0], _type: updated[0].serviceType, listing: { ...listing, poster: await safeUser(listing.posterId) }, student: await safeUser(updated[0].studentId) });
+  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to update booking status" }); }
 });
 
-router.post("/projects/:id/confirm", authMiddleware, async (req, res) => {
+router.post("/bookings/:id/confirm", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
     const { id } = req.params;
-    const rows = await db.select().from(projectsTable).where(eq(projectsTable.id, id)).limit(1);
+    const rows = await db.select().from(serviceBookingsTable).where(eq(serviceBookingsTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
-    if (rows[0].bookedById !== userId) { res.status(403).json({ error: "Only the student can confirm delivery" }); return; }
+    if (rows[0].studentId !== userId) { res.status(403).json({ error: "Only the student can confirm" }); return; }
     if (rows[0].status !== "completed") { res.status(400).json({ error: "Provider must mark as completed first" }); return; }
     const history = appendHistory(rows[0].statusHistory, "delivered");
-    await db.update(projectsTable).set({ status: "delivered", statusHistory: history }).where(eq(projectsTable.id, id));
-    const updated = await db.select().from(projectsTable).where(eq(projectsTable.id, id)).limit(1);
-    res.json({ ...updated[0], poster: await safeUser(updated[0].posterId), bookedBy: await safeUser(userId) });
-  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to confirm delivery" }); }
+    await db.update(serviceBookingsTable).set({ status: "delivered", statusHistory: history }).where(eq(serviceBookingsTable.id, id));
+    const updated = await db.select().from(serviceBookingsTable).where(eq(serviceBookingsTable.id, id)).limit(1);
+    const listing = await getListing(updated[0].serviceType, updated[0].listingId);
+    res.json({ ...updated[0], _type: updated[0].serviceType, listing: listing ? { ...listing, poster: await safeUser(listing.posterId) } : null, student: await safeUser(userId) });
+  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to confirm booking" }); }
+});
+
+router.post("/bookings/:id/dismiss-rejection", authMiddleware, async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const { id } = req.params;
+    const rows = await db.select().from(serviceBookingsTable).where(eq(serviceBookingsTable.id, id)).limit(1);
+    if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
+    if (rows[0].studentId !== userId) { res.status(403).json({ error: "Only the student can dismiss" }); return; }
+    if (rows[0].status !== "rejected") { res.status(400).json({ error: "Not in rejected status" }); return; }
+    await db.update(serviceBookingsTable).set({ status: "dismissed", statusHistory: appendHistory(rows[0].statusHistory, "dismissed") }).where(eq(serviceBookingsTable.id, id));
+    res.json({ message: "Rejected booking dismissed" });
+  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to dismiss" }); }
 });
 
 export default router;
