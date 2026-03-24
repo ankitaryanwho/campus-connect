@@ -1467,7 +1467,14 @@ export default function ServicesScreen() {
     return isStudent || isProvider;
   };
 
-  const isOpenListing = (item: any) => ["open", "pending"].includes(item.status);
+  const isOpenListing = (item: any) => {
+    if (!["open", "pending"].includes(item.status)) return false;
+    // Delivery open listings: students can only see their own request; providers see all
+    if (item._type === "deliveries" && !isProvider) {
+      return item.requester?.id === user?.id;
+    }
+    return true;
+  };
 
   const filteredItems  = getItemsForCat(activeCat);
   const activeJobs     = filteredItems.filter(isActiveJob);
