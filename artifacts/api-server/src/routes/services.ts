@@ -318,11 +318,15 @@ router.get("/deliveries", authMiddleware, async (req, res) => {
 
     let rows = await db.select().from(deliveriesTable).orderBy(desc(deliveriesTable.createdAt));
 
-    // Students see their own requests; providers see pending + their accepted ones
+    // Students see their own requests; providers see: pending (marketplace) + ones they accepted (agent) + ones they requested themselves
     if (me.role === "student") {
       rows = rows.filter(d => d.requesterId === userId);
     } else if (me.role === "provider") {
-      rows = rows.filter(d => d.status === "pending" || d.deliveryAgentId === userId);
+      rows = rows.filter(d =>
+        d.status === "pending" ||
+        d.deliveryAgentId === userId ||
+        d.requesterId === userId
+      );
     }
 
     const formatted = await Promise.all(rows.map(async d => ({

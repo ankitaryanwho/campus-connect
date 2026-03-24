@@ -3,7 +3,7 @@ import { useLocalSearchParams } from "expo-router";
 import {
   View, Text, ScrollView, Pressable, StyleSheet, Modal,
   useColorScheme, FlatList, ActivityIndicator, Platform,
-  TextInput, Linking, Animated,
+  TextInput, Linking, Animated, RefreshControl,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
@@ -1347,6 +1347,7 @@ export default function ServicesScreen() {
   const [postType, setPostType] = useState("tasks");
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<any>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const { showToast } = useToast();
   const isWeb = Platform.OS === "web";
 
@@ -1371,7 +1372,10 @@ export default function ServicesScreen() {
 
   const { data: assignData, isLoading: aLoading, refetch: rA } = useQuery(mkQuery("assignments", "/services/assignments"));
   const { data: certData,   isLoading: cLoading, refetch: rC } = useQuery(mkQuery("certifications", "/services/certifications"));
-  const { data: delivData,  isLoading: dLoading, refetch: rD } = useQuery(mkQuery("deliveries", "/services/deliveries"));
+  const { data: delivData,  isLoading: dLoading, refetch: rD } = useQuery({
+    ...mkQuery("deliveries", "/services/deliveries"),
+    refetchInterval: 30_000, // auto-refresh every 30s so both requester and provider see status changes
+  });
   const { data: taskData,   isLoading: tLoading, refetch: rT } = useQuery(mkQuery("tasks", "/services/tasks"));
   const { data: projData,   isLoading: pLoading, refetch: rP } = useQuery(mkQuery("projects", "/services/projects"));
 
@@ -1502,6 +1506,16 @@ export default function ServicesScreen() {
   const totalActive     = allDeliveriesAndTasks.filter(isActiveJobLegacy).length + myBookings.filter(b => ["booked", "accepted", "in_progress", "completed", "rejected"].includes(b.status)).length;
   const totalCompleted  = allDeliveriesAndTasks.filter((i: any) => i.status === "delivered").length + myBookings.filter(b => b.status === "delivered").length;
   const totalOpen       = allItems.filter(isOpenListing).length;
+
+  // ── Pull-to-refresh ───────────────────────────────────────────────────────
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([rA(), rC(), rD(), rT(), rP(), rBookings()]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [rA, rC, rD, rT, rP, rBookings]);
 
   // ── Mutations ─────────────────────────────────────────────────────────────
   const endpointMap: Record<string, string> = {
@@ -1659,6 +1673,14 @@ export default function ServicesScreen() {
         <ScrollView
           contentContainerStyle={{ paddingBottom: isWeb ? 120 : 110, paddingTop: 4 }}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor="#5B4FE8"
+              colors={["#5B4FE8"]}
+            />
+          }
         >
           {/* Activity banner */}
           <View style={[CS.activityBanner, { backgroundColor: C.surface, borderColor: C.border }]}>
