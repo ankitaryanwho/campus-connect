@@ -687,9 +687,13 @@ function PostTaskModal({ visible, onClose, C, apiRequest, queryClient, showToast
 function AcademicCard({ item, C, onAction, currentUserId, isPending, serviceType, myBooking, bookingCount }: any) {
   const isOwner = item.poster?.id === currentUserId;
   const accentColor = serviceType === "certifications" ? "#10B981" : serviceType === "projects" ? "#6366F1" : "#5B4FE8";
-  // In multi-booking model: listings always stay "open"; booking state comes from myBooking
+  // Multi-booking model: booking state comes from myBooking (service_bookings table)
   const hasActiveBooking = !!myBooking && !["delivered", "dismissed"].includes(myBooking.status);
-  const canBook = !isOwner && !hasActiveBooking;
+  // Legacy fallback: old single-booking model stored bookedById directly on the listing
+  const isBookedByMeLegacy = !hasActiveBooking && (
+    item.bookedBy?.id === currentUserId || item.bookedById === currentUserId
+  );
+  const canBook = !isOwner && !hasActiveBooking && !isBookedByMeLegacy;
 
   return (
     <View style={[CS.card, { backgroundColor: C.surface, borderColor: C.border }]}>
@@ -735,12 +739,21 @@ function AcademicCard({ item, C, onAction, currentUserId, isPending, serviceType
         )}
       </View>
 
-      {/* Already booked badge for this student */}
+      {/* Already booked badge for this student (new multi-booking model) */}
       {hasActiveBooking && (
         <View style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: accentColor + "15", borderRadius: 8, padding: 8, marginTop: 6 }}>
           <Feather name="check-circle" size={13} color={accentColor} />
           <Text style={{ fontSize: 11, fontFamily: "Inter_600SemiBold", color: accentColor }}>
             You booked this · {statusLabel(myBooking.status)}
+          </Text>
+        </View>
+      )}
+      {/* Legacy booking badge (old single-booking model fallback) */}
+      {isBookedByMeLegacy && (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: accentColor + "15", borderRadius: 8, padding: 8, marginTop: 6 }}>
+          <Feather name="check-circle" size={13} color={accentColor} />
+          <Text style={{ fontSize: 11, fontFamily: "Inter_600SemiBold", color: accentColor }}>
+            You booked this · {statusLabel(item.status)}
           </Text>
         </View>
       )}
@@ -1181,9 +1194,11 @@ function CompactListingRow({ item, C, user, onBook, onAccept, onReject, onApply,
   const canAcceptReject = !isOwnListing && item._type === "deliveries" && item.status === "pending";
   // Tasks: anyone (not poster) can Apply
   const canApply = !isOwnListing && item._type === "tasks" && item.status === "open";
-  // Assignments/Certifications/Projects: use hasActiveBooking prop (from service_bookings table, NOT item.bookedById)
-  // item.bookedById is a stale legacy field — do NOT use it; the multi-booking model stores state in service_bookings
-  const canBook = !isOwnListing && !hasActiveBooking && item.status === "open"
+  // Assignments/Certifications/Projects: multi-booking model — listings are always bookable
+  // hasActiveBooking comes from service_bookings table (new model)
+  // isBookedByMeLegacy is a fallback for old single-booking model rows (bookedById on listing)
+  const isBookedByMeLegacy = item.bookedBy?.id === uid || item.bookedById === uid;
+  const canBook = !isOwnListing && !hasActiveBooking && !isBookedByMeLegacy
     && (item._type === "assignments" || item._type === "certifications" || item._type === "projects");
 
   const timeLabel = (() => {
@@ -1282,7 +1297,7 @@ function CompactListingRow({ item, C, user, onBook, onAccept, onReject, onApply,
         )}
 
         {/* Already booked badge */}
-        {hasActiveBooking && !isOwnListing && (
+        {(hasActiveBooking || isBookedByMeLegacy) && !isOwnListing && (
           <View style={{ backgroundColor: meta.bg, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, flexDirection: "row", alignItems: "center", gap: 3 }}>
             <Feather name="check" size={10} color={meta.accent} />
             <Text style={{ color: meta.accent, fontSize: 9, fontFamily: "Inter_700Bold" }}>Booked</Text>
@@ -1422,9 +1437,10 @@ function BookingDetailCard({ item, C, user, onAction, isPending }: any) {
 
 // ─── Detail Modal (full card shown on "Track Order" tap) ──────────────────────
 
-function DetailModal({ item, C, user, onClose, onAction, onRate, isPending }: any) {
+function DetailModal({ item, C, user, onClose, onAction, onRate, isPending, myBooking }: any) {
   if (!item) return null;
   const type = item._type;
+  const isAcademic = type === "assignments" || type === "certifications" || type === "projects";
   return (
     <Modal visible animationType="slide" transparent>
       <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.55)" }}>
@@ -1434,13 +1450,13 @@ function DetailModal({ item, C, user, onClose, onAction, onRate, isPending }: an
             <Pressable onPress={onClose}><Feather name="x" size={22} color={C.text} /></Pressable>
           </View>
           <ScrollView showsVerticalScrollIndicator={false}>
-            {/* Booking items: show booking tracking/actions (NOT a "Book Now" listing view) */}
-            {item._isBooking && (type === "assignments" || type === "certifications" || type === "projects") && (
+            {/* Booking items (from service_bookings table): show booking tracking/actions */}
+            {item._isBooking && isAcademic && (
               <BookingDetailCard item={item} C={C} user={user} onAction={onAction} isPending={isPending} />
             )}
-            {/* Listing items: show the listing card */}
-            {!item._isBooking && (type === "assignments" || type === "certifications" || type === "projects") && (
-              <AcademicCard item={item} C={C} serviceType={type} currentUserId={user?.id} onAction={onAction} isPending={isPending} />
+            {/* Listing items: show listing card with myBooking to suppress "Book Now" if already booked */}
+            {!item._isBooking && isAcademic && (
+              <AcademicCard item={item} C={C} serviceType={type} currentUserId={user?.id} onAction={onAction} isPending={isPending} myBooking={myBooking} />
             )}
             {type === "deliveries" && (
               <DeliveryCard item={item} C={C} currentUser={user} onAction={onAction} onRate={onRate} isPending={isPending} />
@@ -1941,6 +1957,7 @@ export default function ServicesScreen() {
           user={user}
           onClose={() => setSelectedItem(null)}
           isPending={pendingId === selectedItem?.id && actionMutation.isPending}
+          myBooking={selectedItem._isBooking ? undefined : myActiveBookingByListing.get(selectedItem.id)}
           onAction={(id: string, action: string) => actionMutation.mutate({ id, action, tab: selectedItem._isBooking ? "bookings" : selectedItem._type })}
           onRate={(id: string, data: any) => rateMutation.mutate({ id, data })}
         />
