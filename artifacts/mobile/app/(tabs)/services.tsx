@@ -1085,18 +1085,18 @@ function CompactActiveCard({ item, C, user, onTrackPress, onAccept, onReject, on
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#FEF2F2", borderRadius: 10, padding: 10, marginBottom: 12 }}>
               <Feather name="x-circle" size={20} color="#EF4444" />
               <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 12, fontFamily: "Inter_700Bold", color: "#EF4444" }}>Booking Rejected by Provider</Text>
-                <Text style={{ fontSize: 10, color: "#78716C", marginTop: 2 }}>The provider declined your booking. You can dismiss and try another.</Text>
+                <Text style={{ fontSize: 12, fontFamily: "Inter_700Bold", color: "#EF4444" }}>Booking Rejected</Text>
+                <Text style={{ fontSize: 10, color: "#78716C", marginTop: 2 }}>The provider declined your booking request.</Text>
               </View>
             </View>
             <Pressable
-              style={{ paddingVertical: 9, borderRadius: 12, backgroundColor: "#EF4444", alignItems: "center" }}
+              style={{ paddingVertical: 9, borderRadius: 12, backgroundColor: "#6B7280", alignItems: "center" }}
               onPress={() => onDismissRejection(item.id, item._type)}
               disabled={isPending}
             >
               {isPending
                 ? <ActivityIndicator size="small" color="#fff" />
-                : <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 12 }}>Dismiss & Find Another Provider</Text>}
+                : <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 12 }}>Dismiss</Text>}
             </Pressable>
           </>
         ) : (
