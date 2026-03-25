@@ -1315,7 +1315,10 @@ function BookingDetailCard({ item, C, user, onAction, isPending }: any) {
   const accentColor = type === "certifications" ? "#10B981" : type === "projects" ? "#6366F1" : "#5B4FE8";
   const uid = user?.id;
   const isProvider = item.poster?.id === uid;
-  const isStudent  = item.bookedBy?.id === uid;
+  // For synthetic bookings, student may only have id (not full object) — check both
+  const isStudent  = item.bookedBy?.id === uid || item.bookedById === uid;
+  // For synthetic (old-model) bookings, actions must use the listing ID, not the fake display ID
+  const actionId = item._isSynthetic ? item.listingId : item.id;
   const { labels, index } = getStepsForItem(item);
   const progress = labels.length > 1 ? index / (labels.length - 1) : 1;
 
@@ -1413,14 +1416,14 @@ function BookingDetailCard({ item, C, user, onAction, isPending }: any) {
       <View style={{ gap: 8 }}>
         {providerNextAction && (
           <Pressable style={{ paddingVertical: 14, borderRadius: 12, backgroundColor: accentColor, alignItems: "center", opacity: isPending ? 0.6 : 1 }}
-            onPress={() => onAction(item.id, providerNextAction.action)} disabled={isPending}>
+            onPress={() => onAction(actionId, providerNextAction.action)} disabled={isPending}>
             {isPending ? <ActivityIndicator color="#fff" size="small" /> :
               <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 14 }}>{providerNextAction.label}</Text>}
           </Pressable>
         )}
         {studentCanConfirm && (
           <Pressable style={{ paddingVertical: 14, borderRadius: 12, backgroundColor: accentColor, alignItems: "center", opacity: isPending ? 0.6 : 1 }}
-            onPress={() => onAction(item.id, "confirm")} disabled={isPending}>
+            onPress={() => onAction(actionId, "confirm")} disabled={isPending}>
             {isPending ? <ActivityIndicator color="#fff" size="small" /> :
               <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 14 }}>Confirm Received ✓</Text>}
           </Pressable>
@@ -1627,14 +1630,43 @@ export default function ServicesScreen() {
   //  - Academic tabs → use booking records (myBookings) — one card per booking
   //  - Delivery / task tabs → use listing-level status (original logic)
   const isActiveJobLegacy = (item: any) => {
+    // Academic types are handled via booking records (myBookings) or syntheticBookings below
+    if (ACADEMIC_CATS.includes(item._type)) return false;
     const idle = ["open", "pending", "delivered", "cancelled"];
     if (idle.includes(item.status)) return false;
     const uid = user?.id;
-    // Use both populated user objects AND raw ID fields as fallback (populated may be null)
     const isStudent  = item.bookedBy?.id === uid || item.requester?.id === uid || item.requesterId === uid;
     const isProvider = item.poster?.id === uid || item.deliveryAgent?.id === uid || item.assignedTo?.id === uid || item.deliveryAgentId === uid;
     return isStudent || isProvider;
   };
+
+  // Synthesize booking-display objects from OLD-MODEL academic listing rows.
+  // These are listings that have non-"open" status + bookedById set but no corresponding
+  // service_bookings record. We wrap them so BookingDetailCard renders instead of AcademicCard.
+  const syntheticBookings: any[] = allItems.filter(i => {
+    if (!ACADEMIC_CATS.includes(i._type)) return false;
+    if (i.status === "open") return false; // Normal open listing — not a synthetic booking
+    if (myActiveBookingByListing.has(i.id)) return false; // Real booking exists, no need to synthesize
+    const uid = user?.id;
+    return i.poster?.id === uid || i.bookedBy?.id === uid || i.bookedById === uid;
+  }).map(i => ({
+    id: `synthetic_${i.id}`,   // Fake display ID — actions must use listingId
+    _type: i._type,
+    _isBooking: true,
+    _isSynthetic: true,         // Flag: use listing-level endpoints, not /bookings/:id/...
+    listingId: i.id,            // Real listing UUID — used for API calls
+    status: i.status,
+    statusHistory: i.statusHistory,
+    createdAt: i.createdAt,
+    title: i.title,
+    price: i.price,
+    subject: i.subject,
+    program: i.program,
+    deadline: i.deadline,
+    poster: i.poster,
+    bookedBy: i.bookedBy || (i.bookedById ? { id: i.bookedById } : null),
+    bookedById: i.bookedById,
+  }));
 
   const isOpenListing = (item: any) => {
     // Academic listings always stay "open" (multi-booking model)
@@ -1651,17 +1683,28 @@ export default function ServicesScreen() {
   };
 
   const filteredItems   = getItemsForCat(activeCat);
-  // For academic tabs, active jobs come from booking records
-  const catBookings     = ACADEMIC_CATS.includes(activeCat)
+  const allDeliveriesAndTasks = [...deliveries, ...tasks];
+
+  // For academic tabs, active jobs = real booking records + synthetic (old-model) bookings
+  // For delivery/task tabs, active jobs = listing items with non-idle status
+  // For "all" tab, merge: non-academic active listings + all real bookings + all synthetic bookings
+  const catBookings = ACADEMIC_CATS.includes(activeCat)
     ? myBookings.filter(b => b._type === activeCat)
     : [];
-  const activeJobs      = ACADEMIC_CATS.includes(activeCat)
-    ? catBookings
-    : filteredItems.filter(isActiveJobLegacy);
+  const activeJobs: any[] = ACADEMIC_CATS.includes(activeCat)
+    ? [...catBookings, ...syntheticBookings.filter(b => b._type === activeCat)]
+    : activeCat === "all"
+      ? [
+          ...allDeliveriesAndTasks.filter(isActiveJobLegacy),
+          ...myBookings.filter(b => !["delivered", "dismissed"].includes(b.status)),
+          ...syntheticBookings,
+        ]
+      : filteredItems.filter(isActiveJobLegacy);
   const openListings    = filteredItems.filter(isOpenListing);
 
-  const allDeliveriesAndTasks = [...deliveries, ...tasks];
-  const totalActive     = allDeliveriesAndTasks.filter(isActiveJobLegacy).length + myBookings.filter(b => ["booked", "accepted", "in_progress", "completed", "rejected"].includes(b.status)).length;
+  const totalActive     = allDeliveriesAndTasks.filter(isActiveJobLegacy).length
+    + myBookings.filter(b => ["booked", "accepted", "in_progress", "completed", "rejected"].includes(b.status)).length
+    + syntheticBookings.length;
   const totalCompleted  = allDeliveriesAndTasks.filter((i: any) => i.status === "delivered").length + myBookings.filter(b => b.status === "delivered").length;
   const totalOpen       = allItems.filter(isOpenListing).length;
 
@@ -1877,8 +1920,8 @@ export default function ServicesScreen() {
                     user={user}
                     isPending={pendingId === item.id && actionMutation.isPending}
                     onTrackPress={(i: any) => setSelectedItem(i)}
-                    onAccept={(id: string) => actionMutation.mutate({ id, action: "accept", tab: item._isBooking ? "bookings" : item._type })}
-                    onReject={(id: string) => actionMutation.mutate({ id, action: "reject", tab: item._isBooking ? "bookings" : item._type })}
+                    onAccept={(id: string) => actionMutation.mutate({ id: item._isSynthetic ? item.listingId : id, action: "accept", tab: item._isSynthetic ? item._type : item._isBooking ? "bookings" : item._type })}
+                    onReject={(id: string) => actionMutation.mutate({ id: item._isSynthetic ? item.listingId : id, action: "reject", tab: item._isSynthetic ? item._type : item._isBooking ? "bookings" : item._type })}
                     onDismissRejection={onDismissRejection}
                   />
                 ))}
@@ -1956,9 +1999,9 @@ export default function ServicesScreen() {
           C={C}
           user={user}
           onClose={() => setSelectedItem(null)}
-          isPending={pendingId === selectedItem?.id && actionMutation.isPending}
+          isPending={actionMutation.isPending && (pendingId === selectedItem?.id || pendingId === selectedItem?.listingId)}
           myBooking={selectedItem._isBooking ? undefined : myActiveBookingByListing.get(selectedItem.id)}
-          onAction={(id: string, action: string) => actionMutation.mutate({ id, action, tab: selectedItem._isBooking ? "bookings" : selectedItem._type })}
+          onAction={(id: string, action: string) => actionMutation.mutate({ id, action, tab: selectedItem._isSynthetic ? selectedItem._type : selectedItem._isBooking ? "bookings" : selectedItem._type })}
           onRate={(id: string, data: any) => rateMutation.mutate({ id, data })}
         />
       )}
