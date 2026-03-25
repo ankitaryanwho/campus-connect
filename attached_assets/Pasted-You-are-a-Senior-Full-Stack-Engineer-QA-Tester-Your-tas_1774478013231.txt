@@ -1,0 +1,381 @@
+You are a Senior Full Stack Engineer + QA Tester.
+
+Your task is to implement the following system EXACTLY as described with strict validation, zero bypass, real-time updates, and full end-to-end production testing.
+
+⚠️ CRITICAL RULES:
+
+- Do NOT skip any step
+- Do NOT assume anything works
+- Enforce strict flow validation
+- No bypass allowed
+- All buttons must work
+- All financial logic must be accurate
+- All flows must be tested before completion
+
+---
+
+🔐 PART 1: DELIVERY ORDER CONTROL (CANCEL LOGIC)
+
+---
+
+BEFORE ACCEPTANCE:
+
+When user places delivery order:
+
+Show:
+👉 "Cancel Order" button (next to Track Order)
+
+---
+
+AFTER PROVIDER ACCEPTS:
+
+- REMOVE "Cancel Order" button instantly
+- User cannot cancel order anymore
+
+---
+
+💸 PART 2: ASSIGNMENT / PROJECT / CERTIFICATION REFUND
+
+---
+
+FLOW:
+
+If:
+
+- Student books service
+- Provider REJECTS booking
+
+---
+
+THEN:
+
+- Refund FULL amount to wallet automatically
+- Update wallet instantly
+- Add transaction record:
+  - "Refund"
+  - Order ID
+  - Amount
+
+---
+
+🚚 PART 3: DELIVERY PAYMENT FLOW (UPDATED)
+
+---
+
+STEP 1: AFTER ACCEPT + SELFIE + QR UPLOAD
+
+Student sees:
+
+👉 "Complete Your Payment ₹{item subtotal}"
+
+---
+
+STUDENT FLOW:
+
+1. Pay to QR via UPI
+2. Upload payment screenshot
+
+---
+
+AGENT:
+
+- Verifies screenshot
+- Clicks:
+  - Confirm Payment OR Reject Payment
+
+---
+
+ONLY AFTER CONFIRMATION:
+
+Agent can:
+👉 Proceed with order
+
+---
+
+📍 STEP 2: ARRIVED AT LOCATION
+
+Agent:
+
+- Marks "Arrived at Location"
+- Uploads LIVE location image (camera only)
+
+---
+
+💰 STEP 3: DELIVERY CHARGE PAYMENT
+
+After location verification:
+
+Student sees:
+
+👉 "Pay Delivery Charge"
+
+---
+
+WALLET LOGIC:
+
+CASE 1: INSUFFICIENT BALANCE
+
+- Show:
+  "Insufficient wallet balance"
+- Show:
+  👉 "Top-up Wallet"
+- BLOCK payment
+
+---
+
+CASE 2: SUFFICIENT BALANCE
+
+On click:
+
+1. Deduct delivery charge from wallet
+2. Update wallet instantly
+3. Save transaction
+
+---
+
+PAYMENT SPLIT:
+
+- Amount goes to ADMIN wallet
+- Delivery partner earning:
+
+👉 (Delivery charge - 20% platform fee)
+
+Example:
+₹50 → ₹40 to agent
+
+---
+
+UPDATE:
+
+- Agent wallet updated instantly
+- Record earnings
+
+---
+
+📦 STEP 4: ORDER COMPLETION
+
+After delivery payment:
+
+Student sees:
+👉 "Track Order"
+
+Then:
+👉 "Mark Order Received"
+
+---
+
+ON CLICK:
+
+- Mark order delivered (both sides)
+- Close order
+
+---
+
+🔐 PART 4: ESCROW SYSTEM (ASSIGNMENTS / PROJECTS / TASKS)
+
+---
+
+BOOKING FLOW:
+
+Student sees:
+
+- Subtotal (listing price)
+- GST (18%)
+- Total = subtotal + GST
+
+---
+
+PAYMENT:
+
+Student pays FULL amount
+
+---
+
+SYSTEM:
+
+- Hold subtotal in escrow
+- GST handled separately
+- Mark order as "In Progress"
+
+---
+
+PROVIDER:
+
+- Completes work
+- Marks "Work Completed"
+
+---
+
+STUDENT:
+
+- Reviews work
+- Clicks "Mark Completed"
+
+---
+
+FINAL SETTLEMENT:
+
+On confirmation:
+
+1. Release amount to provider
+2. Deduct 20% platform fee
+
+---
+
+EXAMPLE:
+
+Listing: ₹100
+
+Student pays:
+
+- ₹100 + ₹18 GST = ₹118
+
+Settlement:
+
+- ₹80 to provider
+- ₹20 to platform
+
+---
+
+VALIDATION:
+
+- Payment must be held until completion
+- No early release
+- No manual override
+
+---
+
+🔐 PART 5: LIVE SELFIE + LOCATION VERIFICATION
+
+---
+
+AFTER DELIVERY ACCEPT:
+
+Block flow:
+
+👉 "Capture Live Selfie"
+
+RULES:
+
+- Camera only
+- No gallery upload
+
+---
+
+ON CAPTURE:
+
+- Attach date + time
+- Store with order ID
+- Upload securely
+
+---
+
+AFTER SUCCESS:
+
+Allow:
+👉 Proceed to outlet
+
+---
+
+ARRIVED AT LOCATION:
+
+👉 "Capture Location Photo"
+
+RULES:
+
+- Camera only
+- No gallery
+
+---
+
+AFTER CAPTURE:
+
+- Save with timestamp
+- Allow status update
+
+---
+
+VISIBILITY:
+
+- Only visible to:
+  - Admin
+  - Agent
+- NOT visible to student
+
+---
+
+🔁 REAL-TIME SYNC
+
+Ensure:
+
+- Wallet updates instantly
+- QR + screenshots visible instantly
+- Status updates live
+- Earnings update live
+
+---
+
+🧪 TESTING (MANDATORY)
+
+Simulate:
+
+1. Delivery cancel before accept
+2. Cancel blocked after accept
+3. Refund on rejection
+4. QR payment flow
+5. Screenshot upload
+6. Payment confirm/reject
+7. Delivery charge wallet payment
+8. Escrow hold & release
+9. Selfie verification
+10. Location verification
+11. Full order completion
+
+---
+
+VERIFY:
+
+- No broken UI
+- No incorrect balances
+- No missing transactions
+- No flow bypass
+- All calculations correct
+
+---
+
+⚠️ ERROR HANDLING
+
+Add:
+
+- Retry for failed uploads
+- Payment failure handling
+- Clear messages
+- Loading states
+
+---
+
+📦 FINAL OUTPUT
+
+Provide:
+
+1. Fully working system
+2. All flows tested
+3. Financial logic verified
+4. Confirmation:
+
+"All delivery, prepaid, escrow, refund, and verification systems implemented and tested successfully"
+
+---
+
+🚫 DO NOT
+
+- Allow payment bypass
+- Allow gallery upload for verification
+- Release escrow early
+- Leave incomplete flows
+
+---
+
+✅ FINAL GOAL
+
+Deliver a fully secure, production-ready marketplace system with prepaid booking, escrow, delivery payment logic, and strict fraud prevention with zero failure points

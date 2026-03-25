@@ -75,6 +75,19 @@ export const deliveriesTable = pgTable("deliveries", {
   paymentTimerStartedAt: timestamp("payment_timer_started_at"),
   paymentMarkedAt: timestamp("payment_marked_at"),
 
+  // Verification images (base64 stored)
+  selfieUrl: text("selfie_url"),
+  selfieTimestamp: timestamp("selfie_timestamp"),
+  locationPhotoUrl: text("location_photo_url"),
+  locationPhotoTimestamp: timestamp("location_photo_timestamp"),
+  qrImageUrl: text("qr_image_url"),
+  paymentScreenshotUrl: text("payment_screenshot_url"),
+
+  // Delivery charge payment status
+  chargeStatus: text("charge_status").default("pending"), // pending | paid
+
+  cancelledAt: timestamp("cancelled_at"),
+
   // Rating by student after completion
   ratingHappiness: integer("rating_happiness"),
   ratingHandling: integer("rating_handling"),
@@ -156,6 +169,13 @@ export const serviceBookingsTable = pgTable("service_bookings", {
   studentId: text("student_id").notNull().references(() => usersTable.id),
   status: text("status").notNull().default("booked"), // booked | accepted | in_progress | completed | delivered | rejected
   statusHistory: text("status_history"),
+
+  // Escrow / payment fields
+  price: numeric("price", { precision: 10, scale: 2 }),           // listing price at booking time
+  gstAmount: numeric("gst_amount", { precision: 10, scale: 2 }),  // 18% GST
+  totalPaid: numeric("total_paid", { precision: 10, scale: 2 }),  // price + gst = amount deducted from student
+  escrowStatus: text("escrow_status").default("held"),             // held | released | refunded
+
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

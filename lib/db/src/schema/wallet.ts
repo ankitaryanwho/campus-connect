@@ -22,6 +22,8 @@ export const transactionsTable = pgTable("transactions", {
   amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
   description: text("description").notNull(),
   status: text("status").notNull().default("completed"),
+  orderId: text("order_id"),
+  orderType: text("order_type"), // "booking" | "delivery"
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

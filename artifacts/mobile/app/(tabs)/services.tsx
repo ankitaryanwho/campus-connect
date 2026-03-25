@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams } from "expo-router";
 import {
   View, Text, ScrollView, Pressable, StyleSheet, Modal,
@@ -780,10 +781,11 @@ function AcademicCard({ item, C, onAction, currentUserId, isPending, serviceType
   );
 }
 
-function DeliveryCard({ item, C, currentUser, onAction, onRate, isPending }: any) {
+function DeliveryCard({ item, C, currentUser, onAction, onRate, onCameraAction, isPending }: any) {
   const isRequester = item.requester?.id === currentUser?.id || item.requesterId === currentUser?.id;
   const isAgent = item.deliveryAgent?.id === currentUser?.id || item.deliveryAgentId === currentUser?.id;
   const [showRating, setShowRating] = useState(false);
+  const [cameraLoading, setCameraLoading] = useState<string | null>(null);
   const isOutlet = item.pickupType === "outlet";
 
   const foodItems = item.foodItems ? JSON.parse(item.foodItems) : null;
@@ -812,6 +814,25 @@ function DeliveryCard({ item, C, currentUser, onAction, onRate, isPending }: any
   })();
 
   const studentCanConfirm = isRequester && item.status === "completed";
+
+  async function launchCamera(type: "selfie" | "qr" | "location-photo") {
+    const facing = type === "selfie" ? "front" : "back";
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) return;
+    setCameraLoading(type);
+    try {
+      const result = await ImagePicker.launchCameraAsync({
+        cameraType: facing === "front" ? ImagePicker.CameraType.front : ImagePicker.CameraType.back,
+        base64: true, quality: 0.5, allowsEditing: false,
+      });
+      if (!result.canceled && result.assets[0].base64) {
+        const dataUri = `data:image/jpeg;base64,${result.assets[0].base64}`;
+        onCameraAction(item.id, type, dataUri);
+      }
+    } finally {
+      setCameraLoading(null);
+    }
+  }
 
   return (
     <View style={[CS.card, { backgroundColor: C.surface, borderColor: C.border }]}>
@@ -893,13 +914,61 @@ function DeliveryCard({ item, C, currentUser, onAction, onRate, isPending }: any
         </Pressable>
       )}
 
+      {/* Agent verification photos */}
+      {isAgent && item.selfieUrl && (
+        <View style={{ backgroundColor: "#F0FDF4", borderRadius: 10, padding: 10, marginTop: 4, flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <Feather name="camera" size={14} color="#059669" />
+          <Text style={{ color: "#059669", fontFamily: "Inter_600SemiBold", fontSize: 12 }}>Selfie uploaded ✓</Text>
+        </View>
+      )}
+      {isAgent && item.locationPhotoUrl && (
+        <View style={{ backgroundColor: "#F0FDF4", borderRadius: 10, padding: 10, marginTop: 4, flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <Feather name="map-pin" size={14} color="#059669" />
+          <Text style={{ color: "#059669", fontFamily: "Inter_600SemiBold", fontSize: 12 }}>Location photo uploaded ✓</Text>
+        </View>
+      )}
+
+      {/* Student: QR image from agent */}
+      {isRequester && item.qrImageUrl && item.chargeStatus !== "paid" && (
+        <View style={{ backgroundColor: "#FEF3C7", borderRadius: 12, padding: 12, marginTop: 8 }}>
+          <Text style={{ color: "#92400E", fontFamily: "Inter_700Bold", fontSize: 13, marginBottom: 6 }}>💳 Pay Delivery Charge</Text>
+          <Text style={{ color: "#78716C", fontSize: 11, marginBottom: 10 }}>Agent has shared their UPI QR. Pay ₹{deliveryFee.toFixed(0)} to complete handover, or pay from your wallet.</Text>
+          <View style={{ backgroundColor: "#fff", borderRadius: 10, overflow: "hidden", alignItems: "center", marginBottom: 10 }}>
+            <Text style={{ fontSize: 80, paddingVertical: 12 }}>📷</Text>
+            <Text style={{ fontSize: 11, color: "#78716C", paddingBottom: 10 }}>QR code from agent</Text>
+          </View>
+        </View>
+      )}
+      {isRequester && item.chargeStatus === "paid" && (
+        <View style={{ backgroundColor: "#D1FAE5", borderRadius: 10, padding: 10, marginTop: 6, flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <Feather name="check-circle" size={14} color="#059669" />
+          <Text style={{ color: "#059669", fontFamily: "Inter_600SemiBold", fontSize: 12 }}>Delivery charge paid ✓</Text>
+        </View>
+      )}
+
       {/* Action buttons */}
       <View style={{ gap: 8, marginTop: 8 }}>
+        {/* Requester: cancel pending delivery */}
+        {isRequester && item.status === "pending" && (
+          <Pressable style={[CS.actionBtn, { backgroundColor: "#EF4444" }, isPending && { opacity: 0.6 }]}
+            onPress={() => onAction(item.id, "cancel")} disabled={isPending}>
+            {isPending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={CS.actionBtnText}>Cancel Delivery</Text>}
+          </Pressable>
+        )}
+
         {/* Provider: accept pending request */}
         {!isAgent && currentUser?.role === "provider" && item.status === "pending" && (
           <Pressable style={[CS.actionBtn, { backgroundColor: "#10B981" }, isPending && { opacity: 0.6 }]}
             onPress={() => onAction(item.id, "accept")} disabled={isPending}>
             {isPending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={CS.actionBtnText}>Accept Request</Text>}
+          </Pressable>
+        )}
+
+        {/* Agent: take selfie after accepting */}
+        {isAgent && item.status === "accepted" && !item.selfieUrl && (
+          <Pressable style={[CS.actionBtn, { backgroundColor: "#6366F1" }, (isPending || cameraLoading === "selfie") && { opacity: 0.6 }]}
+            onPress={() => launchCamera("selfie")} disabled={isPending || cameraLoading !== null}>
+            {cameraLoading === "selfie" ? <ActivityIndicator color="#fff" size="small" /> : <Text style={CS.actionBtnText}>📷 Take Selfie (Verification)</Text>}
           </Pressable>
         )}
 
@@ -911,14 +980,43 @@ function DeliveryCard({ item, C, currentUser, onAction, onRate, isPending }: any
           </Pressable>
         )}
 
-        {/* Student: confirm received (when agent has arrived) */}
-        {studentCanConfirm && (
+        {/* Agent: upload QR at drop point */}
+        {isAgent && item.status === "completed" && !item.qrImageUrl && (
+          <Pressable style={[CS.actionBtn, { backgroundColor: "#F59E0B" }, (isPending || cameraLoading === "qr") && { opacity: 0.6 }]}
+            onPress={() => launchCamera("qr")} disabled={isPending || cameraLoading !== null}>
+            {cameraLoading === "qr" ? <ActivityIndicator color="#fff" size="small" /> : <Text style={CS.actionBtnText}>📲 Share UPI QR Code</Text>}
+          </Pressable>
+        )}
+
+        {/* Agent: take location photo */}
+        {isAgent && item.status === "completed" && !item.locationPhotoUrl && (
+          <Pressable style={[CS.actionBtn, { backgroundColor: "#8B5CF6" }, (isPending || cameraLoading === "location-photo") && { opacity: 0.6 }]}
+            onPress={() => launchCamera("location-photo")} disabled={isPending || cameraLoading !== null}>
+            {cameraLoading === "location-photo" ? <ActivityIndicator color="#fff" size="small" /> : <Text style={CS.actionBtnText}>📍 Take Location Photo</Text>}
+          </Pressable>
+        )}
+
+        {/* Student: pay delivery charge from wallet */}
+        {isRequester && item.chargeStatus === "qr_shared" && item.chargeStatus !== "paid" && (
+          <Pressable style={[CS.actionBtn, { backgroundColor: "#10B981" }, isPending && { opacity: 0.6 }]}
+            onPress={() => onAction(item.id, "pay-delivery-charge")} disabled={isPending}>
+            {isPending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={CS.actionBtnText}>💳 Pay ₹{deliveryFee.toFixed(0)} from Wallet</Text>}
+          </Pressable>
+        )}
+
+        {/* Student: confirm received (when agent has arrived and charge is paid) */}
+        {studentCanConfirm && (item.chargeStatus === "paid" || !item.qrImageUrl) && (
           <>
             <Pressable style={[CS.actionBtn, { backgroundColor: "#10B981" }, isPending && { opacity: 0.6 }]}
               onPress={() => onAction(item.id, "confirm")} disabled={isPending}>
-              {isPending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={CS.actionBtnText}>Confirm Received</Text>}
+              {isPending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={CS.actionBtnText}>✓ Mark Order Received</Text>}
             </Pressable>
           </>
+        )}
+        {studentCanConfirm && item.qrImageUrl && item.chargeStatus !== "paid" && (
+          <View style={{ backgroundColor: "#FEF3C7", borderRadius: 10, padding: 10 }}>
+            <Text style={{ color: "#92400E", fontSize: 12, fontFamily: "Inter_500Medium", textAlign: "center" }}>Pay delivery charge first to confirm receipt</Text>
+          </View>
         )}
 
         {/* Student: rate after delivered */}
@@ -947,6 +1045,14 @@ function DeliveryCard({ item, C, currentUser, onAction, onRate, isPending }: any
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#D1FAE5", borderRadius: 10, padding: 10 }}>
             <Feather name="check-circle" size={16} color="#059669" />
             <Text style={{ color: "#059669", fontFamily: "Inter_600SemiBold", fontSize: 13 }}>Delivered successfully!</Text>
+          </View>
+        )}
+
+        {/* Cancelled */}
+        {item.status === "cancelled" && (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#FEF2F2", borderRadius: 10, padding: 10 }}>
+            <Feather name="x-circle" size={16} color="#EF4444" />
+            <Text style={{ color: "#EF4444", fontFamily: "Inter_600SemiBold", fontSize: 13 }}>Delivery cancelled</Text>
           </View>
         )}
       </View>
@@ -1399,11 +1505,28 @@ function BookingDetailCard({ item, C, user, onAction, isPending }: any) {
         </View>
       )}
 
+      {/* Escrow info for booked bookings */}
+      {item.totalPaid && parseFloat(item.totalPaid) > 0 && !["rejected", "dismissed"].includes(item.status) && (
+        <View style={{ backgroundColor: "#EDE9FE", borderRadius: 10, padding: 12, flexDirection: "row", gap: 8 }}>
+          <Feather name="lock" size={14} color="#5B4FE8" style={{ marginTop: 1 }} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: "#4C1D95", fontFamily: "Inter_600SemiBold", fontSize: 12 }}>₹{parseFloat(item.totalPaid).toFixed(2)} in escrow</Text>
+            {item.status === "delivered"
+              ? <Text style={{ color: "#5B4FE8", fontSize: 11, marginTop: 2 }}>Released to provider ✓</Text>
+              : item.status === "rejected"
+              ? <Text style={{ color: "#5B4FE8", fontSize: 11, marginTop: 2 }}>Refunded to your wallet ✓</Text>
+              : <Text style={{ color: "#5B4FE8", fontSize: 11, marginTop: 2 }}>Held securely — released when you confirm</Text>}
+          </View>
+        </View>
+      )}
+
       {/* Rejected */}
       {item.status === "rejected" && (
         <View style={{ backgroundColor: "#FEF2F2", borderRadius: 10, padding: 12 }}>
           <Text style={{ fontSize: 13, fontFamily: "Inter_700Bold", color: "#EF4444" }}>Booking Rejected</Text>
-          <Text style={{ fontSize: 11, color: "#78716C", marginTop: 4 }}>The provider declined this booking.</Text>
+          <Text style={{ fontSize: 11, color: "#78716C", marginTop: 4 }}>
+            The provider declined this booking.{item.totalPaid && parseFloat(item.totalPaid) > 0 ? ` ₹${parseFloat(item.totalPaid).toFixed(2)} has been refunded to your wallet.` : ""}
+          </Text>
         </View>
       )}
 
@@ -1425,11 +1548,20 @@ function BookingDetailCard({ item, C, user, onAction, isPending }: any) {
           </Pressable>
         )}
         {studentCanConfirm && (
-          <Pressable style={{ paddingVertical: 14, borderRadius: 12, backgroundColor: accentColor, alignItems: "center", opacity: isPending ? 0.6 : 1 }}
-            onPress={() => onAction(actionId, "confirm")} disabled={isPending}>
-            {isPending ? <ActivityIndicator color="#fff" size="small" /> :
-              <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 14 }}>Confirm Received ✓</Text>}
-          </Pressable>
+          <>
+            {item.totalPaid && parseFloat(item.totalPaid) > 0 && (
+              <View style={{ backgroundColor: "#F5F3FF", borderRadius: 10, padding: 10 }}>
+                <Text style={{ fontSize: 11, color: "#5B4FE8", textAlign: "center" }}>
+                  Confirming will release ₹{(parseFloat(item.price || "0") * 0.8).toFixed(2)} to the provider
+                </Text>
+              </View>
+            )}
+            <Pressable style={{ paddingVertical: 14, borderRadius: 12, backgroundColor: accentColor, alignItems: "center", opacity: isPending ? 0.6 : 1 }}
+              onPress={() => onAction(actionId, "confirm")} disabled={isPending}>
+              {isPending ? <ActivityIndicator color="#fff" size="small" /> :
+                <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 14 }}>Confirm Received ✓</Text>}
+            </Pressable>
+          </>
         )}
         {!providerNextAction && !studentCanConfirm && statusMessage[item.status] && (
           <View style={{ backgroundColor: C.backgroundSecondary, borderRadius: 10, padding: 12, alignItems: "center" }}>
@@ -1602,17 +1734,20 @@ export default function ServicesScreen() {
     id: b.id,
     _type: b.serviceType,
     _isBooking: true,
-    _myPerspective: b._myPerspective, // "lister" (provider) or "booker" (student)
+    _myPerspective: b._myPerspective,
     status: b.status,
     statusHistory: b.statusHistory,
     createdAt: b.createdAt,
     title: b.listing?.title,
-    price: b.listing?.price,
+    price: b.price || b.listing?.price,         // booking price (at time of booking)
+    gstAmount: b.gstAmount,
+    totalPaid: b.totalPaid,
+    escrowStatus: b.escrowStatus,
     subject: b.listing?.subject,
     program: b.listing?.program,
     deadline: b.listing?.deadline,
-    poster: b.listing?.poster,   // provider who posted the listing
-    bookedBy: b.student,         // student who made this booking
+    poster: b.listing?.poster,
+    bookedBy: b.student,
     listingId: b.listingId,
   }));
 
@@ -1746,16 +1881,15 @@ export default function ServicesScreen() {
     bookings:       "/services/bookings",
   };
 
-  // Dismiss rejection always operates on the booking record
-  // For real service_bookings records: tab="bookings", action="dismiss-rejection"
-  // For synthetic (old-model) listing bookings: tab=_type (assignments/etc), action="dismiss"
-  const onDismissRejection = (id: string, tab: string) =>
-    actionMutation.mutate({ id, action: tab === "bookings" ? "dismiss-rejection" : "dismiss", tab });
+  const [bookConfirmItem, setBookConfirmItem] = useState<any>(null);
 
   const actionMutation = useMutation({
-    mutationFn: async ({ id, action, tab }: { id: string; action: string; tab: string }) => {
+    mutationFn: async ({ id, action, tab, body }: { id: string; action: string; tab: string; body?: any }) => {
       setPendingId(id);
-      const res = await apiRequest(`${endpointMap[tab]}/${id}/${action}`, { method: "POST" });
+      const res = await apiRequest(`${endpointMap[tab]}/${id}/${action}`, {
+        method: "POST",
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      });
       const text = await res.text();
       let json: any = {};
       try { json = JSON.parse(text); } catch {
@@ -1767,17 +1901,32 @@ export default function ServicesScreen() {
     onSuccess: (_, vars) => {
       queryClient.invalidateQueries({ queryKey: ["services", vars.tab] });
       queryClient.invalidateQueries({ queryKey: ["services", "bookings"] });
+      queryClient.invalidateQueries({ queryKey: ["wallet"] });
       const msgs: Record<string, string> = {
-        book: "Booked successfully!", apply: "Application sent!",
-        accept: "Accepted!", reject: "Request declined", progress: "Status updated!", confirm: "Confirmed received!",
+        book: "Booked! Payment held in escrow.", apply: "Application sent!",
+        accept: "Accepted!", reject: "Request declined", progress: "Status updated!", confirm: "Confirmed!",
+        cancel: "Delivery cancelled.", selfie: "Selfie uploaded!", qr: "QR shared with requester!",
+        "location-photo": "Location photo uploaded!", "pay-delivery-charge": "Payment sent from wallet!",
         "mark-paid": "Marked as paid!", "confirm-payment": "Payment confirmed!", complete: "Marked as arrived!",
         "dismiss-rejection": "Booking dismissed.", "dismiss": "Booking dismissed.",
       };
       showToast(msgs[vars.action] || "Done!", "success");
     },
-    onError: (err: any) => showToast(err.message || "Action failed", "error"),
+    onError: (err: any) => {
+      const msg = err.message || "Action failed";
+      if (msg.includes("InsufficientBalance") || msg.includes("Insufficient")) {
+        showToast("Insufficient wallet balance. Please top up first.", "error");
+      } else {
+        showToast(msg, "error");
+      }
+    },
     onSettled: () => setPendingId(null),
   });
+
+  const handleCameraAction = useCallback(async (id: string, type: "selfie" | "qr" | "location-photo", dataUri: string) => {
+    const bodyKey = type === "selfie" ? "selfieUrl" : type === "qr" ? "qrImageUrl" : "locationPhotoUrl";
+    actionMutation.mutate({ id, action: type, tab: "deliveries", body: { [bodyKey]: dataUri } });
+  }, [actionMutation]);
 
   const rateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: any }) => {
@@ -1790,17 +1939,28 @@ export default function ServicesScreen() {
     onError: (err: any) => showToast(err.message || "Failed to submit rating", "error"),
   });
 
+  // Dismiss rejection always operates on the booking record
+  const onDismissRejection = (id: string, tab: string) =>
+    actionMutation.mutate({ id, action: tab === "bookings" ? "dismiss-rejection" : "dismiss", tab });
+
+  // Book with confirmation modal showing price breakdown
+  const handleBook = useCallback((item: any) => {
+    setBookConfirmItem(item);
+  }, []);
+
   // ── Render a single item card ──────────────────────────────────────────────
   const renderCard = useCallback((item: any) => {
     const type = item._type;
     if (type === "assignments" || type === "certifications" || type === "projects") {
-      // For each listing: find the current user's active booking + count of all active bookings
       const myBooking = myActiveBookingByListing.get(item.id);
       const bookingCount = myBookings.filter(b => b.listingId === item.id && !["delivered", "dismissed"].includes(b.status)).length;
       return (
         <AcademicCard
           key={item.id} item={item} C={C} serviceType={type} currentUserId={user?.id}
-          onAction={(id: string, action: string) => actionMutation.mutate({ id, action, tab: type })}
+          onAction={(id: string, action: string) => {
+            if (action === "book") { handleBook(item); return; }
+            actionMutation.mutate({ id, action, tab: type });
+          }}
           isPending={pendingId === item.id && actionMutation.isPending}
           myBooking={myBooking}
           bookingCount={bookingCount}
@@ -1813,6 +1973,7 @@ export default function ServicesScreen() {
           key={item.id} item={item} C={C} currentUser={user}
           onAction={(id: string, action: string) => actionMutation.mutate({ id, action, tab: "deliveries" })}
           onRate={(id: string, data: any) => rateMutation.mutate({ id, data })}
+          onCameraAction={handleCameraAction}
           isPending={pendingId === item.id && (actionMutation.isPending || rateMutation.isPending)}
         />
       );
@@ -1828,7 +1989,7 @@ export default function ServicesScreen() {
       );
     }
     return null;
-  }, [C, user, pendingId, actionMutation.isPending, rateMutation.isPending, myActiveBookingByListing, myBookings]);
+  }, [C, user, pendingId, actionMutation.isPending, rateMutation.isPending, myActiveBookingByListing, myBookings, handleBook, handleCameraAction]);
 
   // ── Post helpers ───────────────────────────────────────────────────────────
   const postableCats = ["deliveries", "assignments", "certifications", "tasks", "projects"].filter(canPost);
@@ -1975,7 +2136,7 @@ export default function ServicesScreen() {
                     isLast={i === openListings.length - 1}
                     isPending={pendingId === item.id && actionMutation.isPending}
                     hasActiveBooking={!!myActiveBookingByListing.get(item.id)}
-                    onBook={(id: string, type: string) => actionMutation.mutate({ id, action: "book", tab: type })}
+                    onBook={(_id: string, _type: string) => handleBook(item)}
                     onAccept={(id: string, type: string) => actionMutation.mutate({ id, action: "accept", tab: type })}
                     onReject={(id: string, type: string) => actionMutation.mutate({ id, action: "reject", tab: type })}
                     onApply={(id: string, type: string) => actionMutation.mutate({ id, action: "apply", tab: type })}
@@ -2011,6 +2172,66 @@ export default function ServicesScreen() {
           <Feather name="plus" size={22} color="#fff" />
         </Pressable>
       )}
+
+      {/* ── Booking Confirmation Modal (price breakdown + wallet check) ── */}
+      {bookConfirmItem && (() => {
+        const item = bookConfirmItem;
+        const price = parseFloat(item.price || "0");
+        const gst = parseFloat((price * 0.18).toFixed(2));
+        const total = parseFloat((price + gst).toFixed(2));
+        const accentColor = item._type === "certifications" ? "#10B981" : item._type === "projects" ? "#6366F1" : "#5B4FE8";
+        return (
+          <Modal visible transparent animationType="fade" onRequestClose={() => setBookConfirmItem(null)}>
+            <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" }}>
+              <View style={{ backgroundColor: C.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 36 }}>
+                <Text style={{ fontSize: 17, fontFamily: "Inter_800ExtraBold", color: C.text, marginBottom: 4 }}>Confirm Booking</Text>
+                <Text style={{ fontSize: 13, fontFamily: "Inter_500Medium", color: C.textSecondary, marginBottom: 20 }}>{item.title}</Text>
+
+                {/* Price breakdown */}
+                <View style={{ backgroundColor: C.backgroundSecondary, borderRadius: 14, padding: 16, gap: 10, marginBottom: 20 }}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                    <Text style={{ color: C.textSecondary, fontSize: 14 }}>Service fee</Text>
+                    <Text style={{ color: C.text, fontFamily: "Inter_600SemiBold", fontSize: 14 }}>₹{price.toFixed(2)}</Text>
+                  </View>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                    <Text style={{ color: C.textSecondary, fontSize: 14 }}>GST (18%)</Text>
+                    <Text style={{ color: C.text, fontFamily: "Inter_600SemiBold", fontSize: 14 }}>₹{gst.toFixed(2)}</Text>
+                  </View>
+                  <View style={{ height: 1, backgroundColor: C.border }} />
+                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                    <Text style={{ color: C.text, fontFamily: "Inter_700Bold", fontSize: 15 }}>Total (from wallet)</Text>
+                    <Text style={{ color: accentColor, fontFamily: "Inter_800ExtraBold", fontSize: 15 }}>₹{total.toFixed(2)}</Text>
+                  </View>
+                </View>
+
+                <View style={{ backgroundColor: "#EDE9FE", borderRadius: 10, padding: 12, marginBottom: 20, flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <Feather name="lock" size={14} color="#5B4FE8" />
+                  <Text style={{ color: "#4C1D95", fontSize: 12, fontFamily: "Inter_500Medium", flex: 1 }}>Payment is held in secure escrow. Released to provider only when you confirm receipt. Refunded automatically if rejected.</Text>
+                </View>
+
+                <View style={{ gap: 10 }}>
+                  <Pressable
+                    style={{ backgroundColor: accentColor, paddingVertical: 15, borderRadius: 14, alignItems: "center", opacity: (pendingId === item.id && actionMutation.isPending) ? 0.6 : 1 }}
+                    onPress={() => {
+                      setBookConfirmItem(null);
+                      actionMutation.mutate({ id: item.id, action: "book", tab: item._type });
+                    }}
+                    disabled={pendingId === item.id && actionMutation.isPending}
+                  >
+                    {(pendingId === item.id && actionMutation.isPending)
+                      ? <ActivityIndicator color="#fff" />
+                      : <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 16 }}>Pay ₹{total.toFixed(2)} & Book</Text>}
+                  </Pressable>
+                  <Pressable style={{ paddingVertical: 13, borderRadius: 14, alignItems: "center", backgroundColor: C.backgroundSecondary }}
+                    onPress={() => setBookConfirmItem(null)}>
+                    <Text style={{ color: C.textSecondary, fontFamily: "Inter_600SemiBold", fontSize: 15 }}>Cancel</Text>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          </Modal>
+        );
+      })()}
 
       {/* ── Detail Modal (Track Order tap) ── */}
       {selectedItem && (

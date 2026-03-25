@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import {
   assignmentsTable, certificationsTable, deliveriesTable, outletItemsTable,
   tasksTable, taskApplicationsTable, projectsTable, usersTable, serviceBookingsTable,
+  walletsTable, transactionsTable,
 } from "@workspace/db/schema";
 import { eq, desc, sql, and, inArray } from "drizzle-orm";
 import { authMiddleware } from "../lib/auth";
@@ -15,6 +16,10 @@ const PROGRAMS = ["BCA", "BTech", "MBA", "MTech", "BSc", "BCom", "BA", "Other"];
 const GATE_LOCATIONS = ["Gate No 3", "Gate No 1"];
 const OUTLET_LOCATIONS = ["Southern Stories", "Hotspot", "Snapeats", "Kathi Junction", "Dominos", "Subway"];
 const COURIER_COMPANIES = ["EKart Logistics", "BlueDart", "Amazon Shipping", "ShadowFax", "Express News", "SafeXpress"];
+
+const ADMIN_USER_ID = "admin-001";
+const PLATFORM_FEE_PCT = 0.20;
+const GST_RATE = 0.18;
 
 async function safeUser(userId: string) {
   const users = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
@@ -32,6 +37,29 @@ function appendHistory(existing: string | null, status: string): string {
   const h = existing ? JSON.parse(existing) : [];
   h.push({ status, at: new Date().toISOString() });
   return JSON.stringify(h);
+}
+
+async function getOrCreateWallet(userId: string) {
+  let ws = await db.select().from(walletsTable).where(eq(walletsTable.userId, userId)).limit(1);
+  if (!ws.length) {
+    const walletId = generateId();
+    await db.insert(walletsTable).values({ id: walletId, userId, balance: "0", currency: "INR" });
+    ws = await db.select().from(walletsTable).where(eq(walletsTable.userId, userId)).limit(1);
+  }
+  return ws[0];
+}
+
+async function creditWallet(userId: string, amount: number, description: string, orderId?: string, orderType?: string) {
+  const w = await getOrCreateWallet(userId);
+  await db.update(walletsTable).set({ balance: sql`${walletsTable.balance} + ${amount}`, updatedAt: new Date() }).where(eq(walletsTable.userId, userId));
+  await db.insert(transactionsTable).values({ id: generateId(), walletId: w.id, type: "credit", amount: amount.toFixed(2), description, status: "completed", orderId, orderType });
+}
+
+async function debitWallet(userId: string, amount: number, description: string, orderId?: string, orderType?: string) {
+  const w = await getOrCreateWallet(userId);
+  if (parseFloat(w.balance) < amount) throw new Error("InsufficientBalance");
+  await db.update(walletsTable).set({ balance: sql`${walletsTable.balance} - ${amount}`, updatedAt: new Date() }).where(eq(walletsTable.userId, userId));
+  await db.insert(transactionsTable).values({ id: generateId(), walletId: w.id, type: "debit", amount: amount.toFixed(2), description, status: "completed", orderId, orderType });
 }
 
 // ─── Assignments ──────────────────────────────────────────────────────────────
@@ -120,18 +148,27 @@ router.post("/assignments/:id/book", authMiddleware, async (req, res) => {
     const rows = await db.select().from(assignmentsTable).where(eq(assignmentsTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].posterId === userId) { res.status(400).json({ error: "Cannot book your own listing" }); return; }
-    // Check if student already has an active (non-delivered, non-dismissed) booking
     const existing = await db.select().from(serviceBookingsTable)
       .where(and(eq(serviceBookingsTable.listingId, id), eq(serviceBookingsTable.studentId, userId)))
       .limit(1);
     if (existing.length && !["delivered", "dismissed"].includes(existing[0].status)) {
       res.status(400).json({ error: "AlreadyBooked", message: "You already have an active booking for this listing" }); return;
     }
+    const listingPrice = parseFloat(rows[0].price as unknown as string);
+    const gstAmount = parseFloat((listingPrice * GST_RATE).toFixed(2));
+    const totalPaid = parseFloat((listingPrice + gstAmount).toFixed(2));
+    const wallet = await getOrCreateWallet(userId);
+    if (parseFloat(wallet.balance) < totalPaid) {
+      res.status(400).json({ error: "InsufficientBalance", message: `Insufficient wallet balance. Required: ₹${totalPaid.toFixed(2)}, Available: ₹${parseFloat(wallet.balance).toFixed(2)}` }); return;
+    }
     const bookingId = generateId();
     const history = appendHistory(null, "booked");
+    await debitWallet(userId, totalPaid, `Assignment booking: ${rows[0].title ?? id}`, bookingId, "booking");
     await db.insert(serviceBookingsTable).values({
       id: bookingId, serviceType: "assignments", listingId: id,
       studentId: userId, status: "booked", statusHistory: history,
+      price: listingPrice.toFixed(2), gstAmount: gstAmount.toFixed(2),
+      totalPaid: totalPaid.toFixed(2), escrowStatus: "held",
     });
     const booking = await db.select().from(serviceBookingsTable).where(eq(serviceBookingsTable.id, bookingId)).limit(1);
     const listing = rows[0];
@@ -145,8 +182,9 @@ router.post("/assignments/:id/book", authMiddleware, async (req, res) => {
         data: { screen: "/(tabs)/services", tab: "assignments", itemId: bookingId },
       });
     } catch {}
-  } catch (err) {
+  } catch (err: any) {
     console.error(err);
+    if (err.message === "InsufficientBalance") { res.status(400).json({ error: "InsufficientBalance" }); return; }
     res.status(500).json({ error: "ServerError", message: "Failed to book assignment" });
   }
 });
@@ -285,11 +323,21 @@ router.post("/certifications/:id/book", authMiddleware, async (req, res) => {
     if (existing.length && !["delivered", "dismissed"].includes(existing[0].status)) {
       res.status(400).json({ error: "AlreadyBooked", message: "You already have an active booking for this listing" }); return;
     }
+    const listingPrice = parseFloat(rows[0].price as unknown as string);
+    const gstAmount = parseFloat((listingPrice * GST_RATE).toFixed(2));
+    const totalPaid = parseFloat((listingPrice + gstAmount).toFixed(2));
+    const wallet = await getOrCreateWallet(userId);
+    if (parseFloat(wallet.balance) < totalPaid) {
+      res.status(400).json({ error: "InsufficientBalance", message: `Insufficient wallet balance. Required: ₹${totalPaid.toFixed(2)}, Available: ₹${parseFloat(wallet.balance).toFixed(2)}` }); return;
+    }
     const bookingId = generateId();
     const history = appendHistory(null, "booked");
+    await debitWallet(userId, totalPaid, `Certification booking: ${rows[0].title ?? id}`, bookingId, "booking");
     await db.insert(serviceBookingsTable).values({
       id: bookingId, serviceType: "certifications", listingId: id,
       studentId: userId, status: "booked", statusHistory: history,
+      price: listingPrice.toFixed(2), gstAmount: gstAmount.toFixed(2),
+      totalPaid: totalPaid.toFixed(2), escrowStatus: "held",
     });
     const booking = await db.select().from(serviceBookingsTable).where(eq(serviceBookingsTable.id, bookingId)).limit(1);
     res.json({ ...booking[0], listing: { ...rows[0], poster: await safeUser(rows[0].posterId) }, student: await safeUser(userId) });
@@ -302,8 +350,9 @@ router.post("/certifications/:id/book", authMiddleware, async (req, res) => {
         data: { screen: "/(tabs)/services", tab: "certifications", itemId: bookingId },
       });
     } catch {}
-  } catch (err) {
+  } catch (err: any) {
     console.error(err);
+    if (err.message === "InsufficientBalance") { res.status(400).json({ error: "InsufficientBalance" }); return; }
     res.status(500).json({ error: "ServerError", message: "Failed to book certification" });
   }
 });
@@ -693,6 +742,118 @@ router.post("/deliveries/:id/complete", authMiddleware, async (req, res) => {
   }
 });
 
+// Requester cancels delivery (only when status=pending, before any agent accepts)
+router.post("/deliveries/:id/cancel", authMiddleware, async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const { id } = req.params;
+    const rows = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
+    if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
+    if (rows[0].requesterId !== userId) { res.status(403).json({ error: "Only the requester can cancel" }); return; }
+    if (rows[0].status !== "pending") { res.status(400).json({ error: "Can only cancel while still pending (no agent has accepted yet)" }); return; }
+    const history = appendHistory(rows[0].statusHistory, "cancelled");
+    await db.update(deliveriesTable).set({ status: "cancelled", statusHistory: history, cancelledAt: new Date() }).where(eq(deliveriesTable.id, id));
+    const updated = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
+    res.json({ ...updated[0], requester: await safeUser(userId), deliveryAgent: null });
+  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to cancel delivery" }); }
+});
+
+// Agent uploads selfie after accepting delivery (camera-only, base64)
+router.post("/deliveries/:id/selfie", authMiddleware, async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const { id } = req.params;
+    const { selfieUrl } = req.body;
+    if (!selfieUrl) { res.status(400).json({ error: "selfieUrl is required" }); return; }
+    const rows = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
+    if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
+    if (rows[0].deliveryAgentId !== userId) { res.status(403).json({ error: "Only the delivery agent can upload selfie" }); return; }
+    await db.update(deliveriesTable).set({ selfieUrl, selfieTimestamp: new Date() }).where(eq(deliveriesTable.id, id));
+    const updated = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
+    res.json({ ...updated[0], requester: await safeUser(updated[0].requesterId), deliveryAgent: await safeUser(userId) });
+  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to upload selfie" }); }
+});
+
+// Agent uploads location photo at drop point (camera-only, base64)
+router.post("/deliveries/:id/location-photo", authMiddleware, async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const { id } = req.params;
+    const { locationPhotoUrl } = req.body;
+    if (!locationPhotoUrl) { res.status(400).json({ error: "locationPhotoUrl is required" }); return; }
+    const rows = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
+    if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
+    if (rows[0].deliveryAgentId !== userId) { res.status(403).json({ error: "Only the delivery agent can upload location photo" }); return; }
+    await db.update(deliveriesTable).set({ locationPhotoUrl, locationPhotoTimestamp: new Date() }).where(eq(deliveriesTable.id, id));
+    const updated = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
+    res.json({ ...updated[0], requester: await safeUser(updated[0].requesterId), deliveryAgent: await safeUser(userId) });
+  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to upload location photo" }); }
+});
+
+// Agent uploads UPI QR image so requester can pay delivery charge
+router.post("/deliveries/:id/qr", authMiddleware, async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const { id } = req.params;
+    const { qrImageUrl } = req.body;
+    if (!qrImageUrl) { res.status(400).json({ error: "qrImageUrl is required" }); return; }
+    const rows = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
+    if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
+    if (rows[0].deliveryAgentId !== userId) { res.status(403).json({ error: "Only the delivery agent can upload QR" }); return; }
+    await db.update(deliveriesTable).set({ qrImageUrl, chargeStatus: "qr_shared" }).where(eq(deliveriesTable.id, id));
+    const updated = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
+    res.json({ ...updated[0], requester: await safeUser(updated[0].requesterId), deliveryAgent: await safeUser(userId) });
+    try {
+      await notifyUser(updated[0].requesterId, {
+        type: "delivery_qr_shared",
+        title: "💳 Pay Delivery Charge",
+        body: "Your agent shared their UPI QR. Please pay the delivery fee to complete the handover.",
+        data: { screen: "/(tabs)/services", tab: "deliveries", itemId: id },
+      });
+    } catch {}
+  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to upload QR" }); }
+});
+
+// Student pays delivery charge from wallet — 80% to agent, 20% to admin
+router.post("/deliveries/:id/pay-delivery-charge", authMiddleware, async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const { id } = req.params;
+    const rows = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
+    if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
+    if (rows[0].requesterId !== userId) { res.status(403).json({ error: "Only the requester can pay the delivery charge" }); return; }
+    if (rows[0].chargeStatus === "paid") { res.status(400).json({ error: "Delivery charge already paid" }); return; }
+    const fee = parseFloat((rows[0].deliveryFee as unknown as string) || "30");
+    const wallet = await getOrCreateWallet(userId);
+    if (parseFloat(wallet.balance) < fee) {
+      res.status(400).json({ error: "InsufficientBalance", message: `Insufficient wallet balance. Required: ₹${fee.toFixed(2)}, Available: ₹${parseFloat(wallet.balance).toFixed(2)}` }); return;
+    }
+    const agentPayout = parseFloat((fee * (1 - PLATFORM_FEE_PCT)).toFixed(2));
+    const platformFee = parseFloat((fee * PLATFORM_FEE_PCT).toFixed(2));
+    await debitWallet(userId, fee, `Delivery fee: order #${id}`, id, "delivery");
+    if (rows[0].deliveryAgentId) {
+      await creditWallet(rows[0].deliveryAgentId, agentPayout, `Delivery fee received: order #${id}`, id, "delivery");
+    }
+    await creditWallet(ADMIN_USER_ID, platformFee, `Platform fee: delivery #${id}`, id, "delivery");
+    await db.update(deliveriesTable).set({ chargeStatus: "paid" }).where(eq(deliveriesTable.id, id));
+    const updated = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
+    res.json({ ...updated[0], requester: await safeUser(userId), deliveryAgent: rows[0].deliveryAgentId ? await safeUser(rows[0].deliveryAgentId) : null, agentPayout, platformFee });
+    try {
+      if (rows[0].deliveryAgentId) {
+        await notifyUser(rows[0].deliveryAgentId, {
+          type: "delivery_charge_paid",
+          title: "💰 Delivery Fee Received!",
+          body: `₹${agentPayout.toFixed(2)} has been credited to your wallet for delivery #${id}.`,
+          data: { screen: "/(tabs)/wallet" },
+        });
+      }
+    } catch {}
+  } catch (err: any) {
+    if (err.message === "InsufficientBalance") { res.status(400).json({ error: "InsufficientBalance" }); return; }
+    res.status(500).json({ error: "ServerError", message: "Failed to pay delivery charge" });
+  }
+});
+
 router.post("/deliveries/:id/rate", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
@@ -881,11 +1042,21 @@ router.post("/projects/:id/book", authMiddleware, async (req, res) => {
     if (existing.length && !["delivered", "dismissed"].includes(existing[0].status)) {
       res.status(400).json({ error: "AlreadyBooked", message: "You already have an active booking for this listing" }); return;
     }
+    const listingPrice = parseFloat(rows[0].price as unknown as string);
+    const gstAmount = parseFloat((listingPrice * GST_RATE).toFixed(2));
+    const totalPaid = parseFloat((listingPrice + gstAmount).toFixed(2));
+    const wallet = await getOrCreateWallet(userId);
+    if (parseFloat(wallet.balance) < totalPaid) {
+      res.status(400).json({ error: "InsufficientBalance", message: `Insufficient wallet balance. Required: ₹${totalPaid.toFixed(2)}, Available: ₹${parseFloat(wallet.balance).toFixed(2)}` }); return;
+    }
     const bookingId = generateId();
     const history = appendHistory(null, "booked");
+    await debitWallet(userId, totalPaid, `Project booking: ${rows[0].title ?? id}`, bookingId, "booking");
     await db.insert(serviceBookingsTable).values({
       id: bookingId, serviceType: "projects", listingId: id,
       studentId: userId, status: "booked", statusHistory: history,
+      price: listingPrice.toFixed(2), gstAmount: gstAmount.toFixed(2),
+      totalPaid: totalPaid.toFixed(2), escrowStatus: "held",
     });
     const booking = await db.select().from(serviceBookingsTable).where(eq(serviceBookingsTable.id, bookingId)).limit(1);
     res.json({ ...booking[0], listing: { ...rows[0], poster: await safeUser(rows[0].posterId) }, student: await safeUser(userId) });
@@ -898,8 +1069,9 @@ router.post("/projects/:id/book", authMiddleware, async (req, res) => {
         data: { screen: "/(tabs)/services", tab: "projects", itemId: bookingId },
       });
     } catch {}
-  } catch (err) {
+  } catch (err: any) {
     console.error(err);
+    if (err.message === "InsufficientBalance") { res.status(400).json({ error: "InsufficientBalance" }); return; }
     res.status(500).json({ error: "ServerError", message: "Failed to book project" });
   }
 });
@@ -1078,15 +1250,21 @@ router.post("/bookings/:id/reject", authMiddleware, async (req, res) => {
     if (!listing || listing.posterId !== userId) { res.status(403).json({ error: "Only the provider can reject" }); return; }
     if (rows[0].status !== "booked") { res.status(400).json({ error: "Must be in booked status to reject" }); return; }
     const history = appendHistory(rows[0].statusHistory, "rejected");
-    await db.update(serviceBookingsTable).set({ status: "rejected", statusHistory: history }).where(eq(serviceBookingsTable.id, id));
-    res.json({ message: "Booking rejected" });
+    await db.update(serviceBookingsTable).set({ status: "rejected", statusHistory: history, escrowStatus: "refunded" }).where(eq(serviceBookingsTable.id, id));
+    // Auto-refund: credit back totalPaid to student wallet
+    const totalPaid = parseFloat((rows[0].totalPaid as unknown as string) || "0");
+    if (totalPaid > 0) {
+      const typeLabel = rows[0].serviceType === "assignments" ? "Assignment" : rows[0].serviceType === "certifications" ? "Certification" : "Project";
+      await creditWallet(rows[0].studentId, totalPaid, `Refund: ${typeLabel} booking rejected by provider`, id, "booking");
+    }
+    res.json({ message: "Booking rejected", refundAmount: totalPaid });
     try {
       const typeLabel = rows[0].serviceType === "assignments" ? "assignment" : rows[0].serviceType === "certifications" ? "certification course" : "project";
       const providerU = await safeUser(userId);
       await notifyUser(rows[0].studentId, {
         type: "booking_rejected",
-        title: "❌ Booking Rejected",
-        body: `${providerU?.name ?? "The provider"} rejected your ${typeLabel} booking. You can find another provider.`,
+        title: "❌ Booking Rejected — Refund Issued",
+        body: `${providerU?.name ?? "The provider"} rejected your ${typeLabel} booking. ₹${totalPaid.toFixed(2)} has been refunded to your wallet.`,
         data: { screen: "/(tabs)/services", tab: rows[0].serviceType, itemId: id },
       });
     } catch {}
@@ -1136,19 +1314,28 @@ router.post("/bookings/:id/confirm", authMiddleware, async (req, res) => {
     if (rows[0].studentId !== userId) { res.status(403).json({ error: "Only the student can confirm" }); return; }
     if (rows[0].status !== "completed") { res.status(400).json({ error: "Provider must mark as completed first" }); return; }
     const history = appendHistory(rows[0].statusHistory, "delivered");
-    await db.update(serviceBookingsTable).set({ status: "delivered", statusHistory: history }).where(eq(serviceBookingsTable.id, id));
+    await db.update(serviceBookingsTable).set({ status: "delivered", statusHistory: history, escrowStatus: "released" }).where(eq(serviceBookingsTable.id, id));
     const updated = await db.select().from(serviceBookingsTable).where(eq(serviceBookingsTable.id, id)).limit(1);
     const listing = await getListing(updated[0].serviceType, updated[0].listingId);
+    // Release 80% of price to provider, 20% stays as platform fee
+    const price = parseFloat((rows[0].price as unknown as string) || "0");
+    if (price > 0 && listing) {
+      const providerPayout = parseFloat((price * (1 - PLATFORM_FEE_PCT)).toFixed(2));
+      const platformFee = parseFloat((price * PLATFORM_FEE_PCT).toFixed(2));
+      const typeLabel = updated[0].serviceType === "assignments" ? "Assignment" : updated[0].serviceType === "certifications" ? "Certification" : "Project";
+      await creditWallet(listing.posterId, providerPayout, `${typeLabel} payment: booking #${id}`, id, "booking");
+      await creditWallet(ADMIN_USER_ID, platformFee, `Platform fee: ${typeLabel} booking #${id}`, id, "booking");
+    }
     res.json({ ...updated[0], _type: updated[0].serviceType, listing: listing ? { ...listing, poster: await safeUser(listing.posterId) } : null, student: await safeUser(userId) });
-    // Notify provider that student confirmed delivery
     try {
       if (listing) {
         const studentU = await safeUser(userId);
+        const providerPayout = price > 0 ? parseFloat((price * (1 - PLATFORM_FEE_PCT)).toFixed(2)) : 0;
         const typeLabel = updated[0].serviceType === "assignments" ? "assignment" : updated[0].serviceType === "certifications" ? "certification course" : "project";
         await notifyUser(listing.posterId, {
           type: "booking_confirmed",
           title: "💰 Payment Released!",
-          body: `${studentU?.name ?? "The student"} confirmed receipt of your ${typeLabel}. Payment has been credited to your wallet!`,
+          body: `${studentU?.name ?? "The student"} confirmed your ${typeLabel}. ₹${providerPayout.toFixed(2)} credited to your wallet!`,
           data: { screen: "/(tabs)/wallet", itemId: id },
         });
       }
