@@ -1159,7 +1159,7 @@ function CompactActiveCard({ item, C, user, onTrackPress, onAccept, onReject, on
 
 // ─── Compact Open Listing Row (matches Priority Lane mockup exactly) ───────────
 
-function CompactListingRow({ item, C, user, onBook, onAccept, onReject, onApply, isPending, isLast }: any) {
+function CompactListingRow({ item, C, user, onBook, onAccept, onReject, onApply, isPending, isLast, hasActiveBooking }: any) {
   const meta = CAT_META[item._type] || CAT_META.tasks;
   const uid = user?.id;
   const isProviderRole = user?.role === "provider";
@@ -1181,8 +1181,9 @@ function CompactListingRow({ item, C, user, onBook, onAccept, onReject, onApply,
   const canAcceptReject = !isOwnListing && item._type === "deliveries" && item.status === "pending";
   // Tasks: anyone (not poster) can Apply
   const canApply = !isOwnListing && item._type === "tasks" && item.status === "open";
-  // Assignments/Certifications/Projects: anyone (not poster) can Book — providers are also students
-  const canBook = !isOwnListing && !item.bookedById && item.status === "open"
+  // Assignments/Certifications/Projects: use hasActiveBooking prop (from service_bookings table, NOT item.bookedById)
+  // item.bookedById is a stale legacy field — do NOT use it; the multi-booking model stores state in service_bookings
+  const canBook = !isOwnListing && !hasActiveBooking && item.status === "open"
     && (item._type === "assignments" || item._type === "certifications" || item._type === "projects");
 
   const timeLabel = (() => {
@@ -1279,6 +1280,141 @@ function CompactListingRow({ item, C, user, onBook, onAccept, onReject, onApply,
               : <Text style={{ color: meta.accent, fontSize: 10, fontFamily: "Inter_700Bold" }}>Book</Text>}
           </Pressable>
         )}
+
+        {/* Already booked badge */}
+        {hasActiveBooking && !isOwnListing && (
+          <View style={{ backgroundColor: meta.bg, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, flexDirection: "row", alignItems: "center", gap: 3 }}>
+            <Feather name="check" size={10} color={meta.accent} />
+            <Text style={{ color: meta.accent, fontSize: 9, fontFamily: "Inter_700Bold" }}>Booked</Text>
+          </View>
+        )}
+      </View>
+    </View>
+  );
+}
+
+// ─── Booking Detail Card (shown in modal when user taps Track Order / Update Status) ─
+
+function BookingDetailCard({ item, C, user, onAction, isPending }: any) {
+  const type = item._type;
+  const accentColor = type === "certifications" ? "#10B981" : type === "projects" ? "#6366F1" : "#5B4FE8";
+  const uid = user?.id;
+  const isProvider = item.poster?.id === uid;
+  const isStudent  = item.bookedBy?.id === uid;
+  const { labels, index } = getStepsForItem(item);
+  const progress = labels.length > 1 ? index / (labels.length - 1) : 1;
+
+  const providerNextAction = (() => {
+    if (!isProvider) return null;
+    if (item.status === "accepted")   return { label: "Mark as Started",   action: "progress" };
+    if (item.status === "in_progress") return { label: "Mark as Completed", action: "progress" };
+    return null;
+  })();
+  const studentCanConfirm = isStudent && item.status === "completed";
+
+  const statusMessage: Record<string, string> = {
+    booked:      "Waiting for the provider to accept your booking…",
+    accepted:    "Provider has accepted — work starting soon.",
+    in_progress: "Work is in progress.",
+    completed:   "Provider marked as done — please confirm below.",
+  };
+
+  return (
+    <View style={{ gap: 14 }}>
+      {/* Header */}
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <View style={{ flex: 1, paddingRight: 10 }}>
+          <Text style={{ fontSize: 17, fontFamily: "Inter_700Bold", color: C.text }}>{item.title}</Text>
+          {item.poster?.name  && <Text style={{ fontSize: 12, color: C.textSecondary, marginTop: 2 }}>by {item.poster.name}</Text>}
+          {item.bookedBy?.name && <Text style={{ fontSize: 11, color: C.textTertiary, marginTop: 1 }}>Student: {item.bookedBy.name}</Text>}
+        </View>
+        <Text style={{ fontSize: 20, fontFamily: "Inter_800ExtraBold", color: accentColor }}>₹{parseFloat(item.price || "0").toFixed(0)}</Text>
+      </View>
+
+      {/* Tags */}
+      {(item.subject || item.program) && (
+        <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
+          {item.subject && (
+            <View style={{ backgroundColor: accentColor + "20", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+              <Text style={{ fontSize: 11, color: accentColor, fontFamily: "Inter_600SemiBold" }}>{item.subject}</Text>
+            </View>
+          )}
+          {item.program && (
+            <View style={{ backgroundColor: C.backgroundSecondary, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+              <Text style={{ fontSize: 11, color: C.textSecondary }}>{item.program}</Text>
+            </View>
+          )}
+        </View>
+      )}
+
+      {/* Status tracker */}
+      {item.status !== "rejected" && (
+        <View style={{ backgroundColor: C.backgroundSecondary, borderRadius: 12, padding: 14, gap: 10 }}>
+          <View style={{ height: 6, borderRadius: 3, backgroundColor: accentColor + "33" }}>
+            <View style={{ height: 6, borderRadius: 3, backgroundColor: accentColor, width: `${Math.round(progress * 100)}%` as any }} />
+          </View>
+          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            {labels.map((label, i) => {
+              const done = i < index;
+              const active = i === index;
+              return (
+                <View key={i} style={{ alignItems: "center", flex: 1 }}>
+                  {done ? (
+                    <Feather name="check-circle" size={16} color={accentColor} />
+                  ) : active ? (
+                    <View style={{ width: 16, height: 16, borderRadius: 8, borderWidth: 2, borderColor: accentColor, alignItems: "center", justifyContent: "center" }}>
+                      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: accentColor }} />
+                    </View>
+                  ) : (
+                    <Feather name="circle" size={16} color="#D6D3D1" />
+                  )}
+                  <Text numberOfLines={2} style={{ fontSize: 9, textAlign: "center", marginTop: 3, lineHeight: 11,
+                    color: active ? accentColor : done ? "#78716C" : "#D6D3D1",
+                    fontFamily: active ? "Inter_700Bold" : "Inter_400Regular" }}>{label}</Text>
+                </View>
+              );
+            })}
+          </View>
+        </View>
+      )}
+
+      {/* Rejected */}
+      {item.status === "rejected" && (
+        <View style={{ backgroundColor: "#FEF2F2", borderRadius: 10, padding: 12 }}>
+          <Text style={{ fontSize: 13, fontFamily: "Inter_700Bold", color: "#EF4444" }}>Booking Rejected</Text>
+          <Text style={{ fontSize: 11, color: "#78716C", marginTop: 4 }}>The provider declined this booking.</Text>
+        </View>
+      )}
+
+      {/* Delivered */}
+      {item.status === "delivered" && (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#D1FAE5", borderRadius: 10, padding: 12 }}>
+          <Feather name="check-circle" size={16} color="#059669" />
+          <Text style={{ color: "#059669", fontFamily: "Inter_600SemiBold", fontSize: 13 }}>Work delivered successfully!</Text>
+        </View>
+      )}
+
+      {/* Action buttons */}
+      <View style={{ gap: 8 }}>
+        {providerNextAction && (
+          <Pressable style={{ paddingVertical: 14, borderRadius: 12, backgroundColor: accentColor, alignItems: "center", opacity: isPending ? 0.6 : 1 }}
+            onPress={() => onAction(item.id, providerNextAction.action)} disabled={isPending}>
+            {isPending ? <ActivityIndicator color="#fff" size="small" /> :
+              <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 14 }}>{providerNextAction.label}</Text>}
+          </Pressable>
+        )}
+        {studentCanConfirm && (
+          <Pressable style={{ paddingVertical: 14, borderRadius: 12, backgroundColor: accentColor, alignItems: "center", opacity: isPending ? 0.6 : 1 }}
+            onPress={() => onAction(item.id, "confirm")} disabled={isPending}>
+            {isPending ? <ActivityIndicator color="#fff" size="small" /> :
+              <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 14 }}>Confirm Received ✓</Text>}
+          </Pressable>
+        )}
+        {!providerNextAction && !studentCanConfirm && statusMessage[item.status] && (
+          <View style={{ backgroundColor: C.backgroundSecondary, borderRadius: 10, padding: 12, alignItems: "center" }}>
+            <Text style={{ fontSize: 12, color: C.textSecondary, fontFamily: "Inter_500Medium", textAlign: "center" }}>{statusMessage[item.status]}</Text>
+          </View>
+        )}
       </View>
     </View>
   );
@@ -1298,7 +1434,12 @@ function DetailModal({ item, C, user, onClose, onAction, onRate, isPending }: an
             <Pressable onPress={onClose}><Feather name="x" size={22} color={C.text} /></Pressable>
           </View>
           <ScrollView showsVerticalScrollIndicator={false}>
-            {(type === "assignments" || type === "certifications" || type === "projects") && (
+            {/* Booking items: show booking tracking/actions (NOT a "Book Now" listing view) */}
+            {item._isBooking && (type === "assignments" || type === "certifications" || type === "projects") && (
+              <BookingDetailCard item={item} C={C} user={user} onAction={onAction} isPending={isPending} />
+            )}
+            {/* Listing items: show the listing card */}
+            {!item._isBooking && (type === "assignments" || type === "certifications" || type === "projects") && (
               <AcademicCard item={item} C={C} serviceType={type} currentUserId={user?.id} onAction={onAction} isPending={isPending} />
             )}
             {type === "deliveries" && (
@@ -1754,6 +1895,7 @@ export default function ServicesScreen() {
                     user={user}
                     isLast={i === openListings.length - 1}
                     isPending={pendingId === item.id && actionMutation.isPending}
+                    hasActiveBooking={!!myActiveBookingByListing.get(item.id)}
                     onBook={(id: string, type: string) => actionMutation.mutate({ id, action: "book", tab: type })}
                     onAccept={(id: string, type: string) => actionMutation.mutate({ id, action: "accept", tab: type })}
                     onReject={(id: string, type: string) => actionMutation.mutate({ id, action: "reject", tab: type })}
@@ -1799,7 +1941,7 @@ export default function ServicesScreen() {
           user={user}
           onClose={() => setSelectedItem(null)}
           isPending={pendingId === selectedItem?.id && actionMutation.isPending}
-          onAction={(id: string, action: string) => actionMutation.mutate({ id, action, tab: selectedItem._type })}
+          onAction={(id: string, action: string) => actionMutation.mutate({ id, action, tab: selectedItem._isBooking ? "bookings" : selectedItem._type })}
           onRate={(id: string, data: any) => rateMutation.mutate({ id, data })}
         />
       )}
