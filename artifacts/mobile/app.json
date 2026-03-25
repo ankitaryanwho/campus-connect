@@ -40,11 +40,14 @@
           "androidMode": "default",
           "androidCollapsedTitle": "CampusConnect"
         }
-      ]
+      ],
+      "expo-updates"
     ],
     "updates": {
-      "enabled": false,
-      "fallbackToCacheTimeout": 0
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0,
+      "url": "https://u.expo.dev/bd089591-9152-4ce7-8551-806c9d57748f"
     },
     "runtimeVersion": {
       "policy": "appVersion"
