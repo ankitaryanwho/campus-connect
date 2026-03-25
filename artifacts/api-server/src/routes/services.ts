@@ -969,40 +969,55 @@ router.get("/bookings", authMiddleware, async (req, res) => {
     const me = await currentUser(userId);
     if (!me) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    let bookings: any[];
+    const activeStatuses = ["booked", "accepted", "in_progress", "completed", "rejected"];
 
-    if (me.role === "provider") {
-      // Provider: get all bookings on their own listings
-      const [myAssignments, myCertifications, myProjects] = await Promise.all([
-        db.select().from(assignmentsTable).where(eq(assignmentsTable.posterId, userId)),
-        db.select().from(certificationsTable).where(eq(certificationsTable.posterId, userId)),
-        db.select().from(projectsTable).where(eq(projectsTable.posterId, userId)),
-      ]);
-      const myListingIds = [
-        ...myAssignments.map(a => a.id),
-        ...myCertifications.map(c => c.id),
-        ...myProjects.map(p => p.id),
-      ];
-      if (!myListingIds.length) { res.json({ bookings: [] }); return; }
-      const rawBookings = await db.select().from(serviceBookingsTable)
-        .where(and(
-          inArray(serviceBookingsTable.listingId, myListingIds),
-          inArray(serviceBookingsTable.status, ["booked", "accepted", "in_progress", "completed", "rejected"])
-        ))
-        .orderBy(desc(serviceBookingsTable.createdAt));
-      bookings = rawBookings;
-    } else {
-      // Student: get their own bookings
-      bookings = await db.select().from(serviceBookingsTable)
-        .where(and(
-          eq(serviceBookingsTable.studentId, userId),
-          inArray(serviceBookingsTable.status, ["booked", "accepted", "in_progress", "completed", "rejected"])
-        ))
-        .orderBy(desc(serviceBookingsTable.createdAt));
+    // ALWAYS return bookings from BOTH perspectives regardless of role:
+    //   1. "lister" side — bookings on listings this user posted
+    //   2. "booker" side — bookings this user made as the student
+    // Any user can post academic listings (even role:student), so role must NOT gate this.
+
+    const [myAssignments, myCertifications, myProjects] = await Promise.all([
+      db.select({ id: assignmentsTable.id }).from(assignmentsTable).where(eq(assignmentsTable.posterId, userId)),
+      db.select({ id: certificationsTable.id }).from(certificationsTable).where(eq(certificationsTable.posterId, userId)),
+      db.select({ id: projectsTable.id }).from(projectsTable).where(eq(projectsTable.posterId, userId)),
+    ]);
+    const myListingIds = [
+      ...myAssignments.map(a => a.id),
+      ...myCertifications.map(c => c.id),
+      ...myProjects.map(p => p.id),
+    ];
+
+    // Bookings on my own listings (I am the service provider)
+    const listerBookings = myListingIds.length > 0
+      ? await db.select().from(serviceBookingsTable)
+          .where(and(
+            inArray(serviceBookingsTable.listingId, myListingIds),
+            inArray(serviceBookingsTable.status, activeStatuses)
+          ))
+          .orderBy(desc(serviceBookingsTable.createdAt))
+      : [];
+
+    // Bookings I personally made (I am the student/customer)
+    const bookerBookings = await db.select().from(serviceBookingsTable)
+      .where(and(
+        eq(serviceBookingsTable.studentId, userId),
+        inArray(serviceBookingsTable.status, activeStatuses)
+      ))
+      .orderBy(desc(serviceBookingsTable.createdAt));
+
+    // Merge and deduplicate (same booking can't appear from both sides — you can't book your own listing)
+    const seenIds = new Set<string>();
+    const allBookings: any[] = [];
+    for (const b of [...listerBookings, ...bookerBookings]) {
+      if (!seenIds.has(b.id)) {
+        seenIds.add(b.id);
+        // Tag each booking with the user's perspective
+        allBookings.push({ ...b, _myPerspective: b.studentId === userId ? "booker" : "lister" });
+      }
     }
 
     // Attach listing and user data
-    const formatted = await Promise.all(bookings.map(async (b: any) => {
+    const formatted = await Promise.all(allBookings.map(async (b: any) => {
       const listing = await getListing(b.serviceType, b.listingId);
       return {
         ...b,
