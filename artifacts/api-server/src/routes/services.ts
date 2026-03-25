@@ -1148,6 +1148,48 @@ router.post("/bookings/:id/confirm", authMiddleware, async (req, res) => {
   } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to confirm booking" }); }
 });
 
+// ─── Legacy listing-level dismiss (for synthetic bookings — old-model listings with rejected status) ──
+// Resets the listing back to "open" so it's available for others to book again.
+
+router.post("/assignments/:id/dismiss", authMiddleware, async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const { id } = req.params;
+    const rows = await db.select().from(assignmentsTable).where(eq(assignmentsTable.id, id)).limit(1);
+    if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
+    if (rows[0].bookedById !== userId) { res.status(403).json({ error: "Only the booked student can dismiss" }); return; }
+    if (rows[0].status !== "rejected") { res.status(400).json({ error: "Listing is not in rejected status" }); return; }
+    await db.update(assignmentsTable).set({ status: "open", bookedById: null, statusHistory: null }).where(eq(assignmentsTable.id, id));
+    res.json({ message: "Booking dismissed, listing reopened" });
+  } catch (err) { console.error(err); res.status(500).json({ error: "ServerError" }); }
+});
+
+router.post("/certifications/:id/dismiss", authMiddleware, async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const { id } = req.params;
+    const rows = await db.select().from(certificationsTable).where(eq(certificationsTable.id, id)).limit(1);
+    if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
+    if (rows[0].bookedById !== userId) { res.status(403).json({ error: "Only the booked student can dismiss" }); return; }
+    if (rows[0].status !== "rejected") { res.status(400).json({ error: "Listing is not in rejected status" }); return; }
+    await db.update(certificationsTable).set({ status: "open", bookedById: null, statusHistory: null }).where(eq(certificationsTable.id, id));
+    res.json({ message: "Booking dismissed, listing reopened" });
+  } catch (err) { console.error(err); res.status(500).json({ error: "ServerError" }); }
+});
+
+router.post("/projects/:id/dismiss", authMiddleware, async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const { id } = req.params;
+    const rows = await db.select().from(projectsTable).where(eq(projectsTable.id, id)).limit(1);
+    if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
+    if (rows[0].bookedById !== userId) { res.status(403).json({ error: "Only the booked student can dismiss" }); return; }
+    if (rows[0].status !== "rejected") { res.status(400).json({ error: "Listing is not in rejected status" }); return; }
+    await db.update(projectsTable).set({ status: "open", bookedById: null, statusHistory: null }).where(eq(projectsTable.id, id));
+    res.json({ message: "Booking dismissed, listing reopened" });
+  } catch (err) { console.error(err); res.status(500).json({ error: "ServerError" }); }
+});
+
 router.post("/bookings/:id/dismiss-rejection", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;

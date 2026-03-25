@@ -1091,7 +1091,10 @@ function CompactActiveCard({ item, C, user, onTrackPress, onAccept, onReject, on
             </View>
             <Pressable
               style={{ paddingVertical: 9, borderRadius: 12, backgroundColor: "#6B7280", alignItems: "center" }}
-              onPress={() => onDismissRejection(item.id, item._type)}
+              onPress={() => onDismissRejection(
+                item._isSynthetic ? item.listingId : item.id,
+                item._isSynthetic ? item._type : "bookings"
+              )}
               disabled={isPending}
             >
               {isPending
@@ -1729,8 +1732,10 @@ export default function ServicesScreen() {
   };
 
   // Dismiss rejection always operates on the booking record
-  const onDismissRejection = (id: string, _type: string) =>
-    actionMutation.mutate({ id, action: "dismiss-rejection", tab: "bookings" });
+  // For real service_bookings records: tab="bookings", action="dismiss-rejection"
+  // For synthetic (old-model) listing bookings: tab=_type (assignments/etc), action="dismiss"
+  const onDismissRejection = (id: string, tab: string) =>
+    actionMutation.mutate({ id, action: tab === "bookings" ? "dismiss-rejection" : "dismiss", tab });
 
   const actionMutation = useMutation({
     mutationFn: async ({ id, action, tab }: { id: string; action: string; tab: string }) => {
@@ -1751,7 +1756,7 @@ export default function ServicesScreen() {
         book: "Booked successfully!", apply: "Application sent!",
         accept: "Accepted!", reject: "Request declined", progress: "Status updated!", confirm: "Confirmed received!",
         "mark-paid": "Marked as paid!", "confirm-payment": "Payment confirmed!", complete: "Marked as arrived!",
-        "dismiss-rejection": "Booking dismissed — you can book another provider.",
+        "dismiss-rejection": "Booking dismissed.", "dismiss": "Booking dismissed.",
       };
       showToast(msgs[vars.action] || "Done!", "success");
     },
