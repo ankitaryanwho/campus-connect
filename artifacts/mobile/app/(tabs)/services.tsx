@@ -1602,6 +1602,7 @@ export default function ServicesScreen() {
     id: b.id,
     _type: b.serviceType,
     _isBooking: true,
+    _myPerspective: b._myPerspective, // "lister" (provider) or "booker" (student)
     status: b.status,
     statusHistory: b.statusHistory,
     createdAt: b.createdAt,
@@ -1653,7 +1654,12 @@ export default function ServicesScreen() {
     if (i.status === "open") return false; // Normal open listing — not a synthetic booking
     if (myActiveBookingByListing.has(i.id)) return false; // Real booking exists, no need to synthesize
     const uid = user?.id;
-    return i.poster?.id === uid || i.bookedBy?.id === uid || i.bookedById === uid;
+    const isLister = i.poster?.id === uid;
+    const isBooker = i.bookedBy?.id === uid || i.bookedById === uid;
+    if (!isLister && !isBooker) return false;
+    // Provider already rejected → vanish from their dashboard entirely
+    if (isLister && i.status === "rejected") return false;
+    return true;
   }).map(i => ({
     id: `synthetic_${i.id}`,   // Fake display ID — actions must use listingId
     _type: i._type,
@@ -1693,22 +1699,29 @@ export default function ServicesScreen() {
   // For academic tabs, active jobs = real booking records + synthetic (old-model) bookings
   // For delivery/task tabs, active jobs = listing items with non-idle status
   // For "all" tab, merge: non-academic active listings + all real bookings + all synthetic bookings
+  // Rejected bookings: only show to the BOOKER (student), not the LISTER (provider)
+  const isVisibleBooking = (b: any) => {
+    if (["delivered", "dismissed"].includes(b.status)) return false;
+    if (b.status === "rejected" && b._myPerspective === "lister") return false;
+    return true;
+  };
+
   const catBookings = ACADEMIC_CATS.includes(activeCat)
-    ? myBookings.filter(b => b._type === activeCat)
+    ? myBookings.filter(b => b._type === activeCat && isVisibleBooking(b))
     : [];
   const activeJobs: any[] = ACADEMIC_CATS.includes(activeCat)
     ? [...catBookings, ...syntheticBookings.filter(b => b._type === activeCat)]
     : activeCat === "all"
       ? [
           ...allDeliveriesAndTasks.filter(isActiveJobLegacy),
-          ...myBookings.filter(b => !["delivered", "dismissed"].includes(b.status)),
+          ...myBookings.filter(isVisibleBooking),
           ...syntheticBookings,
         ]
       : filteredItems.filter(isActiveJobLegacy);
   const openListings    = filteredItems.filter(isOpenListing);
 
   const totalActive     = allDeliveriesAndTasks.filter(isActiveJobLegacy).length
-    + myBookings.filter(b => ["booked", "accepted", "in_progress", "completed", "rejected"].includes(b.status)).length
+    + myBookings.filter(isVisibleBooking).length
     + syntheticBookings.length;
   const totalCompleted  = allDeliveriesAndTasks.filter((i: any) => i.status === "delivered").length + myBookings.filter(b => b.status === "delivered").length;
   const totalOpen       = allItems.filter(isOpenListing).length;
