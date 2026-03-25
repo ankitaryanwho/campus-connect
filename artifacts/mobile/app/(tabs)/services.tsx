@@ -1581,10 +1581,12 @@ export default function ServicesScreen() {
       return items.filter(i =>
         (i.program === user?.program && (i.targetYear ?? i.target_year ?? 0) <= (user?.year ?? 4))
         || i.poster?.id === uid
+        || i.bookedById === uid  // Always include listings this user booked (legacy model)
       );
     }
     return items.filter(i =>
-      i.program === user?.program && (i.targetYear ?? i.target_year ?? 0) === user?.year
+      (i.program === user?.program && (i.targetYear ?? i.target_year ?? 0) === user?.year)
+      || i.bookedById === uid  // Always include listings this user booked (legacy model)
     );
   };
 

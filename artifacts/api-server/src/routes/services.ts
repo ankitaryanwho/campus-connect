@@ -44,9 +44,13 @@ router.get("/assignments", authMiddleware, async (req, res) => {
 
     let rows = await db.select().from(assignmentsTable).orderBy(desc(assignmentsTable.createdAt));
 
-    // Students only see assignments matching their program and for their year
+    // Students only see assignments matching their program/year, BUT always include
+    // any listing they personally booked (legacy bookedById model)
     if (me.role === "student" && me.program && me.year) {
-      rows = rows.filter(a => a.program === me.program && a.targetYear === me.year);
+      rows = rows.filter(a =>
+        (a.program === me.program && a.targetYear === me.year) ||
+        a.bookedById === userId
+      );
     }
 
     const formatted = await Promise.all(rows.map(async a => ({
@@ -208,9 +212,13 @@ router.get("/certifications", authMiddleware, async (req, res) => {
 
     let rows = await db.select().from(certificationsTable).orderBy(desc(certificationsTable.createdAt));
 
-    // Students only see certs for their program and year
+    // Students only see certs for their program/year, BUT always include
+    // any listing they personally booked (legacy bookedById model)
     if (me.role === "student" && me.program && me.year) {
-      rows = rows.filter(c => c.program === me.program && c.targetYear === me.year);
+      rows = rows.filter(c =>
+        (c.program === me.program && c.targetYear === me.year) ||
+        c.bookedById === userId
+      );
     }
 
     const formatted = await Promise.all(rows.map(async c => ({
