@@ -42,6 +42,38 @@ Dark professional admin dashboard with full CRUD control over the platform.
 - Users have `emailVerified=true` after completing OTP flow; `year` and `phone` stored on user
 - Provider services stored as JSON array in `users.services` column, shown as badges on profile
 
+## Anonymous Post System
+
+Fully privacy-first anonymous posting with threaded comments, reply system, and anonymous chat.
+
+**DB columns added:**
+- `posts.is_anonymous` (boolean, default false)
+- `comments.parent_id` (text, nullable — enables threaded replies)
+- `conversations.is_anonymous` (boolean, default false)
+- `conversations.anonymous_post_id` (text, nullable)
+
+**How it works:**
+- Toggle "Post Anonymously" in new-post screen
+- Anonymous posts store real `authorId` internally — never sent to frontend
+- Other users see: "Profile Hidden • BCA 2nd Year" with a grey ghost avatar
+- Tapping the author shows toast: "Anonymous post — profile is hidden"
+- Owner sees their own real identity (isOwnPost flag)
+- `authorId` field stripped from all API responses (never leaked)
+- Threaded replies: comments have `parentId`; response returns `replies[]` per comment
+- Anonymous chat: poster can message commenters as "Hidden Profile" — `POST /chat/conversations` with `{isAnonymous: true, anonymousPostId}`
+- Notifications for anon posts use generic text ("Someone liked your anonymous post")
+
+**API changes (`/api/posts`):**
+- `POST /`: accepts `isAnonymous` boolean
+- `GET /, GET /:id`: masks author for anon posts from non-owners
+- `GET /:id/comments`: returns threaded `{comments: [{...replies: []}]}`
+- `POST /:id/comments`: accepts `parentId` for threaded replies
+
+**Mobile changes:**
+- `new-post.tsx`: "Post Anonymously" toggle with live preview of how it will look
+- `app/(tabs)/index.tsx`: PostCard + PostMiniCard handle anonymous display
+- `app/post/[id].tsx`: Full rewrite — anonymous headers, threaded replies, anonymous chat button, profile-block toast
+
 ## Stack
 
 - **Monorepo tool**: pnpm workspaces

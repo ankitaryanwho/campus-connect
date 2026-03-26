@@ -1,4 +1,4 @@
-import { pgTable, text, integer, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, timestamp, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { usersTable } from "./users";
@@ -8,6 +8,7 @@ export const postsTable = pgTable("posts", {
   content: text("content").notNull(),
   mediaUrls: text("media_urls").notNull().default("[]"),
   authorId: text("author_id").notNull().references(() => usersTable.id),
+  isAnonymous: boolean("is_anonymous").notNull().default(false),
   likesCount: integer("likes_count").notNull().default(0),
   commentsCount: integer("comments_count").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -28,6 +29,7 @@ export const commentsTable = pgTable("comments", {
   content: text("content").notNull(),
   authorId: text("author_id").notNull().references(() => usersTable.id),
   postId: text("post_id").notNull().references(() => postsTable.id),
+  parentId: text("parent_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

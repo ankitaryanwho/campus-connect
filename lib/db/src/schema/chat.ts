@@ -7,6 +7,8 @@ export const conversationsTable = pgTable("conversations", {
   id: text("id").primaryKey(),
   participant1Id: text("participant1_id").notNull().references(() => usersTable.id),
   participant2Id: text("participant2_id").notNull().references(() => usersTable.id),
+  isAnonymous: boolean("is_anonymous").notNull().default(false),
+  anonymousPostId: text("anonymous_post_id"),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 

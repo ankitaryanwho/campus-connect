@@ -12,6 +12,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as ExpoHaptics from "expo-haptics";
 import Colors from "@/constants/colors";
 import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/contexts/ToastContext";
 
 const isWeb = Platform.OS === "web";
 
@@ -21,7 +22,9 @@ interface Post {
   id: string;
   content: string;
   mediaUrls: string[];
-  author: { id: string; name: string; avatar?: string; college?: string; program?: string; verified?: boolean };
+  author: { id: string; name: string; avatar?: string; college?: string; program?: string; year?: number; verified?: boolean; isAnonymous?: boolean };
+  isAnonymous: boolean;
+  isOwnPost?: boolean;
   likesCount: number;
   commentsCount: number;
   isLiked: boolean;
@@ -111,6 +114,7 @@ function GradientAvatar({ name, avatar, size = 44 }: { name: string; avatar?: st
 function PostMiniCard({ post, accent }: { post: Post; accent: string }) {
   const [liked, setLiked] = useState(post.isLiked);
   const [likes, setLikes] = useState(post.likesCount);
+  const { showToast } = useToast();
 
   const handleLike = () => {
     if (Platform.OS !== "web") ExpoHaptics.impactAsync(ExpoHaptics.ImpactFeedbackStyle.Light);
@@ -118,18 +122,35 @@ function PostMiniCard({ post, accent }: { post: Post; accent: string }) {
     setLikes(l => liked ? l - 1 : l + 1);
   };
 
+  const handleAuthorPress = () => {
+    if (post.isAnonymous) {
+      showToast("Anonymous post — profile is hidden", "info");
+      return;
+    }
+    router.push(`/profile/${post.author.id}`);
+  };
+
+  const displayName = post.isAnonymous ? "Profile Hidden" : post.author.name;
+  const displayBadge = post.isAnonymous
+    ? [post.author.program, post.author.year ? `${post.author.year}${post.author.year === 1 ? "st" : post.author.year === 2 ? "nd" : post.author.year === 3 ? "rd" : "th"} Year` : null].filter(Boolean).join(" • ") || "Anonymous"
+    : post.author.program || post.author.college || "Student";
+
   return (
     <Pressable
       onPress={() => router.push(`/post/${post.id}`)}
       style={[styles.miniCard, { borderLeftColor: accent }]}
     >
       <View style={styles.miniCardHeader}>
-        <GradientAvatar name={post.author.name} avatar={post.author.avatar} size={26} />
+        {post.isAnonymous ? (
+          <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: "#6B7280", alignItems: "center", justifyContent: "center" }}>
+            <Feather name="user-x" size={12} color="#fff" />
+          </View>
+        ) : (
+          <GradientAvatar name={post.author.name} avatar={post.author.avatar} size={26} />
+        )}
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={styles.miniCardAuthor} numberOfLines={1}>{post.author.name}</Text>
-          <Text style={styles.miniCardBadge} numberOfLines={1}>
-            {post.author.program || post.author.college || "Student"}
-          </Text>
+          <Text style={styles.miniCardAuthor} numberOfLines={1}>{displayName}</Text>
+          <Text style={styles.miniCardBadge} numberOfLines={1}>{displayBadge}</Text>
         </View>
       </View>
       <Text style={styles.miniCardContent} numberOfLines={3}>{post.content}</Text>
@@ -195,6 +216,7 @@ function PostCard({ post, C, onLike, onComment, isDark }: any) {
   const tapRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const taps = useRef(0);
   const cat = getCategoryInfo(detectCategory(post.content));
+  const { showToast } = useToast();
 
   const handleLike = () => {
     if (Platform.OS !== "web") ExpoHaptics.impactAsync(ExpoHaptics.ImpactFeedbackStyle.Light);
@@ -222,6 +244,20 @@ function PostCard({ post, C, onLike, onComment, isDark }: any) {
     }
   };
 
+  const handleAuthorPress = () => {
+    if (post.isAnonymous) {
+      showToast("Anonymous post — profile is hidden", "info");
+      return;
+    }
+    router.push(`/profile/${post.author.id}`);
+  };
+
+  const displayName = post.isAnonymous ? "Profile Hidden" : post.author.name;
+  const yearSuffix = (y: number) => y === 1 ? "st" : y === 2 ? "nd" : y === 3 ? "rd" : "th";
+  const displayMeta = post.isAnonymous
+    ? [post.author.program, post.author.year ? `${post.author.year}${yearSuffix(post.author.year)} Year` : null].filter(Boolean).join(" • ") || "Anonymous"
+    : post.author.college || post.author.program || "Student";
+
   return (
     <Pressable
       onPress={handleTap}
@@ -230,31 +266,44 @@ function PostCard({ post, C, onLike, onComment, isDark }: any) {
         {
           backgroundColor: isDark ? C.surface : WARM.surface,
           borderColor: isDark ? C.border : WARM.border,
-          borderLeftColor: cat.accent,
+          borderLeftColor: post.isAnonymous ? "#6B7280" : cat.accent,
         },
       ]}
     >
       {/* Header */}
       <View style={styles.postHeader}>
-        <Pressable onPress={() => router.push(`/profile/${post.author.id}`)}>
-          <GradientAvatar name={post.author.name} avatar={post.author.avatar} size={40} />
+        <Pressable onPress={handleAuthorPress}>
+          {post.isAnonymous ? (
+            <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "#6B7280", alignItems: "center", justifyContent: "center" }}>
+              <Feather name="user-x" size={18} color="#fff" />
+            </View>
+          ) : (
+            <GradientAvatar name={post.author.name} avatar={post.author.avatar} size={40} />
+          )}
         </Pressable>
         <View style={styles.postHeaderInfo}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-            <Text style={[styles.authorName, { color: isDark ? C.text : WARM.text }]}>{post.author.name}</Text>
-            {post.author.verified && (
+            <Text style={[styles.authorName, { color: isDark ? C.text : WARM.text }]}>{displayName}</Text>
+            {post.isAnonymous && (
+              <View style={{ backgroundColor: "#F3F4F6", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                <Text style={{ fontSize: 9, color: "#6B7280", fontFamily: "Inter_600SemiBold" }}>ANON</Text>
+              </View>
+            )}
+            {!post.isAnonymous && post.author.verified && (
               <LinearGradient colors={["#5B4FE8", "#7B73F0"]} style={styles.verifiedBadge}>
                 <Feather name="check" size={9} color="#fff" />
               </LinearGradient>
             )}
           </View>
           <Text style={[styles.postMeta, { color: isDark ? C.textTertiary : WARM.textTertiary }]}>
-            {post.author.college || post.author.program || "Student"} · {timeAgo(post.createdAt)}
+            {displayMeta} · {timeAgo(post.createdAt)}
           </Text>
         </View>
         {/* Category pill */}
-        <View style={[styles.catPill, { backgroundColor: cat.bg }]}>
-          <Text style={[styles.catPillText, { color: cat.accent }]}>{cat.emoji}</Text>
+        <View style={[styles.catPill, { backgroundColor: post.isAnonymous ? "#F3F4F6" : cat.bg }]}>
+          <Text style={[styles.catPillText, { color: post.isAnonymous ? "#6B7280" : cat.accent }]}>
+            {post.isAnonymous ? "🙈" : cat.emoji}
+          </Text>
         </View>
       </View>
 

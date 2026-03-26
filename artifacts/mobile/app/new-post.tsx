@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import {
   View, Text, TextInput, Pressable, StyleSheet,
   useColorScheme, ActivityIndicator, Platform,
-  Image, ScrollView, KeyboardAvoidingView,
+  Image, ScrollView, KeyboardAvoidingView, Switch,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -22,6 +22,7 @@ export default function NewPostScreen() {
   const { showToast } = useToast();
   const [content, setContent] = useState("");
   const [mediaUris, setMediaUris] = useState<string[]>([]);
+  const [isAnonymous, setIsAnonymous] = useState(false);
   const isWeb = Platform.OS === "web";
 
   const pickImage = async () => {
@@ -50,9 +51,10 @@ export default function NewPostScreen() {
 
   const createMutation = useMutation({
     mutationFn: async () => {
+      if (!content.trim() && mediaUris.length === 0) throw new Error("Please write something first");
       const res = await apiRequest("/posts", {
         method: "POST",
-        body: JSON.stringify({ content: content.trim(), mediaUrls: mediaUris }),
+        body: JSON.stringify({ content: content.trim(), mediaUrls: mediaUris, isAnonymous }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to create post");
@@ -60,6 +62,7 @@ export default function NewPostScreen() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["posts"] });
+      showToast(isAnonymous ? "Anonymous post shared!" : "Post shared!", "success");
       router.back();
     },
     onError: (err: any) => showToast(err.message || "Failed to post", "error"),
@@ -90,20 +93,54 @@ export default function NewPostScreen() {
         </View>
 
         <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-          {/* User Info */}
+          {/* User Info / Anonymous toggle */}
           <View style={styles.userRow}>
-            <View style={[styles.userAvatar, { backgroundColor: C.primary }]}>
-              <Text style={[styles.userAvatarText, { fontFamily: "Inter_700Bold" }]}>
-                {user?.name?.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2) || "?"}
+            {isAnonymous ? (
+              <View style={[styles.anonAvatar]}>
+                <Feather name="user-x" size={22} color="#fff" />
+              </View>
+            ) : (
+              <View style={[styles.userAvatar, { backgroundColor: C.primary }]}>
+                <Text style={[styles.userAvatarText, { fontFamily: "Inter_700Bold" }]}>
+                  {user?.name?.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2) || "?"}
+                </Text>
+              </View>
+            )}
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.userName, { color: isAnonymous ? "#6B7280" : C.text, fontFamily: "Inter_600SemiBold" }]}>
+                {isAnonymous ? "Profile Hidden" : user?.name}
               </Text>
-            </View>
-            <View>
-              <Text style={[styles.userName, { color: C.text, fontFamily: "Inter_600SemiBold" }]}>{user?.name}</Text>
               <Text style={[styles.userProgram, { color: C.textSecondary, fontFamily: "Inter_400Regular" }]}>
-                {user?.program || user?.college || "Student"}
+                {isAnonymous
+                  ? `${user?.program || ""}${user?.year ? ` • ${user.year}${user.year === 1 ? "st" : user.year === 2 ? "nd" : user.year === 3 ? "rd" : "th"} Year` : ""}` || "Anonymous"
+                  : user?.program || user?.college || "Student"}
               </Text>
             </View>
           </View>
+
+          {/* Anonymous Toggle */}
+          <Pressable
+            style={[styles.anonToggleRow, { backgroundColor: isAnonymous ? "#F0FDF4" : C.backgroundSecondary, borderColor: isAnonymous ? "#10B981" : C.border }]}
+            onPress={() => setIsAnonymous(prev => !prev)}
+          >
+            <View style={styles.anonToggleLeft}>
+              <Feather name={isAnonymous ? "eye-off" : "eye"} size={18} color={isAnonymous ? "#10B981" : C.textSecondary} />
+              <View>
+                <Text style={[styles.anonToggleTitle, { color: isAnonymous ? "#10B981" : C.text, fontFamily: "Inter_600SemiBold" }]}>
+                  {isAnonymous ? "Posting Anonymously" : "Post Anonymously"}
+                </Text>
+                <Text style={[styles.anonToggleSub, { color: C.textTertiary, fontFamily: "Inter_400Regular" }]}>
+                  {isAnonymous ? "Only program & year are visible to others" : "Hide your identity from other users"}
+                </Text>
+              </View>
+            </View>
+            <Switch
+              value={isAnonymous}
+              onValueChange={setIsAnonymous}
+              trackColor={{ false: C.border, true: "#10B981" }}
+              thumbColor="#fff"
+            />
+          </Pressable>
 
           {/* Content Input */}
           <TextInput
@@ -115,6 +152,7 @@ export default function NewPostScreen() {
             onChangeText={setContent}
             autoFocus
             textAlignVertical="top"
+            maxLength={500}
           />
 
           {/* Character count */}
@@ -152,17 +190,11 @@ export default function NewPostScreen() {
             <Feather name="paperclip" size={22} color={C.textSecondary} />
             <Text style={[styles.actionLabel, { color: C.textSecondary, fontFamily: "Inter_500Medium" }]}>File</Text>
           </Pressable>
-          <Pressable
-            style={styles.actionItem}
-            onPress={() => setContent(prev => prev + " @")}
-          >
+          <Pressable style={styles.actionItem} onPress={() => setContent(prev => prev + " @")}>
             <Feather name="at-sign" size={22} color={C.textSecondary} />
             <Text style={[styles.actionLabel, { color: C.textSecondary, fontFamily: "Inter_500Medium" }]}>Mention</Text>
           </Pressable>
-          <Pressable
-            style={styles.actionItem}
-            onPress={() => setContent(prev => prev + " #")}
-          >
+          <Pressable style={styles.actionItem} onPress={() => setContent(prev => prev + " #")}>
             <Feather name="hash" size={22} color={C.textSecondary} />
             <Text style={[styles.actionLabel, { color: C.textSecondary, fontFamily: "Inter_500Medium" }]}>Tag</Text>
           </Pressable>
@@ -185,11 +217,16 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 16 },
   postBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
   postBtnText: { fontSize: 14 },
-  userRow: { flexDirection: "row", alignItems: "center", gap: 12, padding: 16 },
+  userRow: { flexDirection: "row", alignItems: "center", gap: 12, padding: 16, paddingBottom: 8 },
   userAvatar: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
+  anonAvatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: "#6B7280", alignItems: "center", justifyContent: "center" },
   userAvatarText: { color: "#fff", fontSize: 16 },
   userName: { fontSize: 15 },
   userProgram: { fontSize: 12, marginTop: 2 },
+  anonToggleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginHorizontal: 16, marginBottom: 12, padding: 12, borderRadius: 12, borderWidth: 1 },
+  anonToggleLeft: { flexDirection: "row", alignItems: "center", gap: 10, flex: 1 },
+  anonToggleTitle: { fontSize: 13, marginBottom: 2 },
+  anonToggleSub: { fontSize: 11, lineHeight: 15 },
   textInput: { minHeight: 120, fontSize: 17, lineHeight: 26, paddingHorizontal: 16, paddingBottom: 16 },
   charCount: { paddingHorizontal: 16, paddingBottom: 8, fontSize: 12, textAlign: "right" },
   mediaRow: { paddingHorizontal: 16, paddingBottom: 16, gap: 10 },

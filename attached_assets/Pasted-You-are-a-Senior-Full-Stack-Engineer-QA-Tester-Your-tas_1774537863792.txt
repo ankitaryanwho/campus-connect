@@ -1,0 +1,260 @@
+You are a **Senior Full Stack Engineer + QA Tester**.
+
+Your task is to implement a **fully functional Anonymous Post System** with strict privacy rules, real-time interaction, and complete testing.
+
+⚠️ CRITICAL RULES:
+
+* Identity of poster must NEVER be exposed to other users
+* No data leak allowed
+* All interactions must work (comments, replies, chat)
+* All flows must be tested end-to-end
+* No broken UI or logic
+
+---
+
+# 🧠 FEATURE OVERVIEW
+
+Users can create **anonymous posts** where:
+
+* Their identity is hidden
+* Only:
+
+  * Program (e.g., BCA)
+  * Year (e.g., 2nd Year)
+    is visible
+
+---
+
+# 📝 PART 1: CREATE ANONYMOUS POST
+
+---
+
+## POST CREATION:
+
+Add toggle:
+👉 "Post Anonymously"
+
+---
+
+## IF ENABLED:
+
+Store in DB:
+
+* post content
+* media (if any)
+* program
+* year
+* user ID (hidden internally)
+
+---
+
+## DISPLAY:
+
+Instead of name:
+
+👉 Show:
+
+* "Profile Hidden"
+* Program + Year
+
+Example:
+"Profile Hidden • BCA 2nd Year"
+
+---
+
+# 👁️ PART 2: POST VISIBILITY
+
+---
+
+## OTHER USERS SEE:
+
+* Post content
+* Comments
+* Replies
+* Program + Year
+
+---
+
+## OTHER USERS DO NOT SEE:
+
+❌ Username
+❌ Profile image
+❌ Any identity
+
+---
+
+# 💬 PART 3: COMMENTS & REPLIES
+
+---
+
+## FEATURES:
+
+* Users can comment on post
+* Users can reply to comments
+* Threaded replies supported
+
+---
+
+## POSTER:
+
+* Can see all comments
+* Can reply to comments
+* Can interact normally
+
+---
+
+# 🔐 PART 4: PROFILE ACCESS RESTRICTION
+
+---
+
+## WHEN USER CLICKS:
+
+👉 "Profile Hidden"
+
+---
+
+## SHOW ALERT:
+
+"Anonymous post, hence profile hidden"
+
+---
+
+## BLOCK:
+
+* Profile navigation
+* Any user info access
+
+---
+
+# 💬 PART 5: CHAT SYSTEM (IMPORTANT LOGIC)
+
+---
+
+## SCENARIO:
+
+If poster messages someone from comments:
+
+---
+
+## IN CHAT:
+
+* Poster appears as:
+  👉 "Hidden Profile"
+
+* Profile remains hidden
+
+---
+
+## BUT:
+
+* Chat is allowed
+* Messaging works normally
+
+---
+
+## CRITICAL RULE:
+
+❗ Identity must still NOT be revealed
+
+---
+
+# 🔐 PART 6: DATA SECURITY
+
+---
+
+## BACKEND:
+
+* Store real user ID securely
+* Never send it to frontend
+
+---
+
+## API:
+
+* Mask user identity in responses
+* Only return:
+
+  * "Profile Hidden"
+  * Program + Year
+
+---
+
+# 🚫 BLOCK THESE:
+
+* Profile API access
+* Reverse lookup of user
+* Any leak via comments or chat
+
+---
+
+# 🔁 REAL-TIME BEHAVIOR
+
+Ensure:
+
+* Comments update instantly
+* Replies sync live
+* Chat works in real-time
+
+---
+
+# 🧪 TESTING (MANDATORY)
+
+Simulate:
+
+1. Create anonymous post
+2. View as another user
+3. Try to access profile → blocked
+4. Comment on post
+5. Reply to comment
+6. Poster replies
+7. Poster starts chat
+8. Chat shows "Hidden Profile"
+9. Try to identify user → must fail
+
+---
+
+## VERIFY:
+
+* No identity leak
+* No broken UI
+* Comments & replies working
+* Chat works properly
+* Alerts show correctly
+
+---
+
+# ⚠️ ERROR HANDLING
+
+Add:
+
+* Input validation
+* Empty post prevention
+* Proper error messages
+
+---
+
+# 📦 FINAL OUTPUT
+
+Provide:
+
+1. Fully working anonymous system
+2. All flows tested
+3. Privacy verified
+4. Confirmation:
+
+"Anonymous post system implemented successfully with full privacy protection and working interactions"
+
+---
+
+# 🚫 DO NOT
+
+* Reveal user identity anywhere
+* Allow profile access
+* Skip testing
+* Use dummy logic
+
+---
+
+# ✅ FINAL GOAL
+
+Deliver a **fully secure, privacy-first anonymous posting system with comments, replies, and chat interaction without exposing user identity**
