@@ -701,7 +701,7 @@ router.post("/deliveries/:id/confirm-payment", authMiddleware, async (req, res) 
     const rows = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].deliveryAgentId !== userId) { res.status(403).json({ error: "Only the delivery agent can confirm payment" }); return; }
-    await db.update(deliveriesTable).set({ status: "in_progress" }).where(eq(deliveriesTable.id, id));
+    await db.update(deliveriesTable).set({ chargeStatus: "paid" }).where(eq(deliveriesTable.id, id));
     const updated = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
     res.json({ ...updated[0], requester: await safeUser(updated[0].requesterId), deliveryAgent: await safeUser(userId) });
     try {
@@ -709,13 +709,39 @@ router.post("/deliveries/:id/confirm-payment", authMiddleware, async (req, res) 
       await notifyUser(updated[0].requesterId, {
         type: "payment_confirmed",
         title: "✅ Payment Confirmed!",
-        body: `${agentUser?.name ?? "Your agent"} has confirmed your payment & placed the order at ${updated[0].pickupLocation}.`,
+        body: `${agentUser?.name ?? "Your agent"} confirmed your payment. Order will be placed now.`,
         data: { screen: "/(tabs)/services", tab: "deliveries", itemId: id },
       });
     } catch {}
   } catch (err) {
     res.status(500).json({ error: "ServerError", message: "Failed to confirm payment" });
   }
+});
+
+router.post("/deliveries/:id/payment-screenshot", authMiddleware, async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const { id } = req.params;
+    const { paymentScreenshotUrl } = req.body;
+    if (!paymentScreenshotUrl) { res.status(400).json({ error: "paymentScreenshotUrl is required" }); return; }
+    const rows = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
+    if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
+    if (rows[0].requesterId !== userId) { res.status(403).json({ error: "Only the requester can upload payment screenshot" }); return; }
+    await db.update(deliveriesTable).set({ paymentScreenshotUrl, chargeStatus: "screenshot_uploaded" }).where(eq(deliveriesTable.id, id));
+    const updated = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
+    res.json({ ...updated[0], requester: await safeUser(userId), deliveryAgent: rows[0].deliveryAgentId ? await safeUser(rows[0].deliveryAgentId) : null });
+    try {
+      if (rows[0].deliveryAgentId) {
+        const requesterUser = await safeUser(userId);
+        await notifyUser(rows[0].deliveryAgentId, {
+          type: "payment_screenshot_uploaded",
+          title: "📸 Payment Screenshot Received!",
+          body: `${requesterUser?.name ?? "Student"} uploaded a payment screenshot. Please confirm payment to proceed.`,
+          data: { screen: "/(tabs)/services", tab: "deliveries", itemId: id },
+        });
+      }
+    } catch {}
+  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to upload payment screenshot" }); }
 });
 
 router.post("/deliveries/:id/complete", authMiddleware, async (req, res) => {

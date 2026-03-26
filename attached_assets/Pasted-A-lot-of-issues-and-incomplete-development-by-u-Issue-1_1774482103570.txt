@@ -1,0 +1,33 @@
+A lot of issues, and incomplete development by u.
+
+Issue 1) 
+Live Selfie / payment screenshot  is showing inside tracking details after clicking on track order / update order status button , 
+
+Fix:
+Take live selfie / upload payment qr , these button should be on active now order card button, in place of track order / update order status button, show update order status button when there is no live selfie / payment screenshot to be uploaded , 
+
+Issue 2)
+Head to outlet button below Take selfie button after clicking update order status , it's strictly ordered to you that provider can't proceed ahead until he takes and uploads their live selfie , so show head to outlet button only after they upload their live selfie , but right now agee accepting order , providers click on track order and they see take selfie button and head to outlet button together, .
+
+Fix : after order is accepted by provider , remove the replace update order status button with "Take Live Selfie " button , where provider click the button, camera opens, takes live selfie and upload it , image should be uploaded successfully and store in database , not visible to any user (student/ provider), once live selfie uploaded, Take Live Selfie button automatically gets replaced back to Update Order Status , and provider clicks on the button then click head to outlet ,
+Issue 3)
+When provider click on take live selfie, camera opens, photos clicks , but when clicked on submit , then it throws error , error log screenshot attached with this message.
+
+Fix: test the take live selfie button, and make sure after image is clicked after submitting it's uploaded to database, successfully, and take live selfie button gets replaced with update order status button automatically.
+
+Issue 4)
+After the provider updates status to hear to outlet , update order status button isn't replacing automatically to Upload Outlet UPI QR button 
+
+Fix: Once he reaches the outlet, he clicks the outlet payment qr code using his phone camera app, and then share it to student by clicking on "upload payment qr" button , after clicking this button he gets a form in popup mode with a cross icon button on top of popup to close the popup, he then uploads it using his gallery and he gets two button below image "replace image" and "upload & send" button , if he clicks replace image then he again select image from his gallery, and old uploded image gets replaced with new uploaded image
+
+once the payment qr code has been uploaded by the agent , student immediately gets a button below track order "complete your payment {total bill amount (delivery charge not included}", & "upload payment screenshot" together,  once he clicks on complete payment button , he gets a popup form where he sees  the payment screenshot picture uploaded by the agent and he gets a button, a cross icon button on top of popup to close the popup,  there on picture student gets  "save to gallery" button  once he clicks on save to gallery, and he pays to that qr code by uploading the QR to his upi app, he takes screenshot of the successful payment, and then returns back to the app , click on "upload payment screenshot"  and again a  he uploads the payment screenshot" once upload successfull, he gets a button of "replace image" and "upload & send" button,  , once uploaded it will be visible to the agent under "confirm payment button" after clicking on "confirm payment button" , agent sees the payment screenshot and three buttons below image there click on "save to gallery", and "confirm payment" "reject payment" , he save & show it to the outlet manager to confirm the payment, if received by the outlet, then he clicks on confirm payment and he outlets confirm that they haven't received any such payment then he clicks on "reject payment" , if confirmed then , "Upload payment qr" and "confirm payment" button below "update order status" button disappear automatically instantly, if payment is rejected by the agent , then button is still there for upload payment qr and confirm payment, and student gets notified via mail to compete payment and re-placebscreenshot"..
+
+Once payment is confirmed then only , agent can update order status to "order placed at outlet".. he can't place order until payment isn't recieved to the outlet qr code and confirmed ,..
+
+Issue 5)
+Provider clicks on arrived at location, and gets a button of show UPI qr code and another button Take location photo , which is totally wrong, 
+
+Fix:
+When provider clicks on arrived at location, they should get a button of upload live selfie, and no other button, when clicked on this button, camera should open , after clicking picture , picture should be uploaded to database , and then after successful upload , button should vanish away, and requester gets a pay delivery charge button on their active now order card (on the place of track order button ), when they click on pay delivery charge (charge +18% gst), they should be asked to pay via app wallet , if their wallet has insufficient balance then they should be asked to top-up their wallet, and once they top-up, then they again click on pay delivery charge button and pay using their wallet button, once deliveu charge payment is successfulky done , then order is marked delivered on both side , and delivery charge - platform share 20% , released to provider earnings instantly,
+
+Make sure u fix each issue from 1 to 5 completely, test all issue and their fixes properly,

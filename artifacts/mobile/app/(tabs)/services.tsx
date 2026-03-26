@@ -4,7 +4,7 @@ import { useLocalSearchParams } from "expo-router";
 import {
   View, Text, ScrollView, Pressable, StyleSheet, Modal,
   useColorScheme, FlatList, ActivityIndicator, Platform,
-  TextInput, Linking, Animated, RefreshControl,
+  TextInput, Linking, Animated, RefreshControl, Image,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
@@ -781,11 +781,10 @@ function AcademicCard({ item, C, onAction, currentUserId, isPending, serviceType
   );
 }
 
-function DeliveryCard({ item, C, currentUser, onAction, onRate, onCameraAction, isPending }: any) {
+function DeliveryCard({ item, C, currentUser, onAction, onRate, isPending }: any) {
   const isRequester = item.requester?.id === currentUser?.id || item.requesterId === currentUser?.id;
   const isAgent = item.deliveryAgent?.id === currentUser?.id || item.deliveryAgentId === currentUser?.id;
   const [showRating, setShowRating] = useState(false);
-  const [cameraLoading, setCameraLoading] = useState<string | null>(null);
   const isOutlet = item.pickupType === "outlet";
 
   const foodItems = item.foodItems ? JSON.parse(item.foodItems) : null;
@@ -798,11 +797,19 @@ function DeliveryCard({ item, C, currentUser, onAction, onRate, onCameraAction, 
 
   const steps = isOutlet ? DELIVERY_OUTLET_STEPS : DELIVERY_GATE_STEPS;
 
-  // Provider's next step button label
+  // Provider's next step button label (shown inside the detail modal only)
   const agentNextAction = (() => {
     if (!isAgent) return null;
+    // Must take selfie first before heading to pickup (selfie is done via Active Now card)
+    if (item.status === "accepted") {
+      if (!item.selfieUrl) return null; // selfie not yet taken
+      return { label: "Head to Pickup", color: "#F59E0B" };
+    }
+    // For outlet at reaching_pickup: block progress until student has paid
+    if (item.status === "reaching_pickup" && isOutlet && item.chargeStatus !== "paid") {
+      return null; // Payment not yet confirmed
+    }
     const map: Record<string, { label: string; color: string }> = {
-      accepted: { label: "Head to Pickup", color: "#F59E0B" },
       reaching_pickup: isOutlet
         ? { label: "Placed Order at Outlet", color: "#8B5CF6" }
         : { label: "On My Way to Drop", color: "#8B5CF6" },
@@ -814,25 +821,6 @@ function DeliveryCard({ item, C, currentUser, onAction, onRate, onCameraAction, 
   })();
 
   const studentCanConfirm = isRequester && item.status === "completed";
-
-  async function launchCamera(type: "selfie" | "qr" | "location-photo") {
-    const facing = type === "selfie" ? "front" : "back";
-    const perm = await ImagePicker.requestCameraPermissionsAsync();
-    if (!perm.granted) return;
-    setCameraLoading(type);
-    try {
-      const result = await ImagePicker.launchCameraAsync({
-        cameraType: facing === "front" ? ImagePicker.CameraType.front : ImagePicker.CameraType.back,
-        base64: true, quality: 0.5, allowsEditing: false,
-      });
-      if (!result.canceled && result.assets[0].base64) {
-        const dataUri = `data:image/jpeg;base64,${result.assets[0].base64}`;
-        onCameraAction(item.id, type, dataUri);
-      }
-    } finally {
-      setCameraLoading(null);
-    }
-  }
 
   return (
     <View style={[CS.card, { backgroundColor: C.surface, borderColor: C.border }]}>
@@ -928,15 +916,25 @@ function DeliveryCard({ item, C, currentUser, onAction, onRate, onCameraAction, 
         </View>
       )}
 
-      {/* Student: QR image from agent */}
+      {/* Student: QR image from agent (outlet delivery payment) */}
       {isRequester && item.qrImageUrl && item.chargeStatus !== "paid" && (
         <View style={{ backgroundColor: "#FEF3C7", borderRadius: 12, padding: 12, marginTop: 8 }}>
-          <Text style={{ color: "#92400E", fontFamily: "Inter_700Bold", fontSize: 13, marginBottom: 6 }}>💳 Pay Delivery Charge</Text>
-          <Text style={{ color: "#78716C", fontSize: 11, marginBottom: 10 }}>Agent has shared their UPI QR. Pay ₹{deliveryFee.toFixed(0)} to complete handover, or pay from your wallet.</Text>
-          <View style={{ backgroundColor: "#fff", borderRadius: 10, overflow: "hidden", alignItems: "center", marginBottom: 10 }}>
-            <Text style={{ fontSize: 80, paddingVertical: 12 }}>📷</Text>
-            <Text style={{ fontSize: 11, color: "#78716C", paddingBottom: 10 }}>QR code from agent</Text>
+          <Text style={{ color: "#92400E", fontFamily: "Inter_700Bold", fontSize: 13, marginBottom: 4 }}>💳 {isOutlet ? "Outlet Payment Required" : "Delivery Charge"}</Text>
+          <Text style={{ color: "#78716C", fontSize: 11, marginBottom: 10 }}>
+            {isOutlet
+              ? `Scan the QR below to pay ₹${subtotal.toFixed(0)} at the outlet. Then upload your payment screenshot from the order card.`
+              : "Agent has shared their UPI QR. Pay from the order card."}
+          </Text>
+          <View style={{ backgroundColor: "#fff", borderRadius: 10, overflow: "hidden", alignItems: "center", padding: 8 }}>
+            <Image source={{ uri: item.qrImageUrl }} style={{ width: 180, height: 180, borderRadius: 8 }} resizeMode="contain" />
+            <Text style={{ fontSize: 11, color: "#78716C", paddingBottom: 8, paddingTop: 4 }}>Scan to pay</Text>
           </View>
+          {item.chargeStatus === "screenshot_uploaded" && (
+            <View style={{ marginTop: 8, backgroundColor: "#D1FAE5", borderRadius: 8, padding: 8, flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <Feather name="clock" size={12} color="#059669" />
+              <Text style={{ color: "#059669", fontSize: 11, fontFamily: "Inter_500Medium" }}>Screenshot submitted — waiting for agent confirmation</Text>
+            </View>
+          )}
         </View>
       )}
       {isRequester && item.chargeStatus === "paid" && (
@@ -956,20 +954,24 @@ function DeliveryCard({ item, C, currentUser, onAction, onRate, onCameraAction, 
           </Pressable>
         )}
 
-        {/* Provider: accept pending request */}
-        {!isAgent && currentUser?.role === "provider" && item.status === "pending" && (
-          <Pressable style={[CS.actionBtn, { backgroundColor: "#10B981" }, isPending && { opacity: 0.6 }]}
-            onPress={() => onAction(item.id, "accept")} disabled={isPending}>
-            {isPending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={CS.actionBtnText}>Accept Request</Text>}
-          </Pressable>
+        {/* Agent: info when selfie is needed */}
+        {isAgent && item.status === "accepted" && !item.selfieUrl && (
+          <View style={{ backgroundColor: "#EDE9FE", borderRadius: 10, padding: 10, flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <Feather name="camera" size={14} color="#5B4FE8" />
+            <Text style={{ color: "#5B4FE8", fontFamily: "Inter_500Medium", fontSize: 12, flex: 1 }}>Take Live Selfie from the order card to continue</Text>
+          </View>
         )}
 
-        {/* Agent: take selfie after accepting */}
-        {isAgent && item.status === "accepted" && !item.selfieUrl && (
-          <Pressable style={[CS.actionBtn, { backgroundColor: "#6366F1" }, (isPending || cameraLoading === "selfie") && { opacity: 0.6 }]}
-            onPress={() => launchCamera("selfie")} disabled={isPending || cameraLoading !== null}>
-            {cameraLoading === "selfie" ? <ActivityIndicator color="#fff" size="small" /> : <Text style={CS.actionBtnText}>📷 Take Selfie (Verification)</Text>}
-          </Pressable>
+        {/* Agent: payment gating info for outlet */}
+        {isAgent && item.status === "reaching_pickup" && isOutlet && item.chargeStatus !== "paid" && (
+          <View style={{ backgroundColor: "#FEF3C7", borderRadius: 10, padding: 10, flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <Feather name="clock" size={14} color="#D97706" />
+            <Text style={{ color: "#92400E", fontFamily: "Inter_500Medium", fontSize: 12, flex: 1 }}>
+              {!item.qrImageUrl ? "Upload Payment QR from the order card first" :
+               item.chargeStatus === "screenshot_uploaded" ? "Confirm payment received from the order card" :
+               "Waiting for student to pay…"}
+            </Text>
+          </View>
         )}
 
         {/* Agent: progress through steps */}
@@ -980,42 +982,32 @@ function DeliveryCard({ item, C, currentUser, onAction, onRate, onCameraAction, 
           </Pressable>
         )}
 
-        {/* Agent: upload QR at drop point */}
-        {isAgent && item.status === "completed" && !item.qrImageUrl && (
-          <Pressable style={[CS.actionBtn, { backgroundColor: "#F59E0B" }, (isPending || cameraLoading === "qr") && { opacity: 0.6 }]}
-            onPress={() => launchCamera("qr")} disabled={isPending || cameraLoading !== null}>
-            {cameraLoading === "qr" ? <ActivityIndicator color="#fff" size="small" /> : <Text style={CS.actionBtnText}>📲 Share UPI QR Code</Text>}
-          </Pressable>
-        )}
-
-        {/* Agent: take location photo */}
+        {/* Agent: location photo / delivery charge prompt at completed */}
         {isAgent && item.status === "completed" && !item.locationPhotoUrl && (
-          <Pressable style={[CS.actionBtn, { backgroundColor: "#8B5CF6" }, (isPending || cameraLoading === "location-photo") && { opacity: 0.6 }]}
-            onPress={() => launchCamera("location-photo")} disabled={isPending || cameraLoading !== null}>
-            {cameraLoading === "location-photo" ? <ActivityIndicator color="#fff" size="small" /> : <Text style={CS.actionBtnText}>📍 Take Location Photo</Text>}
-          </Pressable>
+          <View style={{ backgroundColor: "#EDE9FE", borderRadius: 10, padding: 10, flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <Feather name="camera" size={14} color="#5B4FE8" />
+            <Text style={{ color: "#5B4FE8", fontFamily: "Inter_500Medium", fontSize: 12, flex: 1 }}>Take Live Selfie from the order card to proceed</Text>
+          </View>
+        )}
+        {isAgent && item.status === "completed" && item.locationPhotoUrl && item.chargeStatus !== "paid" && (
+          <View style={{ backgroundColor: "#D1FAE5", borderRadius: 10, padding: 10, flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <Feather name="check-circle" size={14} color="#059669" />
+            <Text style={{ color: "#059669", fontFamily: "Inter_500Medium", fontSize: 12, flex: 1 }}>Selfie uploaded ✓ — waiting for student payment</Text>
+          </View>
         )}
 
-        {/* Student: pay delivery charge from wallet */}
-        {isRequester && item.chargeStatus === "qr_shared" && item.chargeStatus !== "paid" && (
+        {/* Student: confirm received (charge must be paid first) */}
+        {studentCanConfirm && item.chargeStatus === "paid" && (
           <Pressable style={[CS.actionBtn, { backgroundColor: "#10B981" }, isPending && { opacity: 0.6 }]}
-            onPress={() => onAction(item.id, "pay-delivery-charge")} disabled={isPending}>
-            {isPending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={CS.actionBtnText}>💳 Pay ₹{deliveryFee.toFixed(0)} from Wallet</Text>}
+            onPress={() => onAction(item.id, "confirm")} disabled={isPending}>
+            {isPending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={CS.actionBtnText}>✓ Mark Order Received</Text>}
           </Pressable>
         )}
-
-        {/* Student: confirm received (when agent has arrived and charge is paid) */}
-        {studentCanConfirm && (item.chargeStatus === "paid" || !item.qrImageUrl) && (
-          <>
-            <Pressable style={[CS.actionBtn, { backgroundColor: "#10B981" }, isPending && { opacity: 0.6 }]}
-              onPress={() => onAction(item.id, "confirm")} disabled={isPending}>
-              {isPending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={CS.actionBtnText}>✓ Mark Order Received</Text>}
-            </Pressable>
-          </>
-        )}
-        {studentCanConfirm && item.qrImageUrl && item.chargeStatus !== "paid" && (
+        {studentCanConfirm && item.chargeStatus !== "paid" && (
           <View style={{ backgroundColor: "#FEF3C7", borderRadius: 10, padding: 10 }}>
-            <Text style={{ color: "#92400E", fontSize: 12, fontFamily: "Inter_500Medium", textAlign: "center" }}>Pay delivery charge first to confirm receipt</Text>
+            <Text style={{ color: "#92400E", fontSize: 12, fontFamily: "Inter_500Medium", textAlign: "center" }}>
+              Complete payment from the order card first to confirm receipt
+            </Text>
           </View>
         )}
 
@@ -1138,15 +1130,162 @@ function getStepsForItem(item: any): { labels: string[]; index: number } {
   return { labels, index: map[s] ?? 0 };
 }
 
+// ─── Delivery Active CTA — contextual buttons for delivery Active Now cards ───
+
+function DeliveryActiveCTA({ item, isAgent, isRequester, isPending, cameraActionId, onCameraAction, onOpenQRUpload, onOpenPaymentModal, onPayDeliveryCharge, onConfirmPayment, onTrackPress, meta }: any) {
+  const isOutlet = item.pickupType === "outlet";
+  const deliveryFee = parseFloat(item.deliveryFee || "30");
+  const gst = parseFloat((deliveryFee * 0.18).toFixed(2));
+  const subtotal = item.subtotal ? parseFloat(item.subtotal) : 0;
+
+  if (isAgent) {
+    // 1. Accepted + no selfie → show "Take Live Selfie" on card
+    if (item.status === "accepted" && !item.selfieUrl) {
+      const loading = cameraActionId === `${item.id}-selfie`;
+      return (
+        <Pressable
+          style={{ marginTop: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: "#5B4FE8", alignItems: "center" }}
+          onPress={() => onCameraAction(item.id, "selfie")} disabled={!!cameraActionId || isPending}>
+          {loading ? <ActivityIndicator size="small" color="#fff" /> :
+            <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 12 }}>📸 Take Live Selfie</Text>}
+        </Pressable>
+      );
+    }
+    // 2. Accepted + selfie done → Update Order Status (opens modal for "Head to Pickup")
+    if (item.status === "accepted" && item.selfieUrl) {
+      return (
+        <Pressable style={{ marginTop: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: meta.accent, alignItems: "center" }}
+          onPress={() => onTrackPress(item)}>
+          <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 12 }}>Update Order Status</Text>
+        </Pressable>
+      );
+    }
+    // 3. reaching_pickup + outlet → upload QR or await payment
+    if (item.status === "reaching_pickup" && isOutlet) {
+      if (!item.qrImageUrl) {
+        return (
+          <Pressable style={{ marginTop: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: "#F59E0B", alignItems: "center" }}
+            onPress={() => onOpenQRUpload(item)} disabled={isPending}>
+            <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 12 }}>📤 Upload Payment QR</Text>
+          </Pressable>
+        );
+      }
+      if (item.chargeStatus === "screenshot_uploaded") {
+        return (
+          <Pressable style={{ marginTop: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: "#10B981", alignItems: "center" }}
+            onPress={() => onConfirmPayment(item.id)} disabled={isPending}>
+            {isPending ? <ActivityIndicator size="small" color="#fff" /> :
+              <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 12 }}>✓ Confirm Payment Received</Text>}
+          </Pressable>
+        );
+      }
+      if (item.chargeStatus === "paid") {
+        return (
+          <Pressable style={{ marginTop: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: meta.accent, alignItems: "center" }}
+            onPress={() => onTrackPress(item)}>
+            <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 12 }}>Update Order Status</Text>
+          </Pressable>
+        );
+      }
+      return (
+        <View style={{ marginTop: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: "#FEF3C7", alignItems: "center" }}>
+          <Text style={{ color: "#92400E", fontFamily: "Inter_500Medium", fontSize: 12 }}>⌛ Waiting for student payment...</Text>
+        </View>
+      );
+    }
+    // 4. Arrived at drop (completed) + no location photo → take selfie (location verification)
+    if (item.status === "completed" && !item.locationPhotoUrl) {
+      const loading = cameraActionId === `${item.id}-location-photo`;
+      return (
+        <Pressable
+          style={{ marginTop: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: "#5B4FE8", alignItems: "center" }}
+          onPress={() => onCameraAction(item.id, "location-photo")} disabled={!!cameraActionId || isPending}>
+          {loading ? <ActivityIndicator size="small" color="#fff" /> :
+            <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 12 }}>📸 Take Live Selfie</Text>}
+        </Pressable>
+      );
+    }
+    // 5. completed + selfie taken + awaiting payment
+    if (item.status === "completed" && item.locationPhotoUrl && item.chargeStatus !== "paid") {
+      return (
+        <View style={{ marginTop: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: "#FEF3C7", alignItems: "center" }}>
+          <Text style={{ color: "#92400E", fontFamily: "Inter_500Medium", fontSize: 12 }}>⌛ Awaiting delivery payment from student</Text>
+        </View>
+      );
+    }
+    // 6. Default — Update Order Status
+    return (
+      <Pressable style={{ marginTop: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: meta.accent, alignItems: "center" }}
+        onPress={() => onTrackPress(item)} disabled={isPending}>
+        {isPending ? <ActivityIndicator size="small" color="#fff" /> :
+          <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 12 }}>Update Order Status</Text>}
+      </Pressable>
+    );
+  }
+
+  if (isRequester) {
+    // Outlet: QR shared + student hasn't paid yet
+    if (isOutlet && item.qrImageUrl && !["paid", "screenshot_uploaded"].includes(item.chargeStatus || "")) {
+      return (
+        <Pressable style={{ marginTop: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: "#F59E0B", alignItems: "center" }}
+          onPress={() => onOpenPaymentModal(item)}>
+          <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 12 }}>💳 Complete Payment ₹{subtotal.toFixed(0)}</Text>
+        </Pressable>
+      );
+    }
+    // Outlet: screenshot uploaded, waiting for agent confirmation
+    if (isOutlet && item.chargeStatus === "screenshot_uploaded") {
+      return (
+        <View style={{ marginTop: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: "#D1FAE5", alignItems: "center" }}>
+          <Text style={{ color: "#059669", fontFamily: "Inter_500Medium", fontSize: 12 }}>⌛ Waiting for agent to confirm payment...</Text>
+        </View>
+      );
+    }
+    // Gate: arrived + location photo taken + charge not paid
+    if (item.status === "completed" && !isOutlet && item.locationPhotoUrl && item.chargeStatus !== "paid") {
+      const total = deliveryFee + gst;
+      return (
+        <Pressable style={{ marginTop: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: "#10B981", alignItems: "center" }}
+          onPress={() => onPayDeliveryCharge(item.id)} disabled={isPending}>
+          {isPending ? <ActivityIndicator size="small" color="#fff" /> :
+            <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 12 }}>💳 Pay Delivery Charge ₹{total.toFixed(0)} (+GST)</Text>}
+        </Pressable>
+      );
+    }
+    // Completed + charge paid → Mark Order Received (opens modal)
+    if (item.status === "completed" && item.chargeStatus === "paid") {
+      return (
+        <Pressable style={{ marginTop: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: "#10B981", alignItems: "center" }}
+          onPress={() => onTrackPress(item)} disabled={isPending}>
+          <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 12 }}>✓ Mark Order Received</Text>
+        </Pressable>
+      );
+    }
+    // Default: Track Order
+    return (
+      <Pressable style={{ marginTop: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: meta.accent, alignItems: "center" }}
+        onPress={() => onTrackPress(item)}>
+        <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 12 }}>Track Order →</Text>
+      </Pressable>
+    );
+  }
+
+  return null;
+}
+
 // ─── Compact Active Job Card (matches Priority Lane mockup exactly) ────────────
 
-function CompactActiveCard({ item, C, user, onTrackPress, onAccept, onReject, onDismissRejection, isPending }: any) {
+function CompactActiveCard({ item, C, user, onTrackPress, onAccept, onReject, onDismissRejection, isPending, onCameraAction, onOpenQRUpload, onOpenPaymentModal, onPayDeliveryCharge, onConfirmPayment, cameraActionId }: any) {
   const meta = CAT_META[item._type] || CAT_META.tasks;
   const { labels, index } = getStepsForItem(item);
   const progress = labels.length > 1 ? index / (labels.length - 1) : 1;
 
   const uid = user?.id;
   const isProvider = item.poster?.id === uid || item.deliveryAgent?.id === uid || item.assignedTo?.id === uid || item.deliveryAgentId === uid;
+  // For delivery cards, distinguish agent vs requester role
+  const isDelivery = item._type === "deliveries";
+  const isAgent = isDelivery && (item.deliveryAgent?.id === uid || item.deliveryAgentId === uid);
+  const isRequester = isDelivery && (item.requester?.id === uid || item.requesterId === uid);
   // Provider has not yet accepted — needs to review the booking
   const awaitingAcceptance = isProvider && ["booked", "pending"].includes(item.status);
 
@@ -1242,7 +1381,7 @@ function CompactActiveCard({ item, C, user, onTrackPress, onAccept, onReject, on
               })}
             </View>
 
-            {/* CTA — Accept/Reject for provider awaiting acceptance; status button otherwise */}
+            {/* CTA — Accept/Reject for provider awaiting acceptance; delivery-aware CTA for deliveries; status button otherwise */}
             {awaitingAcceptance ? (
               <View style={{ marginTop: 12, flexDirection: "row", gap: 8 }}>
                 <Pressable
@@ -1262,6 +1401,14 @@ function CompactActiveCard({ item, C, user, onTrackPress, onAccept, onReject, on
                   <Text style={{ color: "#EF4444", fontFamily: "Inter_700Bold", fontSize: 12 }}>✕ Reject</Text>
                 </Pressable>
               </View>
+            ) : isDelivery ? (
+              <DeliveryActiveCTA
+                item={item} isAgent={isAgent} isRequester={isRequester}
+                isPending={isPending} cameraActionId={cameraActionId}
+                onCameraAction={onCameraAction} onOpenQRUpload={onOpenQRUpload}
+                onOpenPaymentModal={onOpenPaymentModal} onPayDeliveryCharge={onPayDeliveryCharge}
+                onConfirmPayment={onConfirmPayment} onTrackPress={onTrackPress} meta={meta}
+              />
             ) : (
               <Pressable
                 style={{ marginTop: 12, paddingVertical: 9, borderRadius: 12, backgroundColor: meta.accent, alignItems: "center" }}
@@ -1643,6 +1790,14 @@ export default function ServicesScreen() {
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [refreshing, setRefreshing] = useState(false);
+  // Delivery compact-card camera state
+  const [cameraActionId, setCameraActionId] = useState<string | null>(null);
+  // QR upload modal (agent uploads payment QR for outlet delivery)
+  const [qrUploadItem, setQrUploadItem] = useState<any>(null);
+  const [qrPreviewUri, setQrPreviewUri] = useState<string | null>(null);
+  // Payment modal (student sees QR and uploads payment screenshot)
+  const [paymentItem, setPaymentItem] = useState<any>(null);
+  const [screenshotUri, setScreenshotUri] = useState<string | null>(null);
   const { showToast } = useToast();
   const isWeb = Platform.OS === "web";
 
@@ -1907,8 +2062,9 @@ export default function ServicesScreen() {
         accept: "Accepted!", reject: "Request declined", progress: "Status updated!", confirm: "Confirmed!",
         cancel: "Delivery cancelled.", selfie: "Selfie uploaded!", qr: "QR shared with requester!",
         "location-photo": "Location photo uploaded!", "pay-delivery-charge": "Payment sent from wallet!",
-        "mark-paid": "Marked as paid!", "confirm-payment": "Payment confirmed!", complete: "Marked as arrived!",
-        "dismiss-rejection": "Booking dismissed.", "dismiss": "Booking dismissed.",
+        "mark-paid": "Marked as paid!", "confirm-payment": "Payment confirmed! You can now place the order.",
+        "payment-screenshot": "Payment screenshot sent! Waiting for agent to confirm.",
+        complete: "Marked as arrived!", "dismiss-rejection": "Booking dismissed.", "dismiss": "Booking dismissed.",
       };
       showToast(msgs[vars.action] || "Done!", "success");
     },
@@ -1926,6 +2082,75 @@ export default function ServicesScreen() {
   const handleCameraAction = useCallback(async (id: string, type: "selfie" | "qr" | "location-photo", dataUri: string) => {
     const bodyKey = type === "selfie" ? "selfieUrl" : type === "qr" ? "qrImageUrl" : "locationPhotoUrl";
     actionMutation.mutate({ id, action: type, tab: "deliveries", body: { [bodyKey]: dataUri } });
+  }, [actionMutation]);
+
+  // Camera handler for compact card buttons (selfie + location-photo)
+  const handleCompactCameraAction = useCallback(async (deliveryId: string, type: "selfie" | "location-photo") => {
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) { showToast("Camera permission required to continue", "error"); return; }
+    setCameraActionId(`${deliveryId}-${type}`);
+    try {
+      const result = await ImagePicker.launchCameraAsync({
+        cameraType: type === "selfie" ? ImagePicker.CameraType.front : ImagePicker.CameraType.back,
+        base64: true, quality: 0.5, allowsEditing: false,
+      });
+      if (!result.canceled && result.assets[0].base64) {
+        const dataUri = `data:image/jpeg;base64,${result.assets[0].base64}`;
+        const bodyKey = type === "selfie" ? "selfieUrl" : "locationPhotoUrl";
+        actionMutation.mutate({ id: deliveryId, action: type, tab: "deliveries", body: { [bodyKey]: dataUri } });
+      }
+    } catch { showToast("Camera error. Please try again.", "error"); }
+    finally { setCameraActionId(null); }
+  }, [actionMutation, showToast]);
+
+  // QR upload modal handlers (agent uploads payment QR)
+  const handleOpenQRUpload = useCallback((item: any) => {
+    setQrUploadItem(item);
+    setQrPreviewUri(null);
+  }, []);
+
+  const handleQRUploadPickImage = useCallback(async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({ base64: true, quality: 0.7, allowsEditing: false });
+    if (!result.canceled && result.assets[0].base64) {
+      setQrPreviewUri(`data:image/jpeg;base64,${result.assets[0].base64}`);
+    }
+  }, []);
+
+  const handleQRUploadSubmit = useCallback(() => {
+    if (!qrUploadItem || !qrPreviewUri) return;
+    actionMutation.mutate({ id: qrUploadItem.id, action: "qr", tab: "deliveries", body: { qrImageUrl: qrPreviewUri } });
+    setQrUploadItem(null);
+    setQrPreviewUri(null);
+  }, [qrUploadItem, qrPreviewUri, actionMutation]);
+
+  // Payment modal handlers (student sees QR + uploads screenshot)
+  const handleOpenPaymentModal = useCallback((item: any) => {
+    setPaymentItem(item);
+    setScreenshotUri(null);
+  }, []);
+
+  const handlePaymentScreenshotPick = useCallback(async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({ base64: true, quality: 0.7, allowsEditing: false });
+    if (!result.canceled && result.assets[0].base64) {
+      setScreenshotUri(`data:image/jpeg;base64,${result.assets[0].base64}`);
+    }
+  }, []);
+
+  const handlePaymentScreenshotSubmit = useCallback(() => {
+    if (!paymentItem || !screenshotUri) return;
+    actionMutation.mutate({ id: paymentItem.id, action: "payment-screenshot", tab: "deliveries", body: { paymentScreenshotUrl: screenshotUri } });
+    setPaymentItem(null);
+    setScreenshotUri(null);
+  }, [paymentItem, screenshotUri, actionMutation]);
+
+  // Pay delivery charge (gate delivery)
+  const handlePayDeliveryCharge = useCallback((deliveryId: string) => {
+    actionMutation.mutate({ id: deliveryId, action: "pay-delivery-charge", tab: "deliveries" });
+  }, [actionMutation]);
+
+  // Agent confirms payment received (outlet delivery)
+  const handleConfirmPayment = useCallback((deliveryId: string) => {
+    actionMutation.mutate({ id: deliveryId, action: "confirm-payment", tab: "deliveries" });
   }, [actionMutation]);
 
   const rateMutation = useMutation({
@@ -1973,7 +2198,6 @@ export default function ServicesScreen() {
           key={item.id} item={item} C={C} currentUser={user}
           onAction={(id: string, action: string) => actionMutation.mutate({ id, action, tab: "deliveries" })}
           onRate={(id: string, data: any) => rateMutation.mutate({ id, data })}
-          onCameraAction={handleCameraAction}
           isPending={pendingId === item.id && (actionMutation.isPending || rateMutation.isPending)}
         />
       );
@@ -2104,6 +2328,12 @@ export default function ServicesScreen() {
                     onAccept={(id: string) => actionMutation.mutate({ id: item._isSynthetic ? item.listingId : id, action: "accept", tab: item._isSynthetic ? item._type : item._isBooking ? "bookings" : item._type })}
                     onReject={(id: string) => actionMutation.mutate({ id: item._isSynthetic ? item.listingId : id, action: "reject", tab: item._isSynthetic ? item._type : item._isBooking ? "bookings" : item._type })}
                     onDismissRejection={onDismissRejection}
+                    cameraActionId={cameraActionId}
+                    onCameraAction={handleCompactCameraAction}
+                    onOpenQRUpload={handleOpenQRUpload}
+                    onOpenPaymentModal={handleOpenPaymentModal}
+                    onPayDeliveryCharge={handlePayDeliveryCharge}
+                    onConfirmPayment={handleConfirmPayment}
                   />
                 ))}
               </View>
@@ -2268,6 +2498,127 @@ export default function ServicesScreen() {
           C={C} apiRequest={apiRequest} queryClient={queryClient} showToast={showToast}
         />
       )}
+
+      {/* ── QR Upload Modal (agent uploads outlet payment QR) ── */}
+      <Modal
+        visible={!!qrUploadItem}
+        transparent
+        animationType="fade"
+        onRequestClose={() => { setQrUploadItem(null); setQrPreviewUri(null); }}
+      >
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center", padding: 20 }}>
+          <View style={{ backgroundColor: C.surface, borderRadius: 20, padding: 20, width: "100%" }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <Text style={{ fontSize: 16, fontFamily: "Inter_700Bold", color: C.text }}>Upload Payment QR</Text>
+              <Pressable onPress={() => { setQrUploadItem(null); setQrPreviewUri(null); }}>
+                <Feather name="x" size={22} color={C.text} />
+              </Pressable>
+            </View>
+            <Text style={{ color: C.textSecondary, fontSize: 13, marginBottom: 14 }}>
+              Select the outlet's UPI QR code from your gallery — the student will see it to pay.
+            </Text>
+            {qrPreviewUri ? (
+              <View style={{ alignItems: "center", marginBottom: 16 }}>
+                <Image source={{ uri: qrPreviewUri }} style={{ width: 200, height: 200, borderRadius: 12 }} resizeMode="contain" />
+              </View>
+            ) : (
+              <Pressable
+                style={{ borderWidth: 2, borderColor: C.border, borderStyle: "dashed", borderRadius: 12, padding: 36, alignItems: "center", marginBottom: 16 }}
+                onPress={handleQRUploadPickImage}
+              >
+                <Feather name="upload" size={32} color={C.textTertiary} />
+                <Text style={{ color: C.textTertiary, marginTop: 8, fontFamily: "Inter_500Medium" }}>Tap to select QR image</Text>
+              </Pressable>
+            )}
+            {qrPreviewUri ? (
+              <View style={{ flexDirection: "row", gap: 10 }}>
+                <Pressable
+                  style={{ flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: C.backgroundSecondary, alignItems: "center" }}
+                  onPress={handleQRUploadPickImage}
+                >
+                  <Text style={{ color: C.text, fontFamily: "Inter_500Medium" }}>Replace</Text>
+                </Pressable>
+                <Pressable
+                  style={{ flex: 2, paddingVertical: 12, borderRadius: 12, backgroundColor: "#F59E0B", alignItems: "center" }}
+                  onPress={handleQRUploadSubmit}
+                  disabled={actionMutation.isPending}
+                >
+                  {actionMutation.isPending
+                    ? <ActivityIndicator color="#fff" size="small" />
+                    : <Text style={{ color: "#fff", fontFamily: "Inter_700Bold" }}>Upload & Share with Student</Text>}
+                </Pressable>
+              </View>
+            ) : null}
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── Payment Modal (student sees QR + uploads payment screenshot) ── */}
+      <Modal
+        visible={!!paymentItem}
+        transparent
+        animationType="fade"
+        onRequestClose={() => { setPaymentItem(null); setScreenshotUri(null); }}
+      >
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center", padding: 20 }}>
+          <View style={{ backgroundColor: C.surface, borderRadius: 20, padding: 20, width: "100%", maxHeight: "85%" }}>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <Text style={{ fontSize: 16, fontFamily: "Inter_700Bold", color: C.text }}>Complete Payment</Text>
+                <Pressable onPress={() => { setPaymentItem(null); setScreenshotUri(null); }}>
+                  <Feather name="x" size={22} color={C.text} />
+                </Pressable>
+              </View>
+
+              {/* QR code from agent */}
+              {paymentItem?.qrImageUrl && (
+                <View style={{ alignItems: "center", marginBottom: 16, backgroundColor: C.backgroundSecondary, borderRadius: 16, padding: 16 }}>
+                  <Text style={{ color: C.textSecondary, fontSize: 13, marginBottom: 10 }}>Scan this QR to pay</Text>
+                  <Image source={{ uri: paymentItem.qrImageUrl }} style={{ width: 200, height: 200, borderRadius: 12 }} resizeMode="contain" />
+                  {paymentItem?.subtotal && (
+                    <Text style={{ color: C.text, fontFamily: "Inter_700Bold", fontSize: 20, marginTop: 10 }}>
+                      ₹{parseFloat(paymentItem.subtotal).toFixed(0)}
+                    </Text>
+                  )}
+                  <Text style={{ color: C.textSecondary, fontSize: 11, marginTop: 4 }}>UPI payment to outlet</Text>
+                </View>
+              )}
+
+              <Text style={{ color: C.textSecondary, fontSize: 13, marginBottom: 10 }}>
+                After paying, upload your payment screenshot below:
+              </Text>
+
+              {screenshotUri && (
+                <View style={{ alignItems: "center", marginBottom: 12 }}>
+                  <Image source={{ uri: screenshotUri }} style={{ width: "100%", height: 180, borderRadius: 12 }} resizeMode="cover" />
+                </View>
+              )}
+
+              <Pressable
+                style={{ borderWidth: 2, borderColor: C.border, borderStyle: "dashed", borderRadius: 12, padding: 20, alignItems: "center", marginBottom: 14 }}
+                onPress={handlePaymentScreenshotPick}
+              >
+                <Feather name="upload" size={20} color={C.textTertiary} />
+                <Text style={{ color: C.textTertiary, marginTop: 6, fontFamily: "Inter_500Medium" }}>
+                  {screenshotUri ? "Replace Screenshot" : "Upload Payment Screenshot"}
+                </Text>
+              </Pressable>
+
+              {screenshotUri && (
+                <Pressable
+                  style={{ paddingVertical: 14, borderRadius: 12, backgroundColor: "#10B981", alignItems: "center", marginBottom: 8 }}
+                  onPress={handlePaymentScreenshotSubmit}
+                  disabled={actionMutation.isPending}
+                >
+                  {actionMutation.isPending
+                    ? <ActivityIndicator color="#fff" size="small" />
+                    : <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 14 }}>Confirm & Submit Screenshot</Text>}
+                </Pressable>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
