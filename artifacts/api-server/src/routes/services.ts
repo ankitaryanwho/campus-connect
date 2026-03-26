@@ -612,7 +612,14 @@ router.post("/deliveries/:id/progress", authMiddleware, async (req, res) => {
     const nextStatus = progressMap[rows[0].status];
     if (!nextStatus) { res.status(400).json({ error: "Cannot advance from status: " + rows[0].status }); return; }
     const history = appendHistory(rows[0].statusHistory, nextStatus);
-    await db.update(deliveriesTable).set({ status: nextStatus, statusHistory: history }).where(eq(deliveriesTable.id, id));
+    // For gate deliveries arriving at drop (completed): reset chargeStatus + locationPhoto so agent takes fresh photo
+    const progressUpdates: any = { status: nextStatus, statusHistory: history };
+    if (nextStatus === "completed" && !isOutlet) {
+      progressUpdates.chargeStatus = "pending";
+      progressUpdates.locationPhotoUrl = null;
+      progressUpdates.locationPhotoTimestamp = null;
+    }
+    await db.update(deliveriesTable).set(progressUpdates).where(eq(deliveriesTable.id, id));
     const updated = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
     const agentUser = await safeUser(userId);
     res.json({ ...updated[0], requester: await safeUser(updated[0].requesterId), deliveryAgent: agentUser });
@@ -621,12 +628,16 @@ router.post("/deliveries/:id/progress", authMiddleware, async (req, res) => {
       const agentName = agentUser?.name ?? "Your agent";
       const pickup = updated[0].pickupLocation;
       const drop = updated[0].dropLocation;
+      // "completed" notification differs: gate needs payment, outlet just needs confirmation
+      const completedMsg = isOutlet
+        ? { title: "📍 Agent Has Arrived!", body: `${agentName} has arrived at your location. Taking location photo & will hand over your food shortly.` }
+        : { title: "📍 Agent Has Arrived!", body: `${agentName} is at your location. They will take a selfie, then you pay the delivery charge to receive your parcel.` };
       const msgMap: Record<string, { title: string; body: string }> = {
         reaching_pickup: { title: "🏃 Agent is on the way!", body: `${agentName} is heading to ${pickup} to pick up your order.` },
         placed_order:    { title: "✅ Order Placed!", body: `${agentName} has confirmed your payment & placed your order at ${pickup}.` },
         collecting_order:{ title: "🛍️ Collecting Your Order", body: `${agentName} is collecting your order from ${pickup}.` },
         reaching_drop:   { title: "🚚 On the Way!", body: `${agentName} is on the way to your drop location at ${drop}.` },
-        completed:       { title: "📍 Agent Has Arrived!", body: `${agentName} has arrived at your location. Please confirm the item received!` },
+        completed:       completedMsg,
       };
       const msg = msgMap[nextStatus];
       if (msg) {
@@ -862,15 +873,27 @@ router.post("/deliveries/:id/location-photo", authMiddleware, async (req, res) =
     const updated = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
     res.json({ ...updated[0], requester: await safeUser(updated[0].requesterId), deliveryAgent: await safeUser(userId) });
     try {
-      const deliveryFee = parseFloat((updated[0].deliveryFee as unknown as string) || "30");
-      const gst = parseFloat((deliveryFee * 0.18).toFixed(2));
-      const total = parseFloat((deliveryFee + gst).toFixed(2));
-      await notifyUser(updated[0].requesterId, {
-        type: "delivery_arrived",
-        title: "📦 Agent Arrived at Your Location!",
-        body: `Your delivery agent is at your location. Pay ₹${total.toFixed(0)} delivery charge to receive your order.`,
-        data: { screen: "/(tabs)/services", tab: "deliveries", itemId: id },
-      });
+      const isGate = updated[0].pickupType !== "outlet";
+      if (isGate) {
+        // Gate delivery: student still needs to pay delivery charge from wallet
+        const deliveryFee = parseFloat((updated[0].deliveryFee as unknown as string) || "20");
+        const gst = parseFloat((deliveryFee * 0.18).toFixed(2));
+        const total = parseFloat((deliveryFee + gst).toFixed(2));
+        await notifyUser(updated[0].requesterId, {
+          type: "delivery_arrived",
+          title: "📦 Agent Arrived at Your Location!",
+          body: `Your agent is at your location. Pay ₹${total.toFixed(0)} delivery charge from your wallet to receive your parcel.`,
+          data: { screen: "/(tabs)/services", tab: "deliveries", itemId: id },
+        });
+      } else {
+        // Outlet delivery: payment already done — just notify to confirm receipt
+        await notifyUser(updated[0].requesterId, {
+          type: "delivery_arrived",
+          title: "🍔 Your Food Has Arrived!",
+          body: "Your food order has been delivered. Please confirm receipt.",
+          data: { screen: "/(tabs)/services", tab: "deliveries", itemId: id },
+        });
+      }
     } catch {}
   } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to upload location photo" }); }
 });
@@ -889,10 +912,12 @@ router.post("/deliveries/:id/qr", authMiddleware, async (req, res) => {
     const updated = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
     res.json({ ...updated[0], requester: await safeUser(updated[0].requesterId), deliveryAgent: await safeUser(userId) });
     try {
+      const subTotal = updated[0].subtotal ? parseFloat(updated[0].subtotal as unknown as string) : null;
+      const amountText = subTotal ? `₹${subTotal.toFixed(0)}` : "the amount";
       await notifyUser(updated[0].requesterId, {
         type: "delivery_qr_shared",
-        title: "💳 Pay Delivery Charge",
-        body: "Your agent shared their UPI QR. Please pay the delivery fee to complete the handover.",
+        title: "📲 Scan & Pay for Your Order",
+        body: `Your agent shared a UPI QR. Please pay ${amountText} for your food order to proceed.`,
         data: { screen: "/(tabs)/services", tab: "deliveries", itemId: id },
       });
     } catch {}
