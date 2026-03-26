@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import * as ImagePicker from "expo-image-picker";
 import * as MediaLibrary from "expo-media-library";
 import * as FileSystem from "expo-file-system/legacy";
+import * as Sharing from "expo-sharing";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   View, Text, ScrollView, Pressable, StyleSheet, Modal,
@@ -2159,19 +2160,25 @@ export default function ServicesScreen() {
     setScreenshotUri(null);
   }, [paymentItem, screenshotUri, actionMutation]);
 
-  // Save QR image to phone gallery (requester, outlet delivery)
+  // Save/share QR image — writes to temp file then opens share sheet
+  // (Android 13+ restricts direct gallery writes in Expo Go; sharing is the reliable cross-platform alternative)
   const handleSaveQRToGallery = useCallback(async (qrImageUrl: string) => {
     try {
-      const { status } = await MediaLibrary.requestPermissionsAsync();
-      if (status !== "granted") { showToast("Gallery permission is required to save the QR.", "error"); return; }
-      const base64Data = qrImageUrl.replace(/^data:image\/\w+;base64,/, "");
-      const ext = qrImageUrl.startsWith("data:image/png") ? "png" : "jpg";
-      const tempPath = `${FileSystem.cacheDirectory}upi_qr_${Date.now()}.${ext}`;
+      const cacheDir = FileSystem.cacheDirectory;
+      if (!cacheDir) { showToast("Storage not available on this device.", "error"); return; }
+      const base64Data = qrImageUrl.replace(/^data:image\/[^;]+;base64,/, "");
+      const ext = qrImageUrl.includes("data:image/png") ? "png" : "jpg";
+      const tempPath = `${cacheDir}upi_qr_${Date.now()}.${ext}`;
       await FileSystem.writeAsStringAsync(tempPath, base64Data, { encoding: FileSystem.EncodingType.Base64 });
-      await MediaLibrary.saveToLibraryAsync(tempPath);
-      showToast("QR saved to your gallery!", "success");
-    } catch {
-      showToast("Failed to save QR. Please try again.", "error");
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(tempPath, { mimeType: `image/${ext}`, dialogTitle: "Save UPI QR Code" });
+      } else {
+        showToast("Sharing not available on this device.", "error");
+      }
+      FileSystem.deleteAsync(tempPath, { idempotent: true }).catch(() => {});
+    } catch (e: any) {
+      showToast(e?.message ? `Could not share QR: ${e.message}` : "Could not share QR. Please try again.", "error");
     }
   }, [showToast]);
 
@@ -2629,8 +2636,8 @@ export default function ServicesScreen() {
                   <Pressable
                     style={{ marginTop: 12, flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 8, paddingHorizontal: 16, borderRadius: 10, backgroundColor: "#5B4FE8" }}
                     onPress={() => handleSaveQRToGallery(paymentItem.qrImageUrl)}>
-                    <Feather name="download" size={14} color="#fff" />
-                    <Text style={{ color: "#fff", fontFamily: "Inter_600SemiBold", fontSize: 12 }}>Save to Gallery</Text>
+                    <Feather name="share-2" size={14} color="#fff" />
+                    <Text style={{ color: "#fff", fontFamily: "Inter_600SemiBold", fontSize: 12 }}>Save / Share QR</Text>
                   </Pressable>
                 </View>
               )}

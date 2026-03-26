@@ -64,6 +64,7 @@
     "expo-file-system": "~19.0.21",
     "expo-media-library": "~18.2.1",
     "expo-notifications": "^0.29.14",
+    "expo-sharing": "~14.0.8",
     "expo-updates": "^29.0.16",
     "react-native-haptic-feedback": "^2.3.4"
   }
