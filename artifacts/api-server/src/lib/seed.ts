@@ -1,4 +1,5 @@
 import { db } from "@workspace/db";
+import { eq, ne } from "drizzle-orm";
 import {
   usersTable, walletsTable, chatroomsTable, postsTable,
   assignmentsTable, coachingSessionsTable, deliveriesTable, tasksTable,
@@ -6,9 +7,28 @@ import {
 import bcrypt from "bcryptjs";
 import { generateId } from "./id";
 
+async function ensureAdmin() {
+  const existing = await db.select().from(usersTable).where(eq(usersTable.id, "admin-001")).limit(1);
+  if (!existing.length) {
+    await db.insert(usersTable).values({
+      id: "admin-001", name: "Super Admin", email: "admin@campusconnect.edu",
+      passwordHash: await bcrypt.hash("admin-campusconnect-2024", 10),
+      role: "admin", emailVerified: true, college: "CampusConnect", program: "Admin",
+    } as any);
+    console.log("Admin user seeded.");
+  }
+  const walletCheck = await db.select().from(walletsTable).where(eq(walletsTable.userId, "admin-001")).limit(1);
+  if (!walletCheck.length) {
+    await db.insert(walletsTable).values({ id: "admin-wallet-001", userId: "admin-001", balance: "0", currency: "INR" });
+    console.log("Admin wallet seeded.");
+  }
+}
+
 export async function seedData() {
-  const existingUsers = await db.select().from(usersTable).limit(1);
-  if (existingUsers.length > 0) return;
+  await ensureAdmin();
+
+  const existingNonAdmin = await db.select().from(usersTable).where(ne(usersTable.id, "admin-001")).limit(1);
+  if (existingNonAdmin.length > 0) return;
 
   console.log("Seeding initial data...");
 

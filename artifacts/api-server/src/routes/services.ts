@@ -962,8 +962,9 @@ router.post("/deliveries/:id/pay-delivery-charge", authMiddleware, async (req, r
       }
     } catch {}
   } catch (err: any) {
+    console.error("[pay-delivery-charge] ERROR:", err?.message, err?.code, err?.detail, err?.constraint);
     if (err.message === "InsufficientBalance") { res.status(400).json({ error: "InsufficientBalance" }); return; }
-    res.status(500).json({ error: "ServerError", message: "Failed to pay delivery charge" });
+    res.status(500).json({ error: "ServerError", message: err?.message || "Failed to pay delivery charge" });
   }
 });
 
