@@ -916,8 +916,8 @@ function DeliveryCard({ item, C, currentUser, onAction, onRate, isPending }: any
         </View>
       )}
 
-      {/* Student: QR image from agent (outlet delivery payment) */}
-      {isRequester && item.qrImageUrl && item.chargeStatus !== "paid" && (
+      {/* Student: QR image from agent (outlet food payment — only during reaching_pickup phase) */}
+      {isRequester && item.status === "reaching_pickup" && item.qrImageUrl && item.chargeStatus !== "paid" && (
         <View style={{ backgroundColor: "#FEF3C7", borderRadius: 12, padding: 12, marginTop: 8 }}>
           <Text style={{ color: "#92400E", fontFamily: "Inter_700Bold", fontSize: 13, marginBottom: 4 }}>💳 {isOutlet ? "Outlet Payment Required" : "Delivery Charge"}</Text>
           <Text style={{ color: "#78716C", fontSize: 11, marginBottom: 10 }}>
@@ -946,7 +946,9 @@ function DeliveryCard({ item, C, currentUser, onAction, onRate, isPending }: any
       {isRequester && item.chargeStatus === "paid" && (
         <View style={{ backgroundColor: "#D1FAE5", borderRadius: 10, padding: 10, marginTop: 6, flexDirection: "row", alignItems: "center", gap: 8 }}>
           <Feather name="check-circle" size={14} color="#059669" />
-          <Text style={{ color: "#059669", fontFamily: "Inter_600SemiBold", fontSize: 12 }}>Delivery charge paid ✓</Text>
+          <Text style={{ color: "#059669", fontFamily: "Inter_600SemiBold", fontSize: 12 }}>
+            {isOutlet && item.status !== "completed" ? "Food payment confirmed ✓" : "Delivery charge paid ✓"}
+          </Text>
         </View>
       )}
 
@@ -1253,8 +1255,8 @@ function DeliveryActiveCTA({ item, isAgent, isRequester, isPending, cameraAction
   }
 
   if (isRequester) {
-    // Outlet: QR shared + student hasn't paid yet
-    if (isOutlet && item.qrImageUrl && !["paid", "screenshot_uploaded"].includes(item.chargeStatus || "")) {
+    // Outlet food payment: QR shared during reaching_pickup phase only
+    if (isOutlet && item.status === "reaching_pickup" && item.qrImageUrl && !["paid", "screenshot_uploaded"].includes(item.chargeStatus || "")) {
       const isRejected = item.chargeStatus === "payment_rejected";
       return (
         <Pressable style={{ marginTop: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: isRejected ? "#EF4444" : "#F59E0B", alignItems: "center" }}
@@ -1265,16 +1267,16 @@ function DeliveryActiveCTA({ item, isAgent, isRequester, isPending, cameraAction
         </Pressable>
       );
     }
-    // Outlet: screenshot uploaded, waiting for agent confirmation
-    if (isOutlet && item.chargeStatus === "screenshot_uploaded") {
+    // Outlet food payment: screenshot uploaded, waiting for agent confirmation
+    if (isOutlet && item.status === "reaching_pickup" && item.chargeStatus === "screenshot_uploaded") {
       return (
         <View style={{ marginTop: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: "#D1FAE5", alignItems: "center" }}>
           <Text style={{ color: "#059669", fontFamily: "Inter_500Medium", fontSize: 12 }}>⌛ Waiting for agent to confirm payment...</Text>
         </View>
       );
     }
-    // Gate: arrived + location photo taken + charge not paid
-    if (item.status === "completed" && !isOutlet && item.locationPhotoUrl && item.chargeStatus !== "paid") {
+    // Arrived at drop + location photo taken + delivery charge not yet paid (gate AND outlet)
+    if (item.status === "completed" && item.locationPhotoUrl && item.chargeStatus !== "paid") {
       const total = deliveryFee + gst;
       return (
         <Pressable style={{ marginTop: 12, paddingVertical: 13, borderRadius: 12, backgroundColor: "#10B981", alignItems: "center" }}
