@@ -201,7 +201,7 @@ router.get("/:postId/comments", authMiddleware, async (req, res) => {
         const { passwordHash: _, ...a } = realAuthor ? (realAuthor as any) : {};
         author = realAuthor;
       }
-      return { ...c, authorId: undefined, author, isOwnComment };
+      return { ...c, authorId: undefined, author, isOwnComment, isPostAuthor };
     }));
 
     const topLevel = formatted.filter(c => !c.parentId);

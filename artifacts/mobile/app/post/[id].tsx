@@ -200,9 +200,7 @@ export default function PostDetailScreen() {
     : null;
 
   const renderComment = ({ item }: { item: any }) => {
-    const isPostAuthorComment = post && item.author && !item.author.isAnonymous
-      ? item.authorId === post?.authorId
-      : false;
+    const isPostAuthorComment = !!item.isPostAuthor;
     const commentDisplayName = item.author?.isAnonymous ? "Profile Hidden" : (item.author?.name || "Unknown");
 
     return (

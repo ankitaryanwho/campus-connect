@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { usersTable, followsTable, postsTable } from "@workspace/db/schema";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql, or, ne } from "drizzle-orm";
 import { authMiddleware } from "../lib/auth";
 
 const router = Router();
@@ -65,9 +65,16 @@ router.post("/:userId/follow", authMiddleware, async (req, res) => {
 
 router.get("/:userId/posts", authMiddleware, async (req, res) => {
   try {
+    const requestingUserId = (req as any).userId;
     const { userId } = req.params;
+    const isOwnProfile = requestingUserId === userId;
+
+    const whereClause = isOwnProfile
+      ? eq(postsTable.authorId, userId)
+      : and(eq(postsTable.authorId, userId), eq(postsTable.isAnonymous, false));
+
     const posts = await db.select().from(postsTable)
-      .where(eq(postsTable.authorId, userId))
+      .where(whereClause)
       .orderBy(desc(postsTable.createdAt));
     const formatted = posts.map(p => ({ ...p, mediaUrls: JSON.parse(p.mediaUrls || "[]") }));
     res.json({ posts: formatted });
