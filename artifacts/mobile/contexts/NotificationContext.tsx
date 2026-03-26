@@ -48,7 +48,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       setExpoPushToken(token);
 
       try {
-        const API_BASE = "https://asset-manager-thakurankitedu.replit.app/api";
+        const API_BASE = "https://campus-connect-aryan.replit.app/api";
         await fetch(`${API_BASE}/notifications/push-token`, {
           method: "POST",
           headers: {
