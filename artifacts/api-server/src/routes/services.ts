@@ -718,6 +718,30 @@ router.post("/deliveries/:id/confirm-payment", authMiddleware, async (req, res) 
   }
 });
 
+router.post("/deliveries/:id/reject-payment", authMiddleware, async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const { id } = req.params;
+    const rows = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
+    if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
+    if (rows[0].deliveryAgentId !== userId) { res.status(403).json({ error: "Only the delivery agent can reject payment" }); return; }
+    await db.update(deliveriesTable).set({ chargeStatus: "payment_rejected", paymentScreenshotUrl: null }).where(eq(deliveriesTable.id, id));
+    const updated = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
+    res.json({ ...updated[0] });
+    try {
+      const agentUser = await safeUser(userId);
+      await notifyUser(updated[0].requesterId, {
+        type: "payment_rejected",
+        title: "❌ Payment Screenshot Rejected",
+        body: `${agentUser?.name ?? "Your agent"} could not verify your payment. Please re-upload your payment screenshot.`,
+        data: { screen: "/(tabs)/services", tab: "deliveries", itemId: id },
+      });
+    } catch {}
+  } catch (err) {
+    res.status(500).json({ error: "ServerError", message: "Failed to reject payment" });
+  }
+});
+
 router.post("/deliveries/:id/payment-screenshot", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;

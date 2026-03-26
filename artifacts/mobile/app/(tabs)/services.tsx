@@ -935,6 +935,12 @@ function DeliveryCard({ item, C, currentUser, onAction, onRate, isPending }: any
               <Text style={{ color: "#059669", fontSize: 11, fontFamily: "Inter_500Medium" }}>Screenshot submitted — waiting for agent confirmation</Text>
             </View>
           )}
+          {item.chargeStatus === "payment_rejected" && (
+            <View style={{ marginTop: 8, backgroundColor: "#FEE2E2", borderRadius: 8, padding: 8, flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <Feather name="x-circle" size={12} color="#EF4444" />
+              <Text style={{ color: "#EF4444", fontSize: 11, fontFamily: "Inter_600SemiBold" }}>Payment rejected — please re-upload your screenshot below</Text>
+            </View>
+          )}
         </View>
       )}
       {isRequester && item.chargeStatus === "paid" && (
@@ -1132,7 +1138,7 @@ function getStepsForItem(item: any): { labels: string[]; index: number } {
 
 // ─── Delivery Active CTA — contextual buttons for delivery Active Now cards ───
 
-function DeliveryActiveCTA({ item, isAgent, isRequester, isPending, cameraActionId, onCameraAction, onOpenQRUpload, onOpenPaymentModal, onPayDeliveryCharge, onConfirmPayment, onMarkReceived, onTrackPress, meta }: any) {
+function DeliveryActiveCTA({ item, isAgent, isRequester, isPending, cameraActionId, onCameraAction, onOpenQRUpload, onOpenPaymentModal, onPayDeliveryCharge, onReviewPayment, onMarkReceived, onTrackPress, meta }: any) {
   const isOutlet = item.pickupType === "outlet";
   const deliveryFee = parseFloat(item.deliveryFee || "30");
   const gst = parseFloat((deliveryFee * 0.18).toFixed(2));
@@ -1173,9 +1179,9 @@ function DeliveryActiveCTA({ item, isAgent, isRequester, isPending, cameraAction
       if (item.chargeStatus === "screenshot_uploaded") {
         return (
           <Pressable style={{ marginTop: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: "#10B981", alignItems: "center" }}
-            onPress={() => onConfirmPayment(item.id)} disabled={isPending}>
+            onPress={() => onReviewPayment(item)} disabled={isPending}>
             {isPending ? <ActivityIndicator size="small" color="#fff" /> :
-              <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 12 }}>✓ Confirm Payment Received</Text>}
+              <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 12 }}>🔍 Review Payment Screenshot</Text>}
           </Pressable>
         );
       }
@@ -1233,10 +1239,13 @@ function DeliveryActiveCTA({ item, isAgent, isRequester, isPending, cameraAction
   if (isRequester) {
     // Outlet: QR shared + student hasn't paid yet
     if (isOutlet && item.qrImageUrl && !["paid", "screenshot_uploaded"].includes(item.chargeStatus || "")) {
+      const isRejected = item.chargeStatus === "payment_rejected";
       return (
-        <Pressable style={{ marginTop: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: "#F59E0B", alignItems: "center" }}
+        <Pressable style={{ marginTop: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: isRejected ? "#EF4444" : "#F59E0B", alignItems: "center" }}
           onPress={() => onOpenPaymentModal(item)}>
-          <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 12 }}>💳 Complete Payment ₹{subtotal.toFixed(0)}</Text>
+          <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 12 }}>
+            {isRejected ? "🔄 Re-upload Payment Screenshot" : `💳 Complete Payment ₹${subtotal.toFixed(0)}`}
+          </Text>
         </Pressable>
       );
     }
@@ -1283,7 +1292,7 @@ function DeliveryActiveCTA({ item, isAgent, isRequester, isPending, cameraAction
 
 // ─── Compact Active Job Card (matches Priority Lane mockup exactly) ────────────
 
-function CompactActiveCard({ item, C, user, onTrackPress, onAccept, onReject, onDismissRejection, isPending, onCameraAction, onOpenQRUpload, onOpenPaymentModal, onPayDeliveryCharge, onConfirmPayment, onMarkReceived, cameraActionId }: any) {
+function CompactActiveCard({ item, C, user, onTrackPress, onAccept, onReject, onDismissRejection, isPending, onCameraAction, onOpenQRUpload, onOpenPaymentModal, onPayDeliveryCharge, onReviewPayment, onMarkReceived, cameraActionId }: any) {
   const meta = CAT_META[item._type] || CAT_META.tasks;
   const { labels, index } = getStepsForItem(item);
   const progress = labels.length > 1 ? index / (labels.length - 1) : 1;
@@ -1415,7 +1424,7 @@ function CompactActiveCard({ item, C, user, onTrackPress, onAccept, onReject, on
                 isPending={isPending} cameraActionId={cameraActionId}
                 onCameraAction={onCameraAction} onOpenQRUpload={onOpenQRUpload}
                 onOpenPaymentModal={onOpenPaymentModal} onPayDeliveryCharge={onPayDeliveryCharge}
-                onConfirmPayment={onConfirmPayment} onMarkReceived={onMarkReceived}
+                onReviewPayment={onReviewPayment} onMarkReceived={onMarkReceived}
                 onTrackPress={onTrackPress} meta={meta}
               />
             ) : (
@@ -1810,6 +1819,8 @@ export default function ServicesScreen() {
   const [screenshotUri, setScreenshotUri] = useState<string | null>(null);
   // Wallet charge confirmation modal (gate delivery charge payment)
   const [walletConfirmItem, setWalletConfirmItem] = useState<any>(null);
+  const [paymentReviewItem, setPaymentReviewItem] = useState<any>(null);
+  const [reviewImageFullscreen, setReviewImageFullscreen] = useState(false);
   const { showToast } = useToast();
   const isWeb = Platform.OS === "web";
 
@@ -2075,6 +2086,7 @@ export default function ServicesScreen() {
         cancel: "Delivery cancelled.", selfie: "Selfie uploaded!", qr: "QR shared with requester!",
         "location-photo": "Location photo uploaded!", "pay-delivery-charge": "Delivery charge paid from wallet!",
         "mark-paid": "Marked as paid!", "confirm-payment": "Payment confirmed! You can now place the order.",
+        "reject-payment": "Payment screenshot rejected. Student will be notified to re-upload.",
         "payment-screenshot": "Payment screenshot sent! Waiting for agent to confirm.",
         complete: "Marked as arrived!", "dismiss-rejection": "Booking dismissed.", "dismiss": "Booking dismissed.",
       };
@@ -2181,10 +2193,29 @@ export default function ServicesScreen() {
     actionMutation.mutate({ id: walletConfirmItem.id, action: "pay-delivery-charge", tab: "deliveries" });
   }, [walletConfirmItem, actionMutation]);
 
-  // Agent confirms payment received (outlet delivery)
-  const handleConfirmPayment = useCallback((deliveryId: string) => {
-    actionMutation.mutate({ id: deliveryId, action: "confirm-payment", tab: "deliveries" });
-  }, [actionMutation]);
+  // Agent opens payment review modal (sees screenshot → confirm or reject)
+  const handleReviewPayment = useCallback((item: any) => {
+    setPaymentReviewItem(item);
+    setReviewImageFullscreen(false);
+  }, []);
+
+  // Agent confirms payment from review modal
+  const handleConfirmFromReview = useCallback(() => {
+    if (!paymentReviewItem) return;
+    const id = paymentReviewItem.id;
+    setPaymentReviewItem(null);
+    setReviewImageFullscreen(false);
+    actionMutation.mutate({ id, action: "confirm-payment", tab: "deliveries" });
+  }, [paymentReviewItem, actionMutation]);
+
+  // Agent rejects payment from review modal → requester must re-upload
+  const handleRejectPayment = useCallback(() => {
+    if (!paymentReviewItem) return;
+    const id = paymentReviewItem.id;
+    setPaymentReviewItem(null);
+    setReviewImageFullscreen(false);
+    actionMutation.mutate({ id, action: "reject-payment", tab: "deliveries" });
+  }, [paymentReviewItem, actionMutation]);
 
   // Requester marks order as received (both sides → delivered)
   const handleMarkReceived = useCallback((deliveryId: string) => {
@@ -2371,7 +2402,7 @@ export default function ServicesScreen() {
                     onOpenQRUpload={handleOpenQRUpload}
                     onOpenPaymentModal={handleOpenPaymentModal}
                     onPayDeliveryCharge={handlePayDeliveryCharge}
-                    onConfirmPayment={handleConfirmPayment}
+                    onReviewPayment={handleReviewPayment}
                     onMarkReceived={handleMarkReceived}
                   />
                 ))}
@@ -2726,6 +2757,113 @@ export default function ServicesScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* ── Payment Review Modal (provider reviews requester's screenshot → confirm or reject) ── */}
+      <Modal
+        visible={!!paymentReviewItem}
+        transparent
+        animationType="slide"
+        onRequestClose={() => { setPaymentReviewItem(null); setReviewImageFullscreen(false); }}
+      >
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.65)", justifyContent: "flex-end" }}>
+          <View style={{ backgroundColor: C.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 40 }}>
+            {/* Header */}
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingTop: 20, paddingBottom: 14, borderBottomWidth: 0.5, borderColor: C.border }}>
+              <Text style={{ fontSize: 17, fontFamily: "Inter_700Bold", color: C.text }}>Review Payment Screenshot</Text>
+              <Pressable
+                onPress={() => { setPaymentReviewItem(null); setReviewImageFullscreen(false); }}
+                style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: C.backgroundSecondary, alignItems: "center", justifyContent: "center" }}>
+                <Feather name="x" size={18} color={C.text} />
+              </Pressable>
+            </View>
+
+            {/* Info banner */}
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#EDE9FE", borderRadius: 10, margin: 16, marginBottom: 12, padding: 10 }}>
+              <Feather name="info" size={14} color="#5B4FE8" />
+              <Text style={{ color: "#5B4FE8", fontSize: 12, fontFamily: "Inter_500Medium", flex: 1 }}>
+                Student submitted this payment proof. Tap to view full screen before confirming.
+              </Text>
+            </View>
+
+            {/* Screenshot image with full-screen expand button */}
+            <View style={{ marginHorizontal: 16, borderRadius: 14, overflow: "hidden", backgroundColor: "#1C1917", position: "relative" }}>
+              {paymentReviewItem?.paymentScreenshotUrl ? (
+                <Image
+                  source={{ uri: paymentReviewItem.paymentScreenshotUrl }}
+                  style={{ width: "100%", height: 260 }}
+                  resizeMode="contain"
+                />
+              ) : (
+                <View style={{ height: 200, alignItems: "center", justifyContent: "center" }}>
+                  <Feather name="image" size={40} color="#78716C" />
+                  <Text style={{ color: "#78716C", marginTop: 8, fontSize: 12 }}>No screenshot available</Text>
+                </View>
+              )}
+              {/* Expand button overlay */}
+              {paymentReviewItem?.paymentScreenshotUrl && (
+                <Pressable
+                  onPress={() => setReviewImageFullscreen(true)}
+                  style={{ position: "absolute", top: 10, right: 10, backgroundColor: "rgba(0,0,0,0.55)", borderRadius: 20, width: 36, height: 36, alignItems: "center", justifyContent: "center" }}>
+                  <Feather name="maximize-2" size={18} color="#fff" />
+                </Pressable>
+              )}
+            </View>
+
+            {/* Confirm / Reject buttons */}
+            <View style={{ flexDirection: "row", gap: 12, marginHorizontal: 16, marginTop: 18 }}>
+              <Pressable
+                style={{ flex: 1, paddingVertical: 14, borderRadius: 14, backgroundColor: "#FEE2E2", alignItems: "center", opacity: actionMutation.isPending ? 0.6 : 1 }}
+                onPress={handleRejectPayment}
+                disabled={actionMutation.isPending}>
+                {actionMutation.isPending
+                  ? <ActivityIndicator color="#EF4444" size="small" />
+                  : <>
+                      <Feather name="x-circle" size={18} color="#EF4444" />
+                      <Text style={{ color: "#EF4444", fontFamily: "Inter_700Bold", fontSize: 13, marginTop: 4 }}>Reject</Text>
+                    </>}
+              </Pressable>
+              <Pressable
+                style={{ flex: 1, paddingVertical: 14, borderRadius: 14, backgroundColor: "#10B981", alignItems: "center", opacity: actionMutation.isPending ? 0.6 : 1 }}
+                onPress={handleConfirmFromReview}
+                disabled={actionMutation.isPending}>
+                {actionMutation.isPending
+                  ? <ActivityIndicator color="#fff" size="small" />
+                  : <>
+                      <Feather name="check-circle" size={18} color="#fff" />
+                      <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 13, marginTop: 4 }}>Confirm Payment</Text>
+                    </>}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── Fullscreen Screenshot Viewer ── */}
+      <Modal
+        visible={reviewImageFullscreen}
+        transparent={false}
+        animationType="fade"
+        onRequestClose={() => setReviewImageFullscreen(false)}
+        statusBarTranslucent
+      >
+        <View style={{ flex: 1, backgroundColor: "#000" }}>
+          {/* Back arrow */}
+          <Pressable
+            onPress={() => setReviewImageFullscreen(false)}
+            style={{ position: "absolute", top: 50, left: 16, zIndex: 10, backgroundColor: "rgba(255,255,255,0.15)", borderRadius: 22, width: 44, height: 44, alignItems: "center", justifyContent: "center" }}>
+            <Feather name="arrow-left" size={22} color="#fff" />
+          </Pressable>
+          {/* Full image */}
+          {paymentReviewItem?.paymentScreenshotUrl && (
+            <Image
+              source={{ uri: paymentReviewItem.paymentScreenshotUrl }}
+              style={{ flex: 1, width: "100%", height: "100%" }}
+              resizeMode="contain"
+            />
+          )}
+        </View>
+      </Modal>
+
     </View>
   );
 }
