@@ -995,12 +995,17 @@ function DeliveryCard({ item, C, currentUser, onAction, onRate, isPending }: any
             <Text style={{ color: "#5B4FE8", fontFamily: "Inter_500Medium", fontSize: 12, flex: 1 }}>Take Live Selfie from the order card to proceed</Text>
           </View>
         )}
-        {isAgent && item.status === "completed" && item.locationPhotoUrl && item.chargeStatus !== "paid" && (
-          <View style={{ backgroundColor: "#D1FAE5", borderRadius: 10, padding: 10, flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <Feather name="check-circle" size={14} color="#059669" />
-            <Text style={{ color: "#059669", fontFamily: "Inter_500Medium", fontSize: 12, flex: 1 }}>Selfie uploaded ✓ — waiting for student payment</Text>
-          </View>
-        )}
+        {isAgent && item.status === "completed" && item.locationPhotoUrl && item.chargeStatus !== "paid" && (() => {
+          const agentFee = parseFloat(item.deliveryFee || "30");
+          const agentGst = parseFloat((agentFee * 0.18).toFixed(2));
+          const agentTotal = agentFee + agentGst;
+          return (
+            <View style={{ backgroundColor: "#ECFDF5", borderRadius: 10, padding: 10, borderWidth: 1, borderColor: "#10B981", gap: 2 }}>
+              <Text style={{ color: "#065F46", fontFamily: "Inter_700Bold", fontSize: 13 }}>💰 Collect Delivery Charge from Student</Text>
+              <Text style={{ color: "#059669", fontFamily: "Inter_400Regular", fontSize: 12 }}>Waiting for student to pay ₹{agentTotal.toFixed(0)} via wallet…</Text>
+            </View>
+          );
+        })()}
 
         {/* Student: confirm received (charge must be paid first) */}
         {studentCanConfirm && item.chargeStatus === "paid" && (
@@ -1218,11 +1223,13 @@ function DeliveryActiveCTA({ item, isAgent, isRequester, isPending, cameraAction
         </Pressable>
       );
     }
-    // 5. completed + selfie taken + awaiting payment
+    // 5. completed + location photo taken + awaiting charge payment from student
     if (item.status === "completed" && item.locationPhotoUrl && item.chargeStatus !== "paid") {
+      const total = deliveryFee + gst;
       return (
-        <View style={{ marginTop: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: "#FEF3C7", alignItems: "center" }}>
-          <Text style={{ color: "#92400E", fontFamily: "Inter_500Medium", fontSize: 12 }}>⌛ Awaiting delivery payment from student</Text>
+        <View style={{ marginTop: 12, paddingVertical: 12, borderRadius: 12, backgroundColor: "#ECFDF5", borderWidth: 1, borderColor: "#10B981", alignItems: "center", gap: 4 }}>
+          <Text style={{ color: "#065F46", fontFamily: "Inter_700Bold", fontSize: 13 }}>💰 Collect Delivery Charge from Student</Text>
+          <Text style={{ color: "#059669", fontFamily: "Inter_400Regular", fontSize: 11 }}>Waiting for student to pay ₹{total.toFixed(0)} via wallet…</Text>
         </View>
       );
     }
@@ -1261,10 +1268,10 @@ function DeliveryActiveCTA({ item, isAgent, isRequester, isPending, cameraAction
     if (item.status === "completed" && !isOutlet && item.locationPhotoUrl && item.chargeStatus !== "paid") {
       const total = deliveryFee + gst;
       return (
-        <Pressable style={{ marginTop: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: "#10B981", alignItems: "center" }}
+        <Pressable style={{ marginTop: 12, paddingVertical: 13, borderRadius: 12, backgroundColor: "#10B981", alignItems: "center" }}
           onPress={() => onPayDeliveryCharge(item)} disabled={isPending}>
           {isPending ? <ActivityIndicator size="small" color="#fff" /> :
-            <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 12 }}>💳 Pay Delivery Charge ₹{total.toFixed(0)} (+GST)</Text>}
+            <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 13 }}>💳 Pay Delivery Charge ₹{total.toFixed(0)} (incl. GST)</Text>}
         </Pressable>
       );
     }

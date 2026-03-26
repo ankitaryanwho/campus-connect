@@ -649,10 +649,25 @@ router.post("/deliveries/:id/confirm", authMiddleware, async (req, res) => {
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].requesterId !== userId) { res.status(403).json({ error: "Only the requester can confirm delivery" }); return; }
     if (rows[0].status !== "completed") { res.status(400).json({ error: "Agent must mark as completed first" }); return; }
+    // Gate deliveries: delivery charge must be paid before marking received
+    if (rows[0].chargeStatus !== "paid") {
+      res.status(400).json({ error: "PaymentRequired", message: "Please pay the delivery charge before marking the order as received." }); return;
+    }
     const history = appendHistory(rows[0].statusHistory, "delivered");
     await db.update(deliveriesTable).set({ status: "delivered", statusHistory: history }).where(eq(deliveriesTable.id, id));
     const updated = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
     res.json({ ...updated[0], requester: await safeUser(userId), deliveryAgent: updated[0].deliveryAgentId ? await safeUser(updated[0].deliveryAgentId) : null });
+    try {
+      const requester = await safeUser(userId);
+      if (updated[0].deliveryAgentId) {
+        await notifyUser(updated[0].deliveryAgentId, {
+          type: "delivery_confirmed",
+          title: "✅ Delivery Confirmed!",
+          body: `${requester?.name ?? "The student"} has confirmed receipt of the delivery.`,
+          data: { screen: "/(tabs)/services", tab: "deliveries", itemId: id },
+        });
+      }
+    } catch {}
   } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to confirm delivery" }); }
 });
 
@@ -837,6 +852,17 @@ router.post("/deliveries/:id/location-photo", authMiddleware, async (req, res) =
     await db.update(deliveriesTable).set({ locationPhotoUrl, locationPhotoTimestamp: new Date() }).where(eq(deliveriesTable.id, id));
     const updated = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
     res.json({ ...updated[0], requester: await safeUser(updated[0].requesterId), deliveryAgent: await safeUser(userId) });
+    try {
+      const deliveryFee = parseFloat((updated[0].deliveryFee as unknown as string) || "30");
+      const gst = parseFloat((deliveryFee * 0.18).toFixed(2));
+      const total = parseFloat((deliveryFee + gst).toFixed(2));
+      await notifyUser(updated[0].requesterId, {
+        type: "delivery_arrived",
+        title: "📦 Agent Arrived at Your Location!",
+        body: `Your delivery agent is at your location. Pay ₹${total.toFixed(0)} delivery charge to receive your order.`,
+        data: { screen: "/(tabs)/services", tab: "deliveries", itemId: id },
+      });
+    } catch {}
   } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to upload location photo" }); }
 });
 
@@ -874,20 +900,23 @@ router.post("/deliveries/:id/pay-delivery-charge", authMiddleware, async (req, r
     if (rows[0].requesterId !== userId) { res.status(403).json({ error: "Only the requester can pay the delivery charge" }); return; }
     if (rows[0].chargeStatus === "paid") { res.status(400).json({ error: "Delivery charge already paid" }); return; }
     const fee = parseFloat((rows[0].deliveryFee as unknown as string) || "30");
+    const gst = parseFloat((fee * 0.18).toFixed(2));
+    const totalCharge = parseFloat((fee + gst).toFixed(2));
     const wallet = await getOrCreateWallet(userId);
-    if (parseFloat(wallet.balance) < fee) {
-      res.status(400).json({ error: "InsufficientBalance", message: `Insufficient wallet balance. Required: ₹${fee.toFixed(2)}, Available: ₹${parseFloat(wallet.balance).toFixed(2)}` }); return;
+    if (parseFloat(wallet.balance) < totalCharge) {
+      res.status(400).json({ error: "InsufficientBalance", message: `Insufficient wallet balance. Required: ₹${totalCharge.toFixed(2)}, Available: ₹${parseFloat(wallet.balance).toFixed(2)}` }); return;
     }
+    // Student pays fee + GST; agent gets 80% of base fee; admin gets 20% of base fee + full GST
     const agentPayout = parseFloat((fee * (1 - PLATFORM_FEE_PCT)).toFixed(2));
-    const platformFee = parseFloat((fee * PLATFORM_FEE_PCT).toFixed(2));
-    await debitWallet(userId, fee, `Delivery fee: order #${id}`, id, "delivery");
+    const platformRevenue = parseFloat((fee * PLATFORM_FEE_PCT + gst).toFixed(2));
+    await debitWallet(userId, totalCharge, `Delivery fee + GST: order #${id}`, id, "delivery");
     if (rows[0].deliveryAgentId) {
       await creditWallet(rows[0].deliveryAgentId, agentPayout, `Delivery fee received: order #${id}`, id, "delivery");
     }
-    await creditWallet(ADMIN_USER_ID, platformFee, `Platform fee: delivery #${id}`, id, "delivery");
+    await creditWallet(ADMIN_USER_ID, platformRevenue, `Platform fee + GST: delivery #${id}`, id, "delivery");
     await db.update(deliveriesTable).set({ chargeStatus: "paid" }).where(eq(deliveriesTable.id, id));
     const updated = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
-    res.json({ ...updated[0], requester: await safeUser(userId), deliveryAgent: rows[0].deliveryAgentId ? await safeUser(rows[0].deliveryAgentId) : null, agentPayout, platformFee });
+    res.json({ ...updated[0], requester: await safeUser(userId), deliveryAgent: rows[0].deliveryAgentId ? await safeUser(rows[0].deliveryAgentId) : null, agentPayout, platformRevenue, gst, totalCharge });
     try {
       if (rows[0].deliveryAgentId) {
         await notifyUser(rows[0].deliveryAgentId, {
