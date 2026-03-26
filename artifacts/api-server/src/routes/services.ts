@@ -522,7 +522,7 @@ router.post("/deliveries", authMiddleware, async (req, res) => {
     }
 
     const id = generateId();
-    const deliveryFee = pickupType === "outlet" ? "30" : "20";
+    const deliveryFee = "30"; // ₹30 for both gate and outlet
 
     await db.insert(deliveriesTable).values({
       id, requesterId: userId, pickupType, pickupLocation, dropLocation,
@@ -876,7 +876,7 @@ router.post("/deliveries/:id/location-photo", authMiddleware, async (req, res) =
       const isGate = updated[0].pickupType !== "outlet";
       if (isGate) {
         // Gate delivery: student still needs to pay delivery charge from wallet
-        const deliveryFee = parseFloat((updated[0].deliveryFee as unknown as string) || "20");
+        const deliveryFee = parseFloat((updated[0].deliveryFee as unknown as string) || "30");
         const gst = parseFloat((deliveryFee * 0.18).toFixed(2));
         const total = parseFloat((deliveryFee + gst).toFixed(2));
         await notifyUser(updated[0].requesterId, {
