@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import * as ImagePicker from "expo-image-picker";
-import { useLocalSearchParams } from "expo-router";
+import * as MediaLibrary from "expo-media-library";
+import * as FileSystem from "expo-file-system/legacy";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   View, Text, ScrollView, Pressable, StyleSheet, Modal,
   useColorScheme, FlatList, ActivityIndicator, Platform,
@@ -1132,7 +1134,7 @@ function getStepsForItem(item: any): { labels: string[]; index: number } {
 
 // ─── Delivery Active CTA — contextual buttons for delivery Active Now cards ───
 
-function DeliveryActiveCTA({ item, isAgent, isRequester, isPending, cameraActionId, onCameraAction, onOpenQRUpload, onOpenPaymentModal, onPayDeliveryCharge, onConfirmPayment, onTrackPress, meta }: any) {
+function DeliveryActiveCTA({ item, isAgent, isRequester, isPending, cameraActionId, onCameraAction, onOpenQRUpload, onOpenPaymentModal, onPayDeliveryCharge, onConfirmPayment, onMarkReceived, onTrackPress, meta }: any) {
   const isOutlet = item.pickupType === "outlet";
   const deliveryFee = parseFloat(item.deliveryFee || "30");
   const gst = parseFloat((deliveryFee * 0.18).toFixed(2));
@@ -1188,8 +1190,15 @@ function DeliveryActiveCTA({ item, isAgent, isRequester, isPending, cameraAction
         );
       }
       return (
-        <View style={{ marginTop: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: "#FEF3C7", alignItems: "center" }}>
-          <Text style={{ color: "#92400E", fontFamily: "Inter_500Medium", fontSize: 12 }}>⌛ Waiting for student payment...</Text>
+        <View style={{ marginTop: 12, flexDirection: "row", gap: 8, alignItems: "center" }}>
+          <View style={{ flex: 1, paddingVertical: 10, borderRadius: 12, backgroundColor: "#FEF3C7", alignItems: "center" }}>
+            <Text style={{ color: "#92400E", fontFamily: "Inter_500Medium", fontSize: 11 }}>⌛ Waiting for student payment...</Text>
+          </View>
+          <Pressable
+            style={{ paddingVertical: 10, paddingHorizontal: 12, borderRadius: 12, backgroundColor: "#F59E0B", alignItems: "center" }}
+            onPress={() => onOpenQRUpload(item)} disabled={isPending}>
+            <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 11 }}>🔄 Re-upload QR</Text>
+          </Pressable>
         </View>
       );
     }
@@ -1246,18 +1255,19 @@ function DeliveryActiveCTA({ item, isAgent, isRequester, isPending, cameraAction
       const total = deliveryFee + gst;
       return (
         <Pressable style={{ marginTop: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: "#10B981", alignItems: "center" }}
-          onPress={() => onPayDeliveryCharge(item.id)} disabled={isPending}>
+          onPress={() => onPayDeliveryCharge(item)} disabled={isPending}>
           {isPending ? <ActivityIndicator size="small" color="#fff" /> :
             <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 12 }}>💳 Pay Delivery Charge ₹{total.toFixed(0)} (+GST)</Text>}
         </Pressable>
       );
     }
-    // Completed + charge paid → Mark Order Received (opens modal)
+    // Completed + charge paid → Mark Order Received (directly confirms)
     if (item.status === "completed" && item.chargeStatus === "paid") {
       return (
         <Pressable style={{ marginTop: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: "#10B981", alignItems: "center" }}
-          onPress={() => onTrackPress(item)} disabled={isPending}>
-          <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 12 }}>✓ Mark Order Received</Text>
+          onPress={() => onMarkReceived(item.id)} disabled={isPending}>
+          {isPending ? <ActivityIndicator size="small" color="#fff" /> :
+            <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 12 }}>✓ Mark Order Received</Text>}
         </Pressable>
       );
     }
@@ -1275,7 +1285,7 @@ function DeliveryActiveCTA({ item, isAgent, isRequester, isPending, cameraAction
 
 // ─── Compact Active Job Card (matches Priority Lane mockup exactly) ────────────
 
-function CompactActiveCard({ item, C, user, onTrackPress, onAccept, onReject, onDismissRejection, isPending, onCameraAction, onOpenQRUpload, onOpenPaymentModal, onPayDeliveryCharge, onConfirmPayment, cameraActionId }: any) {
+function CompactActiveCard({ item, C, user, onTrackPress, onAccept, onReject, onDismissRejection, isPending, onCameraAction, onOpenQRUpload, onOpenPaymentModal, onPayDeliveryCharge, onConfirmPayment, onMarkReceived, cameraActionId }: any) {
   const meta = CAT_META[item._type] || CAT_META.tasks;
   const { labels, index } = getStepsForItem(item);
   const progress = labels.length > 1 ? index / (labels.length - 1) : 1;
@@ -1407,7 +1417,8 @@ function CompactActiveCard({ item, C, user, onTrackPress, onAccept, onReject, on
                 isPending={isPending} cameraActionId={cameraActionId}
                 onCameraAction={onCameraAction} onOpenQRUpload={onOpenQRUpload}
                 onOpenPaymentModal={onOpenPaymentModal} onPayDeliveryCharge={onPayDeliveryCharge}
-                onConfirmPayment={onConfirmPayment} onTrackPress={onTrackPress} meta={meta}
+                onConfirmPayment={onConfirmPayment} onMarkReceived={onMarkReceived}
+                onTrackPress={onTrackPress} meta={meta}
               />
             ) : (
               <Pressable
@@ -1775,6 +1786,7 @@ export default function ServicesScreen() {
   const C = Colors[colorScheme === "dark" ? "dark" : "light"];
   const { apiRequest, user } = useAuth();
   const queryClient = useQueryClient();
+  const router = useRouter();
   const { tab: tabParam } = useLocalSearchParams<{ tab?: string; itemId?: string }>();
   const [activeCat, setActiveCat] = useState("all");
 
@@ -1798,6 +1810,8 @@ export default function ServicesScreen() {
   // Payment modal (student sees QR and uploads payment screenshot)
   const [paymentItem, setPaymentItem] = useState<any>(null);
   const [screenshotUri, setScreenshotUri] = useState<string | null>(null);
+  // Wallet charge confirmation modal (gate delivery charge payment)
+  const [walletConfirmItem, setWalletConfirmItem] = useState<any>(null);
   const { showToast } = useToast();
   const isWeb = Platform.OS === "web";
 
@@ -2059,19 +2073,21 @@ export default function ServicesScreen() {
       queryClient.invalidateQueries({ queryKey: ["wallet"] });
       const msgs: Record<string, string> = {
         book: "Booked! Payment held in escrow.", apply: "Application sent!",
-        accept: "Accepted!", reject: "Request declined", progress: "Status updated!", confirm: "Confirmed!",
+        accept: "Accepted!", reject: "Request declined", progress: "Status updated!", confirm: "Order marked received!",
         cancel: "Delivery cancelled.", selfie: "Selfie uploaded!", qr: "QR shared with requester!",
-        "location-photo": "Location photo uploaded!", "pay-delivery-charge": "Payment sent from wallet!",
+        "location-photo": "Location photo uploaded!", "pay-delivery-charge": "Delivery charge paid from wallet!",
         "mark-paid": "Marked as paid!", "confirm-payment": "Payment confirmed! You can now place the order.",
         "payment-screenshot": "Payment screenshot sent! Waiting for agent to confirm.",
         complete: "Marked as arrived!", "dismiss-rejection": "Booking dismissed.", "dismiss": "Booking dismissed.",
       };
       showToast(msgs[vars.action] || "Done!", "success");
     },
-    onError: (err: any) => {
+    onError: (err: any, vars: any) => {
       const msg = err.message || "Action failed";
       if (msg.includes("InsufficientBalance") || msg.includes("Insufficient")) {
-        showToast("Insufficient wallet balance. Please top up first.", "error");
+        setWalletConfirmItem(null);
+        showToast("Insufficient wallet balance. Redirecting to top up...", "error");
+        setTimeout(() => router.push("/(tabs)/wallet"), 1000);
       } else {
         showToast(msg, "error");
       }
@@ -2143,14 +2159,42 @@ export default function ServicesScreen() {
     setScreenshotUri(null);
   }, [paymentItem, screenshotUri, actionMutation]);
 
-  // Pay delivery charge (gate delivery)
-  const handlePayDeliveryCharge = useCallback((deliveryId: string) => {
-    actionMutation.mutate({ id: deliveryId, action: "pay-delivery-charge", tab: "deliveries" });
-  }, [actionMutation]);
+  // Save QR image to phone gallery (requester, outlet delivery)
+  const handleSaveQRToGallery = useCallback(async (qrImageUrl: string) => {
+    try {
+      const { status } = await MediaLibrary.requestPermissionsAsync();
+      if (status !== "granted") { showToast("Gallery permission is required to save the QR.", "error"); return; }
+      const base64Data = qrImageUrl.replace(/^data:image\/\w+;base64,/, "");
+      const ext = qrImageUrl.startsWith("data:image/png") ? "png" : "jpg";
+      const tempPath = `${FileSystem.cacheDirectory}upi_qr_${Date.now()}.${ext}`;
+      await FileSystem.writeAsStringAsync(tempPath, base64Data, { encoding: FileSystem.EncodingType.Base64 });
+      await MediaLibrary.saveToLibraryAsync(tempPath);
+      showToast("QR saved to your gallery!", "success");
+    } catch {
+      showToast("Failed to save QR. Please try again.", "error");
+    }
+  }, [showToast]);
+
+  // Pay delivery charge (gate delivery) — opens wallet confirmation modal first
+  const handlePayDeliveryCharge = useCallback((item: any) => {
+    setWalletConfirmItem(item);
+  }, []);
+
+  // Called from wallet confirm modal — actually executes the payment
+  const handleConfirmWalletPay = useCallback(() => {
+    if (!walletConfirmItem) return;
+    setWalletConfirmItem(null);
+    actionMutation.mutate({ id: walletConfirmItem.id, action: "pay-delivery-charge", tab: "deliveries" });
+  }, [walletConfirmItem, actionMutation]);
 
   // Agent confirms payment received (outlet delivery)
   const handleConfirmPayment = useCallback((deliveryId: string) => {
     actionMutation.mutate({ id: deliveryId, action: "confirm-payment", tab: "deliveries" });
+  }, [actionMutation]);
+
+  // Requester marks order as received (both sides → delivered)
+  const handleMarkReceived = useCallback((deliveryId: string) => {
+    actionMutation.mutate({ id: deliveryId, action: "confirm", tab: "deliveries" });
   }, [actionMutation]);
 
   const rateMutation = useMutation({
@@ -2334,6 +2378,7 @@ export default function ServicesScreen() {
                     onOpenPaymentModal={handleOpenPaymentModal}
                     onPayDeliveryCharge={handlePayDeliveryCharge}
                     onConfirmPayment={handleConfirmPayment}
+                    onMarkReceived={handleMarkReceived}
                   />
                 ))}
               </View>
@@ -2581,6 +2626,12 @@ export default function ServicesScreen() {
                     </Text>
                   )}
                   <Text style={{ color: C.textSecondary, fontSize: 11, marginTop: 4 }}>UPI payment to outlet</Text>
+                  <Pressable
+                    style={{ marginTop: 12, flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 8, paddingHorizontal: 16, borderRadius: 10, backgroundColor: "#5B4FE8" }}
+                    onPress={() => handleSaveQRToGallery(paymentItem.qrImageUrl)}>
+                    <Feather name="download" size={14} color="#fff" />
+                    <Text style={{ color: "#fff", fontFamily: "Inter_600SemiBold", fontSize: 12 }}>Save to Gallery</Text>
+                  </Pressable>
                 </View>
               )}
 
@@ -2616,6 +2667,65 @@ export default function ServicesScreen() {
                 </Pressable>
               )}
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── Wallet Charge Confirmation Modal (gate delivery) ── */}
+      <Modal
+        visible={!!walletConfirmItem}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setWalletConfirmItem(null)}
+      >
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center", padding: 24 }}>
+          <View style={{ backgroundColor: C.surface, borderRadius: 20, padding: 24, width: "100%" }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <Text style={{ fontSize: 16, fontFamily: "Inter_700Bold", color: C.text }}>Pay Delivery Charge</Text>
+              <Pressable onPress={() => setWalletConfirmItem(null)}>
+                <Feather name="x" size={22} color={C.text} />
+              </Pressable>
+            </View>
+            {walletConfirmItem && (() => {
+              const fee = parseFloat(walletConfirmItem.deliveryFee || "30");
+              const gst = parseFloat((fee * 0.18).toFixed(2));
+              const total = fee + gst;
+              return (
+                <>
+                  <View style={{ backgroundColor: C.backgroundSecondary, borderRadius: 14, padding: 16, marginBottom: 16, gap: 8 }}>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                      <Text style={{ color: C.textSecondary, fontSize: 13 }}>Delivery fee</Text>
+                      <Text style={{ color: C.text, fontFamily: "Inter_600SemiBold", fontSize: 13 }}>₹{fee.toFixed(0)}</Text>
+                    </View>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                      <Text style={{ color: C.textSecondary, fontSize: 13 }}>GST (18%)</Text>
+                      <Text style={{ color: C.text, fontFamily: "Inter_600SemiBold", fontSize: 13 }}>₹{gst.toFixed(2)}</Text>
+                    </View>
+                    <View style={{ height: 1, backgroundColor: C.border, marginVertical: 4 }} />
+                    <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                      <Text style={{ color: C.text, fontFamily: "Inter_700Bold", fontSize: 15 }}>Total</Text>
+                      <Text style={{ color: "#10B981", fontFamily: "Inter_800ExtraBold", fontSize: 18 }}>₹{total.toFixed(0)}</Text>
+                    </View>
+                  </View>
+                  <Text style={{ color: C.textSecondary, fontSize: 12, textAlign: "center", marginBottom: 16 }}>
+                    This amount will be deducted from your wallet balance.
+                  </Text>
+                  <Pressable
+                    style={{ paddingVertical: 14, borderRadius: 12, backgroundColor: "#10B981", alignItems: "center", marginBottom: 10 }}
+                    onPress={handleConfirmWalletPay}
+                    disabled={actionMutation.isPending}>
+                    {actionMutation.isPending
+                      ? <ActivityIndicator color="#fff" size="small" />
+                      : <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 15 }}>💳 Pay ₹{total.toFixed(0)} from Wallet</Text>}
+                  </Pressable>
+                  <Pressable
+                    style={{ paddingVertical: 12, borderRadius: 12, backgroundColor: C.backgroundSecondary, alignItems: "center" }}
+                    onPress={() => { setWalletConfirmItem(null); router.push("/(tabs)/wallet"); }}>
+                    <Text style={{ color: C.text, fontFamily: "Inter_600SemiBold", fontSize: 14 }}>Top Up Wallet</Text>
+                  </Pressable>
+                </>
+              );
+            })()}
           </View>
         </View>
       </Modal>

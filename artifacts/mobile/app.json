@@ -41,7 +41,15 @@
           "androidCollapsedTitle": "CampusConnect"
         }
       ],
-      "expo-updates"
+      "expo-updates",
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow CampusConnect to access your photos.",
+          "savePhotosPermission": "Allow CampusConnect to save photos.",
+          "isAccessMediaLocationEnabled": true
+        }
+      ]
     ],
     "updates": {
       "enabled": true,
