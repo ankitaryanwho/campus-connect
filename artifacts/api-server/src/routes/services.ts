@@ -790,7 +790,16 @@ router.post("/deliveries/:id/complete", authMiddleware, async (req, res) => {
     const rows = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].deliveryAgentId !== userId) { res.status(403).json({ error: "Only the delivery agent can mark complete" }); return; }
-    await db.update(deliveriesTable).set({ status: "completed" }).where(eq(deliveriesTable.id, id));
+    // For gate deliveries: reset location photo and charge status on every arrival
+    // so the provider must re-take the live photo and the requester must re-pay each time
+    const isGate = rows[0].pickupType !== "outlet";
+    const completeUpdates: any = { status: "completed" };
+    if (isGate) {
+      completeUpdates.locationPhotoUrl = null;
+      completeUpdates.locationPhotoTimestamp = null;
+      completeUpdates.chargeStatus = "pending";
+    }
+    await db.update(deliveriesTable).set(completeUpdates).where(eq(deliveriesTable.id, id));
     const updated = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
     const agentComp = await safeUser(userId);
     res.json({ ...updated[0], requester: await safeUser(updated[0].requesterId), deliveryAgent: agentComp });

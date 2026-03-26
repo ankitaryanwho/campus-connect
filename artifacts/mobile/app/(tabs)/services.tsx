@@ -1007,17 +1007,17 @@ function DeliveryCard({ item, C, currentUser, onAction, onRate, isPending }: any
           );
         })()}
 
-        {/* Student: confirm received (charge must be paid first) */}
-        {studentCanConfirm && item.chargeStatus === "paid" && (
+        {/* Student: confirm received (location photo + charge must be paid first) */}
+        {studentCanConfirm && item.chargeStatus === "paid" && item.locationPhotoUrl && (
           <Pressable style={[CS.actionBtn, { backgroundColor: "#10B981" }, isPending && { opacity: 0.6 }]}
             onPress={() => onAction(item.id, "confirm")} disabled={isPending}>
             {isPending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={CS.actionBtnText}>✓ Mark Order Received</Text>}
           </Pressable>
         )}
-        {studentCanConfirm && item.chargeStatus !== "paid" && (
+        {studentCanConfirm && !(item.chargeStatus === "paid" && item.locationPhotoUrl) && (
           <View style={{ backgroundColor: "#FEF3C7", borderRadius: 10, padding: 10 }}>
             <Text style={{ color: "#92400E", fontSize: 12, fontFamily: "Inter_500Medium", textAlign: "center" }}>
-              Complete payment from the order card first to confirm receipt
+              {!item.locationPhotoUrl ? "Waiting for agent to arrive and verify location…" : "Pay the delivery charge from the order card first"}
             </Text>
           </View>
         )}
@@ -1233,7 +1233,16 @@ function DeliveryActiveCTA({ item, isAgent, isRequester, isPending, cameraAction
         </View>
       );
     }
-    // 6. Default — Update Order Status
+    // 6. Completed + location photo taken + charge already paid → awaiting student confirmation
+    if (item.status === "completed" && item.locationPhotoUrl && item.chargeStatus === "paid") {
+      return (
+        <View style={{ marginTop: 12, paddingVertical: 12, borderRadius: 12, backgroundColor: "#D1FAE5", borderWidth: 1, borderColor: "#10B981", alignItems: "center", gap: 4 }}>
+          <Text style={{ color: "#065F46", fontFamily: "Inter_700Bold", fontSize: 13 }}>✅ Payment Received!</Text>
+          <Text style={{ color: "#059669", fontFamily: "Inter_400Regular", fontSize: 11 }}>Waiting for student to confirm receipt…</Text>
+        </View>
+      );
+    }
+    // 7. Default — Update Order Status
     return (
       <Pressable style={{ marginTop: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: meta.accent, alignItems: "center" }}
         onPress={() => onTrackPress(item)} disabled={isPending}>
@@ -1275,13 +1284,13 @@ function DeliveryActiveCTA({ item, isAgent, isRequester, isPending, cameraAction
         </Pressable>
       );
     }
-    // Completed + charge paid → Mark Order Received (directly confirms)
-    if (item.status === "completed" && item.chargeStatus === "paid") {
+    // Completed + location photo taken + charge paid → Mark Order Received
+    if (item.status === "completed" && item.locationPhotoUrl && item.chargeStatus === "paid") {
       return (
-        <Pressable style={{ marginTop: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: "#10B981", alignItems: "center" }}
+        <Pressable style={{ marginTop: 12, paddingVertical: 13, borderRadius: 12, backgroundColor: "#10B981", alignItems: "center" }}
           onPress={() => onMarkReceived(item.id)} disabled={isPending}>
           {isPending ? <ActivityIndicator size="small" color="#fff" /> :
-            <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 12 }}>✓ Mark Order Received</Text>}
+            <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 13 }}>✓ Mark Order Received</Text>}
         </Pressable>
       );
     }
