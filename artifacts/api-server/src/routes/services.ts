@@ -612,9 +612,9 @@ router.post("/deliveries/:id/progress", authMiddleware, async (req, res) => {
     const nextStatus = progressMap[rows[0].status];
     if (!nextStatus) { res.status(400).json({ error: "Cannot advance from status: " + rows[0].status }); return; }
     const history = appendHistory(rows[0].statusHistory, nextStatus);
-    // For gate deliveries arriving at drop (completed): reset chargeStatus + locationPhoto so agent takes fresh photo
+    // On arrival at drop (completed): always reset chargeStatus + locationPhoto — agent takes fresh photo, student pays delivery charge
     const progressUpdates: any = { status: nextStatus, statusHistory: history };
-    if (nextStatus === "completed" && !isOutlet) {
+    if (nextStatus === "completed") {
       progressUpdates.chargeStatus = "pending";
       progressUpdates.locationPhotoUrl = null;
       progressUpdates.locationPhotoTimestamp = null;
