@@ -29,6 +29,19 @@ if (!basePath) {
 export default defineConfig({
   base: basePath,
   plugins: [
+    {
+      name: "redirect-root-to-base",
+      configureServer(server) {
+        server.middlewares.use((req, res, next) => {
+          if (req.url === "/" || req.url === "") {
+            res.writeHead(302, { Location: basePath });
+            res.end();
+            return;
+          }
+          next();
+        });
+      },
+    },
     react(),
     tailwindcss(),
     runtimeErrorOverlay(),
