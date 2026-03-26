@@ -29,6 +29,12 @@ const YEARS = [
   { value: 4, label: "4th Year" },
 ];
 
+const GENDERS = [
+  { value: "male", label: "Male", emoji: "👨" },
+  { value: "female", label: "Female", emoji: "👩" },
+  { value: "other", label: "Other", emoji: "🧑" },
+];
+
 interface College {
   id: string;
   name: string;
@@ -51,6 +57,7 @@ export default function RegisterScreen() {
   const [program, setProgram] = useState("BCA");
   const [year, setYear] = useState(1);
   const [phone, setPhone] = useState("");
+  const [gender, setGender] = useState<string | null>(null);
   const [selectedCollege, setSelectedCollege] = useState<College | null>(null);
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
 
@@ -171,6 +178,7 @@ export default function RegisterScreen() {
         program,
         year,
         phone: phone.trim() || undefined,
+        gender: gender || undefined,
         services: role === "provider" ? selectedServices : [],
         verificationToken: token,
       });
@@ -415,6 +423,26 @@ export default function RegisterScreen() {
                 </Pressable>
               ))}
             </View>
+          </View>
+
+          <View>
+            <Text style={[S.label, { color: C.textSecondary }]}>Gender <Text style={{ color: C.textTertiary, fontFamily: "Inter_400Regular" }}>(optional)</Text></Text>
+            <View style={S.chipsRow}>
+              {GENDERS.map(g => (
+                <Pressable
+                  key={g.value}
+                  style={[S.chip, { borderColor: C.border, backgroundColor: gender === g.value ? C.primary : C.backgroundSecondary }]}
+                  onPress={() => setGender(prev => prev === g.value ? null : g.value)}
+                >
+                  <Text style={[S.chipText, { color: gender === g.value ? "#fff" : C.textSecondary, fontFamily: "Inter_500Medium" }]}>
+                    {g.emoji} {g.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            <Text style={{ color: C.textTertiary, fontSize: 11, marginTop: 4, fontFamily: "Inter_400Regular" }}>
+              Shown as an emoji on anonymous posts to help others know who's posting
+            </Text>
           </View>
 
           <View>

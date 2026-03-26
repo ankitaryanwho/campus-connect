@@ -131,8 +131,9 @@ function PostMiniCard({ post, accent }: { post: Post; accent: string }) {
   };
 
   const displayName = post.isAnonymous ? "Profile Hidden" : post.author.name;
+  const genderEmoji = (g?: string | null) => g === "male" ? " 👨" : g === "female" ? " 👩" : g === "other" ? " 🧑" : "";
   const displayBadge = post.isAnonymous
-    ? [post.author.program, post.author.year ? `${post.author.year}${post.author.year === 1 ? "st" : post.author.year === 2 ? "nd" : post.author.year === 3 ? "rd" : "th"} Year` : null].filter(Boolean).join(" • ") || "Anonymous"
+    ? ([post.author.program, post.author.year ? `${post.author.year}${post.author.year === 1 ? "st" : post.author.year === 2 ? "nd" : post.author.year === 3 ? "rd" : "th"} Year` : null].filter(Boolean).join(" • ") || "Anonymous") + genderEmoji((post.author as any).gender)
     : post.author.program || post.author.college || "Student";
 
   return (
@@ -254,8 +255,9 @@ function PostCard({ post, C, onLike, onComment, isDark }: any) {
 
   const displayName = post.isAnonymous ? "Profile Hidden" : post.author.name;
   const yearSuffix = (y: number) => y === 1 ? "st" : y === 2 ? "nd" : y === 3 ? "rd" : "th";
+  const genderEmojiCard = (g?: string | null) => g === "male" ? " 👨" : g === "female" ? " 👩" : g === "other" ? " 🧑" : "";
   const displayMeta = post.isAnonymous
-    ? [post.author.program, post.author.year ? `${post.author.year}${yearSuffix(post.author.year)} Year` : null].filter(Boolean).join(" • ") || "Anonymous"
+    ? ([post.author.program, post.author.year ? `${post.author.year}${yearSuffix(post.author.year)} Year` : null].filter(Boolean).join(" • ") || "Anonymous") + genderEmojiCard((post.author as any).gender)
     : post.author.college || post.author.program || "Student";
 
   return (

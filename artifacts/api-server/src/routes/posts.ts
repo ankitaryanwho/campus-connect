@@ -22,6 +22,7 @@ function buildAnonAuthor(realAuthor: any) {
     college: null,
     program: realAuthor?.program || null,
     year: realAuthor?.year || null,
+    gender: realAuthor?.gender || null,
     verified: false,
     isAnonymous: true,
   };

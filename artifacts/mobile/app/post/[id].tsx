@@ -194,8 +194,9 @@ export default function PostDetailScreen() {
   }
 
   const yearSuffix = (y: number) => y === 1 ? "st" : y === 2 ? "nd" : y === 3 ? "rd" : "th";
+  const genderEmoji = (g?: string | null) => g === "male" ? " 👨" : g === "female" ? " 👩" : g === "other" ? " 🧑" : "";
   const anonMeta = isPostAnonymous
-    ? [post?.author?.program, post?.author?.year ? `${post.author.year}${yearSuffix(post.author.year)} Year` : null].filter(Boolean).join(" • ") || "Anonymous"
+    ? ([post?.author?.program, post?.author?.year ? `${post.author.year}${yearSuffix(post.author.year)} Year` : null].filter(Boolean).join(" • ") || "Anonymous") + genderEmoji((post?.author as any)?.gender)
     : null;
 
   const renderComment = ({ item }: { item: any }) => {

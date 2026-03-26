@@ -112,7 +112,7 @@ export default function NewPostScreen() {
               </Text>
               <Text style={[styles.userProgram, { color: C.textSecondary, fontFamily: "Inter_400Regular" }]}>
                 {isAnonymous
-                  ? `${user?.program || ""}${user?.year ? ` • ${user.year}${user.year === 1 ? "st" : user.year === 2 ? "nd" : user.year === 3 ? "rd" : "th"} Year` : ""}` || "Anonymous"
+                  ? ((`${user?.program || ""}${user?.year ? ` • ${user.year}${user.year === 1 ? "st" : user.year === 2 ? "nd" : user.year === 3 ? "rd" : "th"} Year` : ""}`) || "Anonymous") + ((user as any)?.gender === "male" ? " 👨" : (user as any)?.gender === "female" ? " 👩" : (user as any)?.gender === "other" ? " 🧑" : "")
                   : user?.program || user?.college || "Student"}
               </Text>
             </View>
@@ -130,7 +130,7 @@ export default function NewPostScreen() {
                   {isAnonymous ? "Posting Anonymously" : "Post Anonymously"}
                 </Text>
                 <Text style={[styles.anonToggleSub, { color: C.textTertiary, fontFamily: "Inter_400Regular" }]}>
-                  {isAnonymous ? "Only program & year are visible to others" : "Hide your identity from other users"}
+                  {isAnonymous ? "Only program, year & gender emoji visible to others" : "Hide your identity from other users"}
                 </Text>
               </View>
             </View>
