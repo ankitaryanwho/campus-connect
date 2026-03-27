@@ -9,7 +9,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://asset-manager-thakurankitedu.replit.app/api"
+        "EXPO_PUBLIC_API_URL": "https://campus-connect-aryan.replit.app/api"
       }
     },
     "production": {
@@ -21,7 +21,7 @@
         "simulator": false
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://asset-manager-thakurankitedu.replit.app/api"
+        "EXPO_PUBLIC_API_URL": "https://campus-connect-aryan.replit.app/api"
       }
     }
   },
