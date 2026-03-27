@@ -1901,7 +1901,7 @@ export default function ServicesScreen() {
     return isProvider;
   };
 
-  // ── Parallel queries for all 4 categories ─────────────────────────────────
+  // ── Single combined query for all service categories ──────────────────────
   const { data: allData, isLoading, refetch: refetchAll } = useQuery({
     queryKey: ["services", "all"],
     queryFn: async () => {
@@ -2107,11 +2107,11 @@ export default function ServicesScreen() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await Promise.all([rA(), rC(), rD(), rT(), rP(), rBookings()]);
+      await refetchAll();
     } finally {
       setRefreshing(false);
     }
-  }, [rA, rC, rD, rT, rP, rBookings]);
+  }, [refetchAll]);
 
   // ── Mutations ─────────────────────────────────────────────────────────────
   const endpointMap: Record<string, string> = {
