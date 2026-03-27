@@ -9,6 +9,7 @@ export const postsTable = pgTable("posts", {
   mediaUrls: text("media_urls").notNull().default("[]"),
   authorId: text("author_id").notNull().references(() => usersTable.id),
   isAnonymous: boolean("is_anonymous").notNull().default(false),
+  category: text("category").notNull().default("social"),
   likesCount: integer("likes_count").notNull().default(0),
   commentsCount: integer("comments_count").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),

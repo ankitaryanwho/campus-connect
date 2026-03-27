@@ -79,10 +79,12 @@ router.get("/", authMiddleware, async (req, res) => {
   }
 });
 
+const VALID_CATEGORIES = ["study", "events", "buysell", "social", "confessions"] as const;
+
 router.post("/", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { content, mediaUrls = [], isAnonymous = false } = req.body;
+    const { content, mediaUrls = [], isAnonymous = false, category = "social" } = req.body;
     if (!content || !content.trim()) {
       res.status(400).json({ error: "ValidationError", message: "Content is required" });
       return;
@@ -92,10 +94,16 @@ router.post("/", authMiddleware, async (req, res) => {
       return;
     }
 
+    // Anonymous posts always go to confessions; "all" defaults to social
+    const anonBool = Boolean(isAnonymous);
+    const resolvedCategory: string = anonBool
+      ? "confessions"
+      : (VALID_CATEGORIES.includes(category as any) && category !== "all" ? category : "social");
+
     const postId = generateId();
     await db.insert(postsTable).values({
       id: postId, content: content.trim(), mediaUrls: JSON.stringify(mediaUrls),
-      authorId: userId, isAnonymous: Boolean(isAnonymous), likesCount: 0, commentsCount: 0,
+      authorId: userId, isAnonymous: anonBool, category: resolvedCategory, likesCount: 0, commentsCount: 0,
     });
     await db.update(usersTable).set({ postsCount: sql`${usersTable.postsCount} + 1` }).where(eq(usersTable.id, userId));
 

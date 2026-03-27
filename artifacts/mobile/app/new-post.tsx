@@ -20,8 +20,9 @@ export default function NewPostScreen() {
   const { apiRequest, user } = useAuth();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
-  const { forceAnonymous } = useLocalSearchParams<{ forceAnonymous?: string }>();
+  const { forceAnonymous, category: categoryParam } = useLocalSearchParams<{ forceAnonymous?: string; category?: string }>();
   const isConfessionsMode = forceAnonymous === "1";
+  const postCategory = isConfessionsMode ? "confessions" : (categoryParam || "social");
   const [content, setContent] = useState("");
   const [mediaUris, setMediaUris] = useState<string[]>([]);
   const [isAnonymous, setIsAnonymous] = useState(isConfessionsMode);
@@ -56,7 +57,7 @@ export default function NewPostScreen() {
       if (!content.trim() && mediaUris.length === 0) throw new Error("Please write something first");
       const res = await apiRequest("/posts", {
         method: "POST",
-        body: JSON.stringify({ content: content.trim(), mediaUrls: mediaUris, isAnonymous }),
+        body: JSON.stringify({ content: content.trim(), mediaUrls: mediaUris, isAnonymous, category: isAnonymous ? "confessions" : postCategory }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to create post");

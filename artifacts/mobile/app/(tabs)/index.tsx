@@ -424,22 +424,20 @@ export default function FeedScreen() {
 
   const posts = data?.posts || [];
 
-  // Group posts by category
+  // Group posts by stored category (falls back to keyword detection for legacy posts)
   const postsByCategory = React.useMemo(() => {
     const groups: Record<string, Post[]> = { study: [], events: [], buysell: [], social: [], confessions: [] };
     for (const p of posts) {
-      if (p.isAnonymous) {
-        groups.confessions.push(p);
-      } else {
-        groups[detectCategory(p.content)].push(p);
-      }
+      const cat = (p as any).category as string | undefined;
+      const bucket = cat && groups[cat] !== undefined ? cat : (p.isAnonymous ? "confessions" : detectCategory(p.content));
+      groups[bucket].push(p);
     }
     return groups;
   }, [posts]);
 
   // Filtered posts for the feed section
   const feedPosts = React.useMemo(() => {
-    if (activeCategory === "all") return posts.filter(p => !p.isAnonymous);
+    if (activeCategory === "all") return posts.filter(p => !p.isAnonymous && (!(p as any).category || (p as any).category !== "confessions"));
     if (activeCategory === "confessions") return postsByCategory.confessions;
     return postsByCategory[activeCategory] ?? [];
   }, [posts, postsByCategory, activeCategory]);
@@ -462,7 +460,13 @@ export default function FeedScreen() {
           backgroundColor: activeCategory === "confessions" ? "#F3F4F6" : surfaceBg,
           borderColor: activeCategory === "confessions" ? "#6B7280" : borderCol,
         }]}
-        onPress={() => router.push(activeCategory === "confessions" ? { pathname: "/new-post", params: { forceAnonymous: "1" } } : "/new-post")}
+        onPress={() => router.push({
+          pathname: "/new-post",
+          params: {
+            category: activeCategory === "all" ? "social" : activeCategory,
+            ...(activeCategory === "confessions" ? { forceAnonymous: "1" } : {}),
+          },
+        })}
       >
         {activeCategory === "confessions" ? (
           <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: "#6B7280", alignItems: "center", justifyContent: "center" }}>
@@ -534,7 +538,7 @@ export default function FeedScreen() {
           </Pressable>
           <Pressable
             style={[styles.headerIconBtn, { backgroundColor: surfaceBg, borderColor: borderCol }]}
-            onPress={() => router.push("/new-post")}
+            onPress={() => router.push({ pathname: "/new-post", params: { category: activeCategory === "all" || activeCategory === "confessions" ? "social" : activeCategory } })}
           >
             <Feather name="plus" size={18} color={isDark ? C.textSecondary : WARM.textSecondary} />
             <View style={[styles.notifDot, { backgroundColor: C.error }]} />
