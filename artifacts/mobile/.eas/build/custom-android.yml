@@ -11,7 +11,13 @@ build:
     - run:
         name: Install dependencies
         command: pnpm install --no-frozen-lockfile
-    - eas/prebuild
+    - run:
+        name: Expo Prebuild (Android)
+        command: npx expo prebuild --platform android --clean --non-interactive
+        working_directory: artifacts/mobile
+    - run:
+        name: Install dependencies (post-prebuild)
+        command: pnpm install --no-frozen-lockfile
     - eas/configure_eas_update
     - eas/run_gradle
     - eas/find_and_upload_build_artifacts
