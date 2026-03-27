@@ -63,7 +63,8 @@
     "updates": {
       "enabled": true,
       "checkAutomatically": "ON_LOAD",
-      "fallbackToCacheTimeout": 0
+      "fallbackToCacheTimeout": 0,
+      "url": "https://u.expo.dev/af315ba0-c6e1-4253-8e0f-3cad77bbf270"
     },
     "runtimeVersion": {
       "policy": "appVersion"
@@ -71,6 +72,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "af315ba0-c6e1-4253-8e0f-3cad77bbf270"
+      }
+    },
+    "owner": "ankitaryanwho2"
   }
 }
