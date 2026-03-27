@@ -22,27 +22,37 @@ const PLATFORM_FEE_PCT = 0.20;
 const GST_RATE = 0.18;
 
 async function safeUser(userId: string) {
-  const users = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-  if (!users.length) return null;
-  const { passwordHash: _, ...u } = users[0];
-  return u;
+  const map = await safeUserBatch([userId]);
+  return map.get(userId) || null;
 }
+
+const _userCache = new Map<string, { data: any; exp: number }>();
+const USER_TTL = 5 * 60_000;
 
 async function safeUserBatch(userIds: (string | null | undefined)[]): Promise<Map<string, any>> {
   const ids = [...new Set(userIds.filter(Boolean) as string[])];
   if (!ids.length) return new Map();
-  const users = await db.select().from(usersTable).where(inArray(usersTable.id, ids));
-  const map = new Map<string, any>();
-  for (const u of users) {
-    const { passwordHash: _, ...rest } = u;
-    map.set(u.id, rest);
+  const result = new Map<string, any>();
+  const now = Date.now();
+  const toFetch: string[] = [];
+  for (const id of ids) {
+    const c = _userCache.get(id);
+    if (c && c.exp > now) { result.set(id, c.data); } else { toFetch.push(id); }
   }
-  return map;
+  if (toFetch.length) {
+    const users = await db.select().from(usersTable).where(inArray(usersTable.id, toFetch));
+    const exp = now + USER_TTL;
+    for (const u of users) {
+      const { passwordHash: _, ...rest } = u;
+      _userCache.set(u.id, { data: rest, exp });
+      result.set(u.id, rest);
+    }
+  }
+  return result;
 }
 
 async function currentUser(userId: string) {
-  const users = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-  return users[0] || null;
+  return safeUser(userId);
 }
 
 function appendHistory(existing: string | null, status: string): string {
@@ -79,21 +89,35 @@ async function debitWallet(userId: string, amount: number, description: string, 
 router.get("/all", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const me = await currentUser(userId);
-    if (!me) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const activeStatuses = ["booked", "accepted", "in_progress", "completed", "rejected"];
 
-    const [assignmentRows, certificationRows, deliveryRows, taskRows, projectRows] = await Promise.all([
+    // ── Wave 1: everything in parallel ──────────────────────────────────────
+    const [
+      me,
+      assignmentRows, certificationRows, deliveryRows, taskRows, projectRows,
+      myAssignmentIds, myCertificationIds, myProjectIds,
+      bookerBookingsRaw,
+    ] = await Promise.all([
+      currentUser(userId),
       db.select().from(assignmentsTable).orderBy(desc(assignmentsTable.createdAt)),
       db.select().from(certificationsTable).orderBy(desc(certificationsTable.createdAt)),
       db.select().from(deliveriesTable).orderBy(desc(deliveriesTable.createdAt)),
       db.select().from(tasksTable).orderBy(desc(tasksTable.createdAt)),
       db.select().from(projectsTable).orderBy(desc(projectsTable.createdAt)),
+      db.select({ id: assignmentsTable.id }).from(assignmentsTable).where(eq(assignmentsTable.posterId, userId)),
+      db.select({ id: certificationsTable.id }).from(certificationsTable).where(eq(certificationsTable.posterId, userId)),
+      db.select({ id: projectsTable.id }).from(projectsTable).where(eq(projectsTable.posterId, userId)),
+      db.select().from(serviceBookingsTable)
+        .where(and(eq(serviceBookingsTable.studentId, userId), inArray(serviceBookingsTable.status, activeStatuses)))
+        .orderBy(desc(serviceBookingsTable.createdAt)),
     ]);
 
+    if (!me) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    // ── In-memory filtering ─────────────────────────────────────────────────
     let filteredAssignments = assignmentRows;
     let filteredCertifications = certificationRows;
     let filteredDeliveries = deliveryRows;
-
     if (me.role === "student" && me.program && me.year) {
       filteredAssignments = assignmentRows.filter(a =>
         (a.program === me.program && a.targetYear === me.year) || a.bookedById === userId
@@ -110,60 +134,59 @@ router.get("/all", authMiddleware, async (req, res) => {
       );
     }
 
-    const allUserIds = [
+    const myListingIds = [
+      ...myAssignmentIds.map(a => a.id),
+      ...myCertificationIds.map(c => c.id),
+      ...myProjectIds.map(p => p.id),
+    ];
+
+    // ── Wave 2: lister bookings (needs myListingIds from wave 1) ────────────
+    const listerBookingsRaw = myListingIds.length > 0
+      ? await db.select().from(serviceBookingsTable)
+          .where(and(inArray(serviceBookingsTable.listingId, myListingIds), inArray(serviceBookingsTable.status, activeStatuses)))
+          .orderBy(desc(serviceBookingsTable.createdAt))
+      : [] as any[];
+
+    // ── Wave 3: ALL user lookups in one batch (has all booking IDs now) ──────
+    const userMap = await safeUserBatch([
       ...filteredAssignments.map(a => a.posterId), ...filteredAssignments.map(a => a.bookedById),
       ...filteredCertifications.map(c => c.posterId), ...filteredCertifications.map(c => c.bookedById),
       ...filteredDeliveries.map(d => d.requesterId), ...filteredDeliveries.map(d => d.deliveryAgentId),
       ...taskRows.map(t => t.posterId), ...taskRows.map(t => t.assignedToId),
       ...projectRows.map(p => p.posterId), ...projectRows.map(p => p.bookedById),
-    ];
-    const userMap = await safeUserBatch(allUserIds);
+      ...bookerBookingsRaw.map(b => b.studentId),
+      ...listerBookingsRaw.map((b: any) => b.studentId),
+    ]);
 
-    const assignments  = filteredAssignments.map(a => ({ ...a, poster: userMap.get(a.posterId) || null, bookedBy: a.bookedById ? userMap.get(a.bookedById) || null : null }));
+    // ── In-memory formatting (zero extra DB queries) ─────────────────────────
+    const assignments    = filteredAssignments.map(a => ({ ...a, poster: userMap.get(a.posterId) || null, bookedBy: a.bookedById ? userMap.get(a.bookedById) || null : null }));
     const certifications = filteredCertifications.map(c => ({ ...c, poster: userMap.get(c.posterId) || null, bookedBy: c.bookedById ? userMap.get(c.bookedById) || null : null }));
-    const deliveries   = filteredDeliveries.map(d => ({ ...d, requester: userMap.get(d.requesterId) || null, deliveryAgent: d.deliveryAgentId ? userMap.get(d.deliveryAgentId) || null : null }));
-    const tasks        = taskRows.map(t => ({ ...t, poster: userMap.get(t.posterId) || null, assignedTo: t.assignedToId ? userMap.get(t.assignedToId) || null : null }));
-    const projects     = projectRows.map(p => ({ ...p, poster: userMap.get(p.posterId) || null, bookedBy: p.bookedById ? userMap.get(p.bookedById) || null : null }));
+    const deliveries     = filteredDeliveries.map(d => ({ ...d, requester: userMap.get(d.requesterId) || null, deliveryAgent: d.deliveryAgentId ? userMap.get(d.deliveryAgentId) || null : null }));
+    const tasks          = taskRows.map(t => ({ ...t, poster: userMap.get(t.posterId) || null, assignedTo: t.assignedToId ? userMap.get(t.assignedToId) || null : null }));
+    const projects       = projectRows.map(p => ({ ...p, poster: userMap.get(p.posterId) || null, bookedBy: p.bookedById ? userMap.get(p.bookedById) || null : null }));
 
-    const activeStatuses = ["booked", "accepted", "in_progress", "completed", "rejected"];
-    const [myAssignments, myCertifications, myProjects] = await Promise.all([
-      db.select({ id: assignmentsTable.id }).from(assignmentsTable).where(eq(assignmentsTable.posterId, userId)),
-      db.select({ id: certificationsTable.id }).from(certificationsTable).where(eq(certificationsTable.posterId, userId)),
-      db.select({ id: projectsTable.id }).from(projectsTable).where(eq(projectsTable.posterId, userId)),
-    ]);
-    const myListingIds = [
-      ...myAssignments.map(a => a.id),
-      ...myCertifications.map(c => c.id),
-      ...myProjects.map(p => p.id),
-    ];
-    const [listerBookingsRaw, bookerBookingsRaw] = await Promise.all([
-      myListingIds.length > 0
-        ? db.select().from(serviceBookingsTable)
-            .where(and(inArray(serviceBookingsTable.listingId, myListingIds), inArray(serviceBookingsTable.status, activeStatuses)))
-            .orderBy(desc(serviceBookingsTable.createdAt))
-        : Promise.resolve([]),
-      db.select().from(serviceBookingsTable)
-        .where(and(eq(serviceBookingsTable.studentId, userId), inArray(serviceBookingsTable.status, activeStatuses)))
-        .orderBy(desc(serviceBookingsTable.createdAt)),
-    ]);
+    // Build in-memory listing lookup — no extra DB queries
+    const listingIndex = new Map<string, any>();
+    for (const a of assignmentRows) listingIndex.set(`assignments:${a.id}`, { ...a, poster: userMap.get(a.posterId) || null });
+    for (const c of certificationRows) listingIndex.set(`certifications:${c.id}`, { ...c, poster: userMap.get(c.posterId) || null });
+    for (const p of projectRows) listingIndex.set(`projects:${p.id}`, { ...p, poster: userMap.get(p.posterId) || null });
+
     const seenIds = new Set<string>();
-    const allBookingsRaw: any[] = [];
+    const bookings: any[] = [];
     for (const b of [...listerBookingsRaw, ...bookerBookingsRaw]) {
-      if (!seenIds.has(b.id)) {
-        seenIds.add(b.id);
-        allBookingsRaw.push({ ...b, _myPerspective: b.studentId === userId ? "booker" : "lister" });
-      }
-    }
-    const bookings = await Promise.all(allBookingsRaw.map(async (b: any) => {
-      const listing = await getListing(b.serviceType, b.listingId);
-      return {
+      if (seenIds.has(b.id)) continue;
+      seenIds.add(b.id);
+      const listing = listingIndex.get(`${b.serviceType}:${b.listingId}`) || null;
+      bookings.push({
         ...b,
         _type: b.serviceType,
-        listing: listing ? { ...listing, poster: await safeUser(listing.posterId) } : null,
-        student: await safeUser(b.studentId),
-      };
-    }));
+        _myPerspective: b.studentId === userId ? "booker" : "lister",
+        listing,
+        student: userMap.get(b.studentId) || null,
+      });
+    }
 
+    // Add lister booking poster user IDs to userMap if not already there (they were included above)
     res.json({ assignments, certifications, deliveries, tasks, projects, bookings });
   } catch (err) {
     console.error(err);
