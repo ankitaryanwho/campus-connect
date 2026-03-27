@@ -21,6 +21,38 @@ const ADMIN_USER_ID = "admin-001";
 const PLATFORM_FEE_PCT = 0.20;
 const GST_RATE = 0.18;
 
+// Exclude large base64 image columns from list queries (they can be 5-10MB each)
+const DELIVERY_LIST_COLS = {
+  id: deliveriesTable.id,
+  requesterId: deliveriesTable.requesterId,
+  deliveryAgentId: deliveriesTable.deliveryAgentId,
+  pickupType: deliveriesTable.pickupType,
+  pickupLocation: deliveriesTable.pickupLocation,
+  dropLocation: deliveriesTable.dropLocation,
+  websiteName: deliveriesTable.websiteName,
+  courierCompany: deliveriesTable.courierCompany,
+  orderCustomerName: deliveriesTable.orderCustomerName,
+  orderId: deliveriesTable.orderId,
+  orderMobile: deliveriesTable.orderMobile,
+  foodItems: deliveriesTable.foodItems,
+  subtotal: deliveriesTable.subtotal,
+  deliveryFee: deliveriesTable.deliveryFee,
+  status: deliveriesTable.status,
+  statusHistory: deliveriesTable.statusHistory,
+  paymentTimerStartedAt: deliveriesTable.paymentTimerStartedAt,
+  paymentMarkedAt: deliveriesTable.paymentMarkedAt,
+  selfieTimestamp: deliveriesTable.selfieTimestamp,
+  locationPhotoTimestamp: deliveriesTable.locationPhotoTimestamp,
+  chargeStatus: deliveriesTable.chargeStatus,
+  cancelledAt: deliveriesTable.cancelledAt,
+  ratingHappiness: deliveriesTable.ratingHappiness,
+  ratingHandling: deliveriesTable.ratingHandling,
+  ratingOnTime: deliveriesTable.ratingOnTime,
+  ratingComment: deliveriesTable.ratingComment,
+  createdAt: deliveriesTable.createdAt,
+  // EXCLUDED: selfieUrl, locationPhotoUrl, qrImageUrl, paymentScreenshotUrl (large base64 blobs)
+};
+
 async function safeUser(userId: string) {
   const map = await safeUserBatch([userId]);
   return map.get(userId) || null;
@@ -101,7 +133,7 @@ router.get("/all", authMiddleware, async (req, res) => {
       currentUser(userId),
       db.select().from(assignmentsTable).orderBy(desc(assignmentsTable.createdAt)),
       db.select().from(certificationsTable).orderBy(desc(certificationsTable.createdAt)),
-      db.select().from(deliveriesTable).orderBy(desc(deliveriesTable.createdAt)),
+      db.select(DELIVERY_LIST_COLS).from(deliveriesTable).orderBy(desc(deliveriesTable.createdAt)),
       db.select().from(tasksTable).orderBy(desc(tasksTable.createdAt)),
       db.select().from(projectsTable).orderBy(desc(projectsTable.createdAt)),
       db.select({ id: assignmentsTable.id }).from(assignmentsTable).where(eq(assignmentsTable.posterId, userId)),
@@ -606,7 +638,7 @@ router.get("/deliveries", authMiddleware, async (req, res) => {
     const me = await currentUser(userId);
     if (!me) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    let rows = await db.select().from(deliveriesTable).orderBy(desc(deliveriesTable.createdAt));
+    let rows = await db.select(DELIVERY_LIST_COLS).from(deliveriesTable).orderBy(desc(deliveriesTable.createdAt));
 
     // Students see their own requests; providers see: pending (marketplace) + ones they accepted (agent) + ones they requested themselves
     if (me.role === "student") {
@@ -694,6 +726,25 @@ router.post("/deliveries", authMiddleware, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "ServerError", message: "Failed to create delivery" });
+  }
+});
+
+router.get("/deliveries/:id", authMiddleware, async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const { id } = req.params;
+    const rows = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
+    if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
+    const d = rows[0];
+    const userMap = await safeUserBatch([d.requesterId, d.deliveryAgentId]);
+    res.json({
+      ...d,
+      requester: userMap.get(d.requesterId) || null,
+      deliveryAgent: d.deliveryAgentId ? userMap.get(d.deliveryAgentId) || null : null,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "ServerError" });
   }
 });
 

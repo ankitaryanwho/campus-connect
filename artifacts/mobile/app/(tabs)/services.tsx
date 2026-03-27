@@ -802,7 +802,7 @@ function DeliveryCard({ item, C, currentUser, onAction, onRate, isPending }: any
     if (!isAgent) return null;
     // Must take selfie first before heading to pickup (selfie is done via Active Now card)
     if (item.status === "accepted") {
-      if (!item.selfieUrl) return null; // selfie not yet taken
+      if (!item.selfieTimestamp) return null; // selfie not yet taken
       return { label: "Head to Pickup", color: "#F59E0B" };
     }
     // For outlet at reaching_pickup: block progress until student has paid
@@ -903,13 +903,13 @@ function DeliveryCard({ item, C, currentUser, onAction, onRate, isPending }: any
       )}
 
       {/* Agent verification photos — agent sees text confirmation */}
-      {isAgent && item.selfieUrl && (
+      {isAgent && item.selfieTimestamp && (
         <View style={{ backgroundColor: "#F0FDF4", borderRadius: 10, padding: 10, marginTop: 4, flexDirection: "row", alignItems: "center", gap: 8 }}>
           <Feather name="camera" size={14} color="#059669" />
           <Text style={{ color: "#059669", fontFamily: "Inter_600SemiBold", fontSize: 12 }}>Live selfie uploaded ✓</Text>
         </View>
       )}
-      {isAgent && item.locationPhotoUrl && (
+      {isAgent && item.locationPhotoTimestamp && (
         <View style={{ backgroundColor: "#F0FDF4", borderRadius: 10, padding: 10, marginTop: 4, flexDirection: "row", alignItems: "center", gap: 8 }}>
           <Feather name="map-pin" size={14} color="#059669" />
           <Text style={{ color: "#059669", fontFamily: "Inter_600SemiBold", fontSize: 12 }}>Location photo uploaded ✓</Text>
@@ -1013,7 +1013,7 @@ function DeliveryCard({ item, C, currentUser, onAction, onRate, isPending }: any
         )}
 
         {/* Agent: info when selfie is needed */}
-        {isAgent && item.status === "accepted" && !item.selfieUrl && (
+        {isAgent && item.status === "accepted" && !item.selfieTimestamp && (
           <View style={{ backgroundColor: "#EDE9FE", borderRadius: 10, padding: 10, flexDirection: "row", alignItems: "center", gap: 8 }}>
             <Feather name="camera" size={14} color="#5B4FE8" />
             <Text style={{ color: "#5B4FE8", fontFamily: "Inter_500Medium", fontSize: 12, flex: 1 }}>Take Live Selfie from the order card to continue</Text>
@@ -1025,7 +1025,7 @@ function DeliveryCard({ item, C, currentUser, onAction, onRate, isPending }: any
           <View style={{ backgroundColor: "#FEF3C7", borderRadius: 10, padding: 10, flexDirection: "row", alignItems: "center", gap: 8 }}>
             <Feather name="clock" size={14} color="#D97706" />
             <Text style={{ color: "#92400E", fontFamily: "Inter_500Medium", fontSize: 12, flex: 1 }}>
-              {!item.qrImageUrl ? "Upload Payment QR from the order card first" :
+              {item.chargeStatus === "pending" ? "Upload Payment QR from the order card first" :
                item.chargeStatus === "screenshot_uploaded" ? "Confirm payment received from the order card" :
                "Waiting for student to pay…"}
             </Text>
@@ -1041,13 +1041,13 @@ function DeliveryCard({ item, C, currentUser, onAction, onRate, isPending }: any
         )}
 
         {/* Agent: location photo / delivery charge prompt at completed */}
-        {isAgent && item.status === "completed" && !item.locationPhotoUrl && (
+        {isAgent && item.status === "completed" && !item.locationPhotoTimestamp && (
           <View style={{ backgroundColor: "#EDE9FE", borderRadius: 10, padding: 10, flexDirection: "row", alignItems: "center", gap: 8 }}>
             <Feather name="camera" size={14} color="#5B4FE8" />
             <Text style={{ color: "#5B4FE8", fontFamily: "Inter_500Medium", fontSize: 12, flex: 1 }}>Take Live Selfie from the order card to proceed</Text>
           </View>
         )}
-        {isAgent && item.status === "completed" && item.locationPhotoUrl && item.chargeStatus !== "paid" && (() => {
+        {isAgent && item.status === "completed" && item.locationPhotoTimestamp && item.chargeStatus !== "paid" && (() => {
           const agentFee = parseFloat(item.deliveryFee || "30");
           const agentGst = parseFloat((agentFee * 0.18).toFixed(2));
           const agentTotal = agentFee + agentGst;
@@ -1060,16 +1060,16 @@ function DeliveryCard({ item, C, currentUser, onAction, onRate, isPending }: any
         })()}
 
         {/* Student: confirm received (location photo + charge must be paid first) */}
-        {studentCanConfirm && item.chargeStatus === "paid" && item.locationPhotoUrl && (
+        {studentCanConfirm && item.chargeStatus === "paid" && item.locationPhotoTimestamp && (
           <Pressable style={[CS.actionBtn, { backgroundColor: "#10B981" }, isPending && { opacity: 0.6 }]}
             onPress={() => onAction(item.id, "confirm")} disabled={isPending}>
             {isPending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={CS.actionBtnText}>✓ Mark Order Received</Text>}
           </Pressable>
         )}
-        {studentCanConfirm && !(item.chargeStatus === "paid" && item.locationPhotoUrl) && (
+        {studentCanConfirm && !(item.chargeStatus === "paid" && item.locationPhotoTimestamp) && (
           <View style={{ backgroundColor: "#FEF3C7", borderRadius: 10, padding: 10 }}>
             <Text style={{ color: "#92400E", fontSize: 12, fontFamily: "Inter_500Medium", textAlign: "center" }}>
-              {!item.locationPhotoUrl ? "Waiting for agent to arrive and verify location…" : "Pay the delivery charge from the order card first"}
+              {!item.locationPhotoTimestamp ? "Waiting for agent to arrive and verify location…" : "Pay the delivery charge from the order card first"}
             </Text>
           </View>
         )}
@@ -1203,7 +1203,7 @@ function DeliveryActiveCTA({ item, isAgent, isRequester, isPending, cameraAction
 
   if (isAgent) {
     // 1. Accepted + no selfie → show "Take Live Selfie" on card
-    if (item.status === "accepted" && !item.selfieUrl) {
+    if (item.status === "accepted" && !item.selfieTimestamp) {
       const loading = cameraActionId === `${item.id}-selfie`;
       return (
         <Pressable
@@ -1215,7 +1215,7 @@ function DeliveryActiveCTA({ item, isAgent, isRequester, isPending, cameraAction
       );
     }
     // 2. Accepted + selfie done → Update Order Status (opens modal for "Head to Pickup")
-    if (item.status === "accepted" && item.selfieUrl) {
+    if (item.status === "accepted" && item.selfieTimestamp) {
       return (
         <Pressable style={{ marginTop: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: meta.accent, alignItems: "center" }}
           onPress={() => onTrackPress(item)}>
@@ -1225,7 +1225,7 @@ function DeliveryActiveCTA({ item, isAgent, isRequester, isPending, cameraAction
     }
     // 3. reaching_pickup + outlet → upload QR or await payment
     if (item.status === "reaching_pickup" && isOutlet) {
-      if (!item.qrImageUrl) {
+      if (item.chargeStatus === "pending") {
         return (
           <Pressable style={{ marginTop: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: "#F59E0B", alignItems: "center" }}
             onPress={() => onOpenQRUpload(item)} disabled={isPending}>
@@ -1264,7 +1264,7 @@ function DeliveryActiveCTA({ item, isAgent, isRequester, isPending, cameraAction
       );
     }
     // 4. Arrived at drop (completed) + no location photo → take selfie (location verification)
-    if (item.status === "completed" && !item.locationPhotoUrl) {
+    if (item.status === "completed" && !item.locationPhotoTimestamp) {
       const loading = cameraActionId === `${item.id}-location-photo`;
       return (
         <Pressable
@@ -1276,7 +1276,7 @@ function DeliveryActiveCTA({ item, isAgent, isRequester, isPending, cameraAction
       );
     }
     // 5. completed + location photo taken + awaiting charge payment from student
-    if (item.status === "completed" && item.locationPhotoUrl && item.chargeStatus !== "paid") {
+    if (item.status === "completed" && item.locationPhotoTimestamp && item.chargeStatus !== "paid") {
       const total = deliveryFee + gst;
       return (
         <View style={{ marginTop: 12, paddingVertical: 12, borderRadius: 12, backgroundColor: "#ECFDF5", borderWidth: 1, borderColor: "#10B981", alignItems: "center", gap: 4 }}>
@@ -1286,7 +1286,7 @@ function DeliveryActiveCTA({ item, isAgent, isRequester, isPending, cameraAction
       );
     }
     // 6. Completed + location photo taken + charge already paid → awaiting student confirmation
-    if (item.status === "completed" && item.locationPhotoUrl && item.chargeStatus === "paid") {
+    if (item.status === "completed" && item.locationPhotoTimestamp && item.chargeStatus === "paid") {
       return (
         <View style={{ marginTop: 12, paddingVertical: 12, borderRadius: 12, backgroundColor: "#D1FAE5", borderWidth: 1, borderColor: "#10B981", alignItems: "center", gap: 4 }}>
           <Text style={{ color: "#065F46", fontFamily: "Inter_700Bold", fontSize: 13 }}>✅ Payment Received!</Text>
@@ -1306,7 +1306,7 @@ function DeliveryActiveCTA({ item, isAgent, isRequester, isPending, cameraAction
 
   if (isRequester) {
     // Outlet food payment: QR shared during reaching_pickup phase only
-    if (isOutlet && item.status === "reaching_pickup" && item.qrImageUrl && !["paid", "screenshot_uploaded"].includes(item.chargeStatus || "")) {
+    if (isOutlet && item.status === "reaching_pickup" && (item.chargeStatus === "qr_shared" || item.chargeStatus === "payment_rejected") && !["paid", "screenshot_uploaded"].includes(item.chargeStatus || "")) {
       const isRejected = item.chargeStatus === "payment_rejected";
       return (
         <Pressable style={{ marginTop: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: isRejected ? "#EF4444" : "#F59E0B", alignItems: "center" }}
@@ -1326,7 +1326,7 @@ function DeliveryActiveCTA({ item, isAgent, isRequester, isPending, cameraAction
       );
     }
     // Arrived at drop + location photo taken + delivery charge not yet paid (gate AND outlet)
-    if (item.status === "completed" && item.locationPhotoUrl && item.chargeStatus !== "paid") {
+    if (item.status === "completed" && item.locationPhotoTimestamp && item.chargeStatus !== "paid") {
       const total = deliveryFee + gst;
       return (
         <Pressable style={{ marginTop: 12, paddingVertical: 13, borderRadius: 12, backgroundColor: "#10B981", alignItems: "center" }}
@@ -1337,7 +1337,7 @@ function DeliveryActiveCTA({ item, isAgent, isRequester, isPending, cameraAction
       );
     }
     // Completed + location photo taken + charge paid → Mark Order Received
-    if (item.status === "completed" && item.locationPhotoUrl && item.chargeStatus === "paid") {
+    if (item.status === "completed" && item.locationPhotoTimestamp && item.chargeStatus === "paid") {
       return (
         <Pressable style={{ marginTop: 12, paddingVertical: 13, borderRadius: 12, backgroundColor: "#10B981", alignItems: "center" }}
           onPress={() => onMarkReceived(item.id)} disabled={isPending}>
@@ -1891,6 +1891,31 @@ export default function ServicesScreen() {
   const [reviewImageFullscreen, setReviewImageFullscreen] = useState(false);
   const { showToast } = useToast();
   const isWeb = Platform.OS === "web";
+
+  // Auto-fetch full delivery detail (with images) when a delivery modal opens
+  useEffect(() => {
+    if (!selectedItem?.id || selectedItem._type !== "deliveries" || selectedItem._hasDetail) return;
+    apiRequest(`/services/deliveries/${selectedItem.id}`)
+      .then((r: any) => r.ok ? r.json() : null)
+      .then((d: any) => { if (d) setSelectedItem((prev: any) => prev?.id === d.id ? { ...d, _type: "deliveries", _hasDetail: true } : prev); })
+      .catch(() => {});
+  }, [selectedItem?.id]);
+
+  useEffect(() => {
+    if (!paymentItem?.id || paymentItem._hasDetail) return;
+    apiRequest(`/services/deliveries/${paymentItem.id}`)
+      .then((r: any) => r.ok ? r.json() : null)
+      .then((d: any) => { if (d) setPaymentItem((prev: any) => prev?.id === d.id ? { ...d, _type: "deliveries", _hasDetail: true } : prev); })
+      .catch(() => {});
+  }, [paymentItem?.id]);
+
+  useEffect(() => {
+    if (!paymentReviewItem?.id || paymentReviewItem._hasDetail) return;
+    apiRequest(`/services/deliveries/${paymentReviewItem.id}`)
+      .then((r: any) => r.ok ? r.json() : null)
+      .then((d: any) => { if (d) setPaymentReviewItem((prev: any) => prev?.id === d.id ? { ...d, _type: "deliveries", _hasDetail: true } : prev); })
+      .catch(() => {});
+  }, [paymentReviewItem?.id]);
 
   const isProvider = user?.role === "provider";
   const userServices: string[] = user?.services ? JSON.parse(user.services) : [];
