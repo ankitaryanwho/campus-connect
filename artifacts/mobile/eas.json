@@ -6,6 +6,7 @@
     "preview": {
       "config": "custom-android.yml",
       "channel": "preview",
+      "credentialsSource": "local",
       "android": {
         "buildType": "apk"
       },
@@ -16,6 +17,7 @@
     "production": {
       "config": "custom-android.yml",
       "channel": "production",
+      "credentialsSource": "local",
       "android": {
         "buildType": "app-bundle"
       },
