@@ -13,8 +13,9 @@ build:
         command: pnpm install --no-frozen-lockfile
     - run:
         name: Expo Prebuild (Android)
-        command: npx expo prebuild --platform android --clean --non-interactive
-        working_directory: artifacts/mobile
+        command: |
+          cd /home/expo/workingdir/build/artifacts/mobile
+          npx expo prebuild --platform android --clean --non-interactive
     - run:
         name: Install dependencies (post-prebuild)
         command: pnpm install --no-frozen-lockfile
