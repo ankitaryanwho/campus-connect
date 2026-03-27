@@ -902,17 +902,67 @@ function DeliveryCard({ item, C, currentUser, onAction, onRate, isPending }: any
         </Pressable>
       )}
 
-      {/* Agent verification photos */}
+      {/* Agent verification photos — agent sees text confirmation */}
       {isAgent && item.selfieUrl && (
         <View style={{ backgroundColor: "#F0FDF4", borderRadius: 10, padding: 10, marginTop: 4, flexDirection: "row", alignItems: "center", gap: 8 }}>
           <Feather name="camera" size={14} color="#059669" />
-          <Text style={{ color: "#059669", fontFamily: "Inter_600SemiBold", fontSize: 12 }}>Selfie uploaded ✓</Text>
+          <Text style={{ color: "#059669", fontFamily: "Inter_600SemiBold", fontSize: 12 }}>Live selfie uploaded ✓</Text>
         </View>
       )}
       {isAgent && item.locationPhotoUrl && (
         <View style={{ backgroundColor: "#F0FDF4", borderRadius: 10, padding: 10, marginTop: 4, flexDirection: "row", alignItems: "center", gap: 8 }}>
           <Feather name="map-pin" size={14} color="#059669" />
           <Text style={{ color: "#059669", fontFamily: "Inter_600SemiBold", fontSize: 12 }}>Location photo uploaded ✓</Text>
+        </View>
+      )}
+
+      {/* Requester: see agent's live selfie */}
+      {isRequester && item.selfieUrl && (
+        <View style={{ backgroundColor: "#F0FDF4", borderRadius: 12, padding: 12, marginTop: 8 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8 }}>
+            <Feather name="camera" size={14} color="#059669" />
+            <Text style={{ color: "#059669", fontFamily: "Inter_700Bold", fontSize: 13 }}>Agent Verification Selfie</Text>
+          </View>
+          <Text style={{ color: "#6B7280", fontSize: 11, fontFamily: "Inter_400Regular", marginBottom: 10 }}>
+            Your delivery agent took this live selfie to verify their identity before picking up your order.
+          </Text>
+          <View style={{ borderRadius: 10, overflow: "hidden", backgroundColor: "#fff" }}>
+            <Image
+              source={{ uri: item.selfieUrl }}
+              style={{ width: "100%", height: 220, borderRadius: 10 }}
+              resizeMode="cover"
+            />
+          </View>
+          {item.selfieTimestamp && (
+            <Text style={{ color: "#9CA3AF", fontSize: 10, fontFamily: "Inter_400Regular", marginTop: 6, textAlign: "right" }}>
+              Taken at {new Date(item.selfieTimestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            </Text>
+          )}
+        </View>
+      )}
+
+      {/* Requester: see agent's location photo at drop point */}
+      {isRequester && item.locationPhotoUrl && (
+        <View style={{ backgroundColor: "#EDE9FE", borderRadius: 12, padding: 12, marginTop: 8 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8 }}>
+            <Feather name="map-pin" size={14} color="#5B4FE8" />
+            <Text style={{ color: "#5B4FE8", fontFamily: "Inter_700Bold", fontSize: 13 }}>Agent at Your Location</Text>
+          </View>
+          <Text style={{ color: "#6B7280", fontSize: 11, fontFamily: "Inter_400Regular", marginBottom: 10 }}>
+            Your agent is at your drop location and took this photo as proof of arrival.
+          </Text>
+          <View style={{ borderRadius: 10, overflow: "hidden", backgroundColor: "#fff" }}>
+            <Image
+              source={{ uri: item.locationPhotoUrl }}
+              style={{ width: "100%", height: 220, borderRadius: 10 }}
+              resizeMode="cover"
+            />
+          </View>
+          {item.locationPhotoTimestamp && (
+            <Text style={{ color: "#9CA3AF", fontSize: 10, fontFamily: "Inter_400Regular", marginTop: 6, textAlign: "right" }}>
+              Taken at {new Date(item.locationPhotoTimestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            </Text>
+          )}
         </View>
       )}
 
