@@ -571,15 +571,13 @@ router.post("/deliveries/:id/accept", authMiddleware, async (req, res) => {
     if (rows[0].requesterId === userId) { res.status(400).json({ error: "Cannot accept your own request" }); return; }
     if (rows[0].status !== "pending") { res.status(400).json({ error: "Already accepted" }); return; }
     const history = appendHistory(rows[0].statusHistory, "accepted");
-    await db.update(deliveriesTable).set({
+    const updated = await db.update(deliveriesTable).set({
       deliveryAgentId: userId,
       status: "accepted",
       statusHistory: history,
-    }).where(eq(deliveriesTable.id, id));
-    const updated = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
-    const agent = await safeUser(userId);
-    res.json({ ...updated[0], requester: await safeUser(updated[0].requesterId), deliveryAgent: agent });
-    // Notify requester
+    }).where(eq(deliveriesTable.id, id)).returning();
+    const [agent, requester] = await Promise.all([safeUser(userId), safeUser(updated[0].requesterId)]);
+    res.json({ ...updated[0], requester, deliveryAgent: agent });
     try {
       await notifyUser(updated[0].requesterId, {
         type: "delivery_accepted",
@@ -619,10 +617,9 @@ router.post("/deliveries/:id/progress", authMiddleware, async (req, res) => {
       progressUpdates.locationPhotoUrl = null;
       progressUpdates.locationPhotoTimestamp = null;
     }
-    await db.update(deliveriesTable).set(progressUpdates).where(eq(deliveriesTable.id, id));
-    const updated = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
-    const agentUser = await safeUser(userId);
-    res.json({ ...updated[0], requester: await safeUser(updated[0].requesterId), deliveryAgent: agentUser });
+    const updated = await db.update(deliveriesTable).set(progressUpdates).where(eq(deliveriesTable.id, id)).returning();
+    const [agentUser, requesterUser] = await Promise.all([safeUser(userId), safeUser(updated[0].requesterId)]);
+    res.json({ ...updated[0], requester: requesterUser, deliveryAgent: agentUser });
     // Status-specific notification to requester
     try {
       const agentName = agentUser?.name ?? "Your agent";
@@ -665,11 +662,10 @@ router.post("/deliveries/:id/confirm", authMiddleware, async (req, res) => {
       res.status(400).json({ error: "PaymentRequired", message: "Please pay the delivery charge before marking the order as received." }); return;
     }
     const history = appendHistory(rows[0].statusHistory, "delivered");
-    await db.update(deliveriesTable).set({ status: "delivered", statusHistory: history }).where(eq(deliveriesTable.id, id));
-    const updated = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
-    res.json({ ...updated[0], requester: await safeUser(userId), deliveryAgent: updated[0].deliveryAgentId ? await safeUser(updated[0].deliveryAgentId) : null });
+    const updated = await db.update(deliveriesTable).set({ status: "delivered", statusHistory: history }).where(eq(deliveriesTable.id, id)).returning();
+    const [requester, agent] = await Promise.all([safeUser(userId), updated[0].deliveryAgentId ? safeUser(updated[0].deliveryAgentId) : Promise.resolve(null)]);
+    res.json({ ...updated[0], requester, deliveryAgent: agent });
     try {
-      const requester = await safeUser(userId);
       if (updated[0].deliveryAgentId) {
         await notifyUser(updated[0].deliveryAgentId, {
           type: "delivery_confirmed",
@@ -685,9 +681,8 @@ router.post("/deliveries/:id/confirm", authMiddleware, async (req, res) => {
 router.post("/deliveries/:id/reject", authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
-    await db.update(deliveriesTable).set({ status: "pending", deliveryAgentId: null }).where(eq(deliveriesTable.id, id));
-    const rows = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
-    res.json({ ...rows[0], requester: await safeUser(rows[0].requesterId), deliveryAgent: null });
+    const updated = await db.update(deliveriesTable).set({ status: "pending", deliveryAgentId: null }).where(eq(deliveriesTable.id, id)).returning();
+    res.json({ ...updated[0], requester: await safeUser(updated[0].requesterId), deliveryAgent: null });
   } catch (err) {
     res.status(500).json({ error: "ServerError", message: "Failed to reject delivery" });
   }
@@ -700,12 +695,11 @@ router.post("/deliveries/:id/mark-paid", authMiddleware, async (req, res) => {
     const rows = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].requesterId !== userId) { res.status(403).json({ error: "Only the requester can mark as paid" }); return; }
-    await db.update(deliveriesTable).set({ status: "payment_marked", paymentMarkedAt: new Date() }).where(eq(deliveriesTable.id, id));
-    const updated = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
-    res.json({ ...updated[0], requester: await safeUser(updated[0].requesterId), deliveryAgent: updated[0].deliveryAgentId ? await safeUser(updated[0].deliveryAgentId) : null });
+    const updated = await db.update(deliveriesTable).set({ status: "payment_marked", paymentMarkedAt: new Date() }).where(eq(deliveriesTable.id, id)).returning();
+    const [requester, agent] = await Promise.all([safeUser(userId), updated[0].deliveryAgentId ? safeUser(updated[0].deliveryAgentId) : Promise.resolve(null)]);
+    res.json({ ...updated[0], requester, deliveryAgent: agent });
     // Notify the delivery agent
     try {
-      const requester = await safeUser(userId);
       if (updated[0].deliveryAgentId) {
         await notifyUser(updated[0].deliveryAgentId, {
           type: "payment_marked",
@@ -727,11 +721,10 @@ router.post("/deliveries/:id/confirm-payment", authMiddleware, async (req, res) 
     const rows = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].deliveryAgentId !== userId) { res.status(403).json({ error: "Only the delivery agent can confirm payment" }); return; }
-    await db.update(deliveriesTable).set({ chargeStatus: "paid" }).where(eq(deliveriesTable.id, id));
-    const updated = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
-    res.json({ ...updated[0], requester: await safeUser(updated[0].requesterId), deliveryAgent: await safeUser(userId) });
+    const updated = await db.update(deliveriesTable).set({ chargeStatus: "paid" }).where(eq(deliveriesTable.id, id)).returning();
+    const [requester, agentUser] = await Promise.all([safeUser(updated[0].requesterId), safeUser(userId)]);
+    res.json({ ...updated[0], requester, deliveryAgent: agentUser });
     try {
-      const agentUser = await safeUser(userId);
       await notifyUser(updated[0].requesterId, {
         type: "payment_confirmed",
         title: "✅ Payment Confirmed!",
@@ -751,8 +744,7 @@ router.post("/deliveries/:id/reject-payment", authMiddleware, async (req, res) =
     const rows = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].deliveryAgentId !== userId) { res.status(403).json({ error: "Only the delivery agent can reject payment" }); return; }
-    await db.update(deliveriesTable).set({ chargeStatus: "payment_rejected", paymentScreenshotUrl: null }).where(eq(deliveriesTable.id, id));
-    const updated = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
+    const updated = await db.update(deliveriesTable).set({ chargeStatus: "payment_rejected", paymentScreenshotUrl: null }).where(eq(deliveriesTable.id, id)).returning();
     res.json({ ...updated[0] });
     try {
       const agentUser = await safeUser(userId);
@@ -777,9 +769,9 @@ router.post("/deliveries/:id/payment-screenshot", authMiddleware, async (req, re
     const rows = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].requesterId !== userId) { res.status(403).json({ error: "Only the requester can upload payment screenshot" }); return; }
-    await db.update(deliveriesTable).set({ paymentScreenshotUrl, chargeStatus: "screenshot_uploaded" }).where(eq(deliveriesTable.id, id));
-    const updated = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
-    res.json({ ...updated[0], requester: await safeUser(userId), deliveryAgent: rows[0].deliveryAgentId ? await safeUser(rows[0].deliveryAgentId) : null });
+    const updated = await db.update(deliveriesTable).set({ paymentScreenshotUrl, chargeStatus: "screenshot_uploaded" }).where(eq(deliveriesTable.id, id)).returning();
+    const [requester, deliveryAgent] = await Promise.all([safeUser(userId), updated[0].deliveryAgentId ? safeUser(updated[0].deliveryAgentId) : Promise.resolve(null)]);
+    res.json({ ...updated[0], requester, deliveryAgent });
     try {
       if (rows[0].deliveryAgentId) {
         const requesterUser = await safeUser(userId);
@@ -810,10 +802,9 @@ router.post("/deliveries/:id/complete", authMiddleware, async (req, res) => {
       completeUpdates.locationPhotoTimestamp = null;
       completeUpdates.chargeStatus = "pending";
     }
-    await db.update(deliveriesTable).set(completeUpdates).where(eq(deliveriesTable.id, id));
-    const updated = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
-    const agentComp = await safeUser(userId);
-    res.json({ ...updated[0], requester: await safeUser(updated[0].requesterId), deliveryAgent: agentComp });
+    const updated = await db.update(deliveriesTable).set(completeUpdates).where(eq(deliveriesTable.id, id)).returning();
+    const [agentComp, requester] = await Promise.all([safeUser(userId), safeUser(updated[0].requesterId)]);
+    res.json({ ...updated[0], requester, deliveryAgent: agentComp });
     try {
       await notifyUser(updated[0].requesterId, {
         type: "delivery_completed",
@@ -837,8 +828,7 @@ router.post("/deliveries/:id/cancel", authMiddleware, async (req, res) => {
     if (rows[0].requesterId !== userId) { res.status(403).json({ error: "Only the requester can cancel" }); return; }
     if (rows[0].status !== "pending") { res.status(400).json({ error: "Can only cancel while still pending (no agent has accepted yet)" }); return; }
     const history = appendHistory(rows[0].statusHistory, "cancelled");
-    await db.update(deliveriesTable).set({ status: "cancelled", statusHistory: history, cancelledAt: new Date() }).where(eq(deliveriesTable.id, id));
-    const updated = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
+    const updated = await db.update(deliveriesTable).set({ status: "cancelled", statusHistory: history, cancelledAt: new Date() }).where(eq(deliveriesTable.id, id)).returning();
     res.json({ ...updated[0], requester: await safeUser(userId), deliveryAgent: null });
   } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to cancel delivery" }); }
 });
@@ -853,9 +843,9 @@ router.post("/deliveries/:id/selfie", authMiddleware, async (req, res) => {
     const rows = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].deliveryAgentId !== userId) { res.status(403).json({ error: "Only the delivery agent can upload selfie" }); return; }
-    await db.update(deliveriesTable).set({ selfieUrl, selfieTimestamp: new Date() }).where(eq(deliveriesTable.id, id));
-    const updated = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
-    res.json({ ...updated[0], requester: await safeUser(updated[0].requesterId), deliveryAgent: await safeUser(userId) });
+    const updated = await db.update(deliveriesTable).set({ selfieUrl, selfieTimestamp: new Date() }).where(eq(deliveriesTable.id, id)).returning();
+    const [requester, deliveryAgent] = await Promise.all([safeUser(updated[0].requesterId), safeUser(userId)]);
+    res.json({ ...updated[0], requester, deliveryAgent });
   } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to upload selfie" }); }
 });
 
@@ -869,9 +859,9 @@ router.post("/deliveries/:id/location-photo", authMiddleware, async (req, res) =
     const rows = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].deliveryAgentId !== userId) { res.status(403).json({ error: "Only the delivery agent can upload location photo" }); return; }
-    await db.update(deliveriesTable).set({ locationPhotoUrl, locationPhotoTimestamp: new Date() }).where(eq(deliveriesTable.id, id));
-    const updated = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
-    res.json({ ...updated[0], requester: await safeUser(updated[0].requesterId), deliveryAgent: await safeUser(userId) });
+    const updated = await db.update(deliveriesTable).set({ locationPhotoUrl, locationPhotoTimestamp: new Date() }).where(eq(deliveriesTable.id, id)).returning();
+    const [requester, deliveryAgent] = await Promise.all([safeUser(updated[0].requesterId), safeUser(userId)]);
+    res.json({ ...updated[0], requester, deliveryAgent });
     try {
       const isGate = updated[0].pickupType !== "outlet";
       if (isGate) {

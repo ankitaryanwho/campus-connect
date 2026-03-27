@@ -1865,7 +1865,7 @@ export default function ServicesScreen() {
   const { data: certData,   isLoading: cLoading, refetch: rC } = useQuery(mkQuery("certifications", "/services/certifications"));
   const { data: delivData,  isLoading: dLoading, refetch: rD } = useQuery({
     ...mkQuery("deliveries", "/services/deliveries"),
-    refetchInterval: 30_000, // auto-refresh every 30s so both requester and provider see status changes
+    refetchInterval: 5_000,
   });
   const { data: taskData,   isLoading: tLoading, refetch: rT } = useQuery(mkQuery("tasks", "/services/tasks"));
   const { data: projData,   isLoading: pLoading, refetch: rP } = useQuery(mkQuery("projects", "/services/projects"));
@@ -2094,7 +2094,52 @@ export default function ServicesScreen() {
       if (!res.ok) throw new Error(json.message || json.error || "Action failed");
       return json;
     },
-    onSuccess: (_, vars) => {
+    onMutate: async ({ id, action, tab }: { id: string; action: string; tab: string; body?: any }) => {
+      if (tab !== "deliveries") return {};
+      await queryClient.cancelQueries({ queryKey: ["services", "deliveries"] });
+      const prevDeliveries = queryClient.getQueryData(["services", "deliveries"]);
+      queryClient.setQueryData(["services", "deliveries"], (old: any) => {
+        if (!old?.deliveries) return old;
+        const now = new Date().toISOString();
+        return {
+          ...old,
+          deliveries: old.deliveries.map((d: any) => {
+            if (d.id !== id) return d;
+            const addHistory = (st: string) => {
+              const h = d.statusHistory ? JSON.parse(d.statusHistory) : [];
+              return JSON.stringify([...h, { status: st, at: now }]);
+            };
+            if (action === "accept") return { ...d, status: "accepted", statusHistory: addHistory("accepted") };
+            if (action === "progress") {
+              const isOutlet = d.pickupType === "outlet";
+              const map: Record<string, string> = {
+                accepted: "reaching_pickup",
+                ...(isOutlet
+                  ? { reaching_pickup: "placed_order", placed_order: "collecting_order", collecting_order: "reaching_drop" }
+                  : { reaching_pickup: "reaching_drop" }),
+                reaching_drop: "completed",
+              };
+              const next = map[d.status];
+              if (!next) return d;
+              return { ...d, status: next, statusHistory: addHistory(next) };
+            }
+            if (action === "confirm") return { ...d, status: "delivered", statusHistory: addHistory("delivered") };
+            if (action === "cancel") return { ...d, status: "cancelled", statusHistory: addHistory("cancelled") };
+            if (action === "mark-paid") return { ...d, status: "payment_marked" };
+            if (action === "confirm-payment") return { ...d, chargeStatus: "paid" };
+            return d;
+          }),
+        };
+      });
+      return { prevDeliveries };
+    },
+    onSuccess: (data, vars) => {
+      if (vars.tab === "deliveries" && data) {
+        queryClient.setQueryData(["services", "deliveries"], (old: any) => {
+          if (!old?.deliveries) return old;
+          return { ...old, deliveries: old.deliveries.map((d: any) => d.id === vars.id ? { ...d, ...data } : d) };
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ["services", vars.tab] });
       queryClient.invalidateQueries({ queryKey: ["services", "bookings"] });
       queryClient.invalidateQueries({ queryKey: ["wallet"] });
@@ -2110,7 +2155,10 @@ export default function ServicesScreen() {
       };
       showToast(msgs[vars.action] || "Done!", "success");
     },
-    onError: (err: any, vars: any) => {
+    onError: (err: any, vars: any, context: any) => {
+      if (context?.prevDeliveries) {
+        queryClient.setQueryData(["services", "deliveries"], context.prevDeliveries);
+      }
       const msg = err.message || "Action failed";
       if (msg.includes("InsufficientBalance") || msg.includes("Insufficient")) {
         setWalletConfirmItem(null);
