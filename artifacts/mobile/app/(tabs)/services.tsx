@@ -437,7 +437,7 @@ function PostAssignmentModal({ visible, onClose, C, apiRequest, queryClient, sho
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["services", serviceType] });
+      queryClient.invalidateQueries({ queryKey: ["services", "all"] });
       reset(); onClose();
       showToast("Listing posted!", "success");
     },
@@ -553,7 +553,7 @@ function PostDeliveryModal({ visible, onClose, C, apiRequest, queryClient, showT
       if (!res.ok) throw new Error(data.message || "Failed to post");
       return data;
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["services", "deliveries"] }); reset(); onClose(); showToast("Delivery request posted!", "success"); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["services", "all"] }); reset(); onClose(); showToast("Delivery request posted!", "success"); },
     onError: (err: any) => showToast(err.message || "Failed to post delivery", "error"),
   });
 
@@ -645,7 +645,7 @@ function PostTaskModal({ visible, onClose, C, apiRequest, queryClient, showToast
       if (!res.ok) throw new Error(data.message || "Failed to post");
       return data;
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["services", "tasks"] }); reset(); onClose(); showToast("Task posted!", "success"); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["services", "all"] }); reset(); onClose(); showToast("Task posted!", "success"); },
     onError: (err: any) => showToast(err.message || "Failed to post task", "error"),
   });
 
@@ -1902,32 +1902,30 @@ export default function ServicesScreen() {
   };
 
   // ── Parallel queries for all 4 categories ─────────────────────────────────
-  const mkQuery = (key: string, path: string) => ({
-    queryKey: ["services", key],
+  const { data: allData, isLoading, refetch: refetchAll } = useQuery({
+    queryKey: ["services", "all"],
     queryFn: async () => {
-      const res = await apiRequest(path);
+      const res = await apiRequest("/services/all");
       if (!res.ok) throw new Error("Failed to load");
       return res.json();
     },
-  });
-
-  const { data: assignData, isLoading: aLoading, refetch: rA } = useQuery(mkQuery("assignments", "/services/assignments"));
-  const { data: certData,   isLoading: cLoading, refetch: rC } = useQuery(mkQuery("certifications", "/services/certifications"));
-  const { data: delivData,  isLoading: dLoading, refetch: rD } = useQuery({
-    ...mkQuery("deliveries", "/services/deliveries"),
+    staleTime: 60_000,
     refetchInterval: 5_000,
   });
-  const { data: taskData,   isLoading: tLoading, refetch: rT } = useQuery(mkQuery("tasks", "/services/tasks"));
-  const { data: projData,   isLoading: pLoading, refetch: rP } = useQuery(mkQuery("projects", "/services/projects"));
 
-  const { data: bookingsData, refetch: rBookings } = useQuery({
-    queryKey: ["services", "bookings"],
-    queryFn: async () => {
-      const res = await apiRequest("/services/bookings");
-      if (!res.ok) throw new Error("Failed to load bookings");
-      return res.json();
-    },
-  });
+  const assignData   = allData ? { assignments: allData.assignments }       : undefined;
+  const certData     = allData ? { certifications: allData.certifications } : undefined;
+  const delivData    = allData ? { deliveries: allData.deliveries }         : undefined;
+  const taskData     = allData ? { tasks: allData.tasks }                   : undefined;
+  const projData     = allData ? { projects: allData.projects }             : undefined;
+  const bookingsData = allData ? { bookings: allData.bookings }             : undefined;
+
+  const rA = refetchAll;
+  const rC = refetchAll;
+  const rD = refetchAll;
+  const rT = refetchAll;
+  const rP = refetchAll;
+  const rBookings = refetchAll;
 
   const { data: outletData } = useQuery({
     queryKey: ["outlet-items"],
@@ -1939,8 +1937,6 @@ export default function ServicesScreen() {
     staleTime: 5 * 60 * 1000,
   });
   const outletItems = outletData?.items || [];
-
-  const isLoading = aLoading || cLoading || dLoading || tLoading || pLoading;
 
   // Tag each item with its _type so renderCard can dispatch correctly
   const rawAssignments    = (assignData?.assignments    || []).map((i: any) => ({ ...i, _type: "assignments" }));
@@ -2149,9 +2145,9 @@ export default function ServicesScreen() {
       const isOptimistic = tab === "deliveries" && OPTIMISTIC_DELIVERY_ACTIONS.has(action);
       if (!isOptimistic) setPendingId(id);
       if (tab !== "deliveries") return {};
-      await queryClient.cancelQueries({ queryKey: ["services", "deliveries"] });
-      const prevDeliveries = queryClient.getQueryData(["services", "deliveries"]);
-      queryClient.setQueryData(["services", "deliveries"], (old: any) => {
+      await queryClient.cancelQueries({ queryKey: ["services", "all"] });
+      const prevDeliveries = queryClient.getQueryData(["services", "all"]);
+      queryClient.setQueryData(["services", "all"], (old: any) => {
         if (!old?.deliveries) return old;
         const now = new Date().toISOString();
         return {
@@ -2188,13 +2184,12 @@ export default function ServicesScreen() {
     },
     onSuccess: (data, vars) => {
       if (vars.tab === "deliveries" && data) {
-        queryClient.setQueryData(["services", "deliveries"], (old: any) => {
+        queryClient.setQueryData(["services", "all"], (old: any) => {
           if (!old?.deliveries) return old;
           return { ...old, deliveries: old.deliveries.map((d: any) => d.id === vars.id ? { ...d, ...data } : d) };
         });
       }
-      queryClient.invalidateQueries({ queryKey: ["services", vars.tab] });
-      queryClient.invalidateQueries({ queryKey: ["services", "bookings"] });
+      queryClient.invalidateQueries({ queryKey: ["services", "all"] });
       queryClient.invalidateQueries({ queryKey: ["wallet"] });
       const msgs: Record<string, string> = {
         book: "Booked! Payment held in escrow.", apply: "Application sent!",
@@ -2210,7 +2205,7 @@ export default function ServicesScreen() {
     },
     onError: (err: any, vars: any, context: any) => {
       if (context?.prevDeliveries) {
-        queryClient.setQueryData(["services", "deliveries"], context.prevDeliveries);
+        queryClient.setQueryData(["services", "all"], context.prevDeliveries);
       }
       const msg = err.message || "Action failed";
       if (msg.includes("InsufficientBalance") || msg.includes("Insufficient")) {
@@ -2348,7 +2343,7 @@ export default function ServicesScreen() {
       if (!res.ok) throw new Error(json.message || "Failed to submit rating");
       return json;
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["services", "deliveries"] }); showToast("Thanks for your rating!", "success"); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["services", "all"] }); showToast("Thanks for your rating!", "success"); },
     onError: (err: any) => showToast(err.message || "Failed to submit rating", "error"),
   });
 

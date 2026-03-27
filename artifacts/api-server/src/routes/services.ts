@@ -62,6 +62,116 @@ async function debitWallet(userId: string, amount: number, description: string, 
   await db.insert(transactionsTable).values({ id: generateId(), walletId: w.id, type: "debit", amount: amount.toFixed(2), description, status: "completed", orderId, orderType });
 }
 
+// ─── Combined /all endpoint ────────────────────────────────────────────────────
+
+router.get("/all", authMiddleware, async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const me = await currentUser(userId);
+    if (!me) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const [assignmentRows, certificationRows, deliveryRows, taskRows, projectRows] = await Promise.all([
+      db.select().from(assignmentsTable).orderBy(desc(assignmentsTable.createdAt)),
+      db.select().from(certificationsTable).orderBy(desc(certificationsTable.createdAt)),
+      db.select().from(deliveriesTable).orderBy(desc(deliveriesTable.createdAt)),
+      db.select().from(tasksTable).orderBy(desc(tasksTable.createdAt)),
+      db.select().from(projectsTable).orderBy(desc(projectsTable.createdAt)),
+    ]);
+
+    let filteredAssignments = assignmentRows;
+    let filteredCertifications = certificationRows;
+    let filteredDeliveries = deliveryRows;
+
+    if (me.role === "student" && me.program && me.year) {
+      filteredAssignments = assignmentRows.filter(a =>
+        (a.program === me.program && a.targetYear === me.year) || a.bookedById === userId
+      );
+      filteredCertifications = certificationRows.filter(c =>
+        (c.program === me.program && c.targetYear === me.year) || c.bookedById === userId
+      );
+    }
+    if (me.role === "student") {
+      filteredDeliveries = deliveryRows.filter(d => d.requesterId === userId);
+    } else if (me.role === "provider") {
+      filteredDeliveries = deliveryRows.filter(d =>
+        d.status === "pending" || d.deliveryAgentId === userId || d.requesterId === userId
+      );
+    }
+
+    const [assignments, certifications, deliveries, tasks, projects] = await Promise.all([
+      Promise.all(filteredAssignments.map(async a => ({
+        ...a,
+        poster: await safeUser(a.posterId),
+        bookedBy: a.bookedById ? await safeUser(a.bookedById) : null,
+      }))),
+      Promise.all(filteredCertifications.map(async c => ({
+        ...c,
+        poster: await safeUser(c.posterId),
+        bookedBy: c.bookedById ? await safeUser(c.bookedById) : null,
+      }))),
+      Promise.all(filteredDeliveries.map(async d => ({
+        ...d,
+        requester: await safeUser(d.requesterId),
+        deliveryAgent: d.deliveryAgentId ? await safeUser(d.deliveryAgentId) : null,
+      }))),
+      Promise.all(taskRows.map(async t => ({
+        ...t,
+        poster: await safeUser(t.posterId),
+        assignedTo: t.assignedToId ? await safeUser(t.assignedToId) : null,
+      }))),
+      Promise.all(projectRows.map(async p => ({
+        ...p,
+        poster: await safeUser(p.posterId),
+        bookedBy: p.bookedById ? await safeUser(p.bookedById) : null,
+      }))),
+    ]);
+
+    const activeStatuses = ["booked", "accepted", "in_progress", "completed", "rejected"];
+    const [myAssignments, myCertifications, myProjects] = await Promise.all([
+      db.select({ id: assignmentsTable.id }).from(assignmentsTable).where(eq(assignmentsTable.posterId, userId)),
+      db.select({ id: certificationsTable.id }).from(certificationsTable).where(eq(certificationsTable.posterId, userId)),
+      db.select({ id: projectsTable.id }).from(projectsTable).where(eq(projectsTable.posterId, userId)),
+    ]);
+    const myListingIds = [
+      ...myAssignments.map(a => a.id),
+      ...myCertifications.map(c => c.id),
+      ...myProjects.map(p => p.id),
+    ];
+    const [listerBookingsRaw, bookerBookingsRaw] = await Promise.all([
+      myListingIds.length > 0
+        ? db.select().from(serviceBookingsTable)
+            .where(and(inArray(serviceBookingsTable.listingId, myListingIds), inArray(serviceBookingsTable.status, activeStatuses)))
+            .orderBy(desc(serviceBookingsTable.createdAt))
+        : Promise.resolve([]),
+      db.select().from(serviceBookingsTable)
+        .where(and(eq(serviceBookingsTable.studentId, userId), inArray(serviceBookingsTable.status, activeStatuses)))
+        .orderBy(desc(serviceBookingsTable.createdAt)),
+    ]);
+    const seenIds = new Set<string>();
+    const allBookingsRaw: any[] = [];
+    for (const b of [...listerBookingsRaw, ...bookerBookingsRaw]) {
+      if (!seenIds.has(b.id)) {
+        seenIds.add(b.id);
+        allBookingsRaw.push({ ...b, _myPerspective: b.studentId === userId ? "booker" : "lister" });
+      }
+    }
+    const bookings = await Promise.all(allBookingsRaw.map(async (b: any) => {
+      const listing = await getListing(b.serviceType, b.listingId);
+      return {
+        ...b,
+        _type: b.serviceType,
+        listing: listing ? { ...listing, poster: await safeUser(listing.posterId) } : null,
+        student: await safeUser(b.studentId),
+      };
+    }));
+
+    res.json({ assignments, certifications, deliveries, tasks, projects, bookings });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "ServerError", message: "Failed to load services" });
+  }
+});
+
 // ─── Assignments ──────────────────────────────────────────────────────────────
 
 router.get("/assignments", authMiddleware, async (req, res) => {
