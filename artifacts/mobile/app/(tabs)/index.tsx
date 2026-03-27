@@ -44,11 +44,12 @@ const WARM = {
 };
 
 const CATEGORIES = [
-  { id: "all",     label: "All",        emoji: "✦",  accent: "#1C1917", bg: "#F0EDEA" },
-  { id: "study",   label: "Study Help", emoji: "📚", accent: "#3B82F6", bg: "#EFF6FF" },
-  { id: "events",  label: "Events",     emoji: "🎪", accent: "#8B5CF6", bg: "#F5F3FF" },
-  { id: "buysell", label: "Buy / Sell", emoji: "🛒", accent: "#F59E0B", bg: "#FFFBEB" },
-  { id: "social",  label: "Social",     emoji: "💬", accent: "#10B981", bg: "#ECFDF5" },
+  { id: "all",          label: "All",          emoji: "✦",  accent: "#1C1917", bg: "#F0EDEA" },
+  { id: "study",        label: "Study Help",   emoji: "📚", accent: "#3B82F6", bg: "#EFF6FF" },
+  { id: "events",       label: "Events",       emoji: "🎪", accent: "#8B5CF6", bg: "#F5F3FF" },
+  { id: "buysell",      label: "Buy / Sell",   emoji: "🛒", accent: "#F59E0B", bg: "#FFFBEB" },
+  { id: "social",       label: "Social",       emoji: "💬", accent: "#10B981", bg: "#ECFDF5" },
+  { id: "confessions",  label: "Confessions",  emoji: "🙈", accent: "#6B7280", bg: "#F3F4F6" },
 ] as const;
 
 type CategoryId = typeof CATEGORIES[number]["id"];
@@ -177,7 +178,8 @@ function CategoryStrip({ categoryId, posts, onSeeAll }: { categoryId: CategoryId
   const cat = getCategoryInfo(categoryId);
   const icon = categoryId === "study" ? "book-open" :
     categoryId === "events" ? "calendar" :
-    categoryId === "buysell" ? "shopping-bag" : "message-circle";
+    categoryId === "buysell" ? "shopping-bag" :
+    categoryId === "confessions" ? "eye-off" : "message-circle";
 
   if (posts.length === 0) return null;
 
@@ -424,16 +426,21 @@ export default function FeedScreen() {
 
   // Group posts by category
   const postsByCategory = React.useMemo(() => {
-    const groups: Record<string, Post[]> = { study: [], events: [], buysell: [], social: [] };
+    const groups: Record<string, Post[]> = { study: [], events: [], buysell: [], social: [], confessions: [] };
     for (const p of posts) {
-      groups[detectCategory(p.content)].push(p);
+      if (p.isAnonymous) {
+        groups.confessions.push(p);
+      } else {
+        groups[detectCategory(p.content)].push(p);
+      }
     }
     return groups;
   }, [posts]);
 
   // Filtered posts for the feed section
   const feedPosts = React.useMemo(() => {
-    if (activeCategory === "all") return posts;
+    if (activeCategory === "all") return posts.filter(p => !p.isAnonymous);
+    if (activeCategory === "confessions") return postsByCategory.confessions;
     return postsByCategory[activeCategory] ?? [];
   }, [posts, postsByCategory, activeCategory]);
 
@@ -451,22 +458,33 @@ export default function FeedScreen() {
     <View style={{ backgroundColor: bg }}>
       {/* Create post box */}
       <Pressable
-        style={[styles.createBox, { backgroundColor: surfaceBg, borderColor: borderCol }]}
-        onPress={() => router.push("/new-post")}
+        style={[styles.createBox, {
+          backgroundColor: activeCategory === "confessions" ? "#F3F4F6" : surfaceBg,
+          borderColor: activeCategory === "confessions" ? "#6B7280" : borderCol,
+        }]}
+        onPress={() => router.push(activeCategory === "confessions" ? { pathname: "/new-post", params: { forceAnonymous: "1" } } : "/new-post")}
       >
-        <GradientAvatar name={user?.name || "?"} avatar={user?.avatar} size={36} />
+        {activeCategory === "confessions" ? (
+          <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: "#6B7280", alignItems: "center", justifyContent: "center" }}>
+            <Feather name="user-x" size={17} color="#fff" />
+          </View>
+        ) : (
+          <GradientAvatar name={user?.name || "?"} avatar={user?.avatar} size={36} />
+        )}
         <View style={[styles.createInput, { backgroundColor: isDark ? C.backgroundSecondary : "#F5F3EF", borderColor: borderCol }]}>
-          <Text style={[styles.createPlaceholder, { color: mutedCol }]}>What's on your mind?</Text>
+          <Text style={[styles.createPlaceholder, { color: mutedCol }]}>
+            {activeCategory === "confessions" ? "Share anonymously…" : "What's on your mind?"}
+          </Text>
         </View>
-        <View style={[styles.createMediaBtn, { backgroundColor: isDark ? C.primaryLight : "#EFF6FF" }]}>
-          <Feather name="image" size={15} color={isDark ? C.primary : "#3B82F6"} />
+        <View style={[styles.createMediaBtn, { backgroundColor: activeCategory === "confessions" ? "#E5E7EB" : (isDark ? C.primaryLight : "#EFF6FF") }]}>
+          <Feather name={activeCategory === "confessions" ? "eye-off" : "image"} size={15} color={activeCategory === "confessions" ? "#6B7280" : (isDark ? C.primary : "#3B82F6")} />
         </View>
       </Pressable>
 
       {/* Swim-lane strips — only shown in "All" mode */}
       {activeCategory === "all" && !isLoading && (
         <View style={{ marginTop: 4 }}>
-          {(["study", "events", "buysell", "social"] as const).map(catId => (
+          {(["study", "events", "buysell", "social", "confessions"] as const).map(catId => (
             postsByCategory[catId].length > 0 && (
               <CategoryStrip
                 key={catId}

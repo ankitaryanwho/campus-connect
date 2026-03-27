@@ -4,7 +4,7 @@ import {
   useColorScheme, ActivityIndicator, Platform,
   Image, ScrollView, KeyboardAvoidingView, Switch,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -20,9 +20,11 @@ export default function NewPostScreen() {
   const { apiRequest, user } = useAuth();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
+  const { forceAnonymous } = useLocalSearchParams<{ forceAnonymous?: string }>();
+  const isConfessionsMode = forceAnonymous === "1";
   const [content, setContent] = useState("");
   const [mediaUris, setMediaUris] = useState<string[]>([]);
-  const [isAnonymous, setIsAnonymous] = useState(false);
+  const [isAnonymous, setIsAnonymous] = useState(isConfessionsMode);
   const isWeb = Platform.OS === "web";
 
   const pickImage = async () => {
@@ -78,7 +80,9 @@ export default function NewPostScreen() {
           <Pressable onPress={() => router.back()} style={styles.cancelBtn}>
             <Text style={[styles.cancelText, { color: C.textSecondary, fontFamily: "Inter_400Regular" }]}>Cancel</Text>
           </Pressable>
-          <Text style={[styles.headerTitle, { color: C.text, fontFamily: "Inter_600SemiBold" }]}>New Post</Text>
+          <Text style={[styles.headerTitle, { color: isConfessionsMode ? "#6B7280" : C.text, fontFamily: "Inter_600SemiBold" }]}>
+            {isConfessionsMode ? "🙈 Confession" : "New Post"}
+          </Text>
           <Pressable
             style={[styles.postBtn, { backgroundColor: canPost ? C.primary : C.backgroundSecondary }, createMutation.isPending && { opacity: 0.7 }]}
             onPress={() => createMutation.mutate()}
@@ -118,34 +122,51 @@ export default function NewPostScreen() {
             </View>
           </View>
 
-          {/* Anonymous Toggle */}
-          <Pressable
-            style={[styles.anonToggleRow, { backgroundColor: isAnonymous ? "#F0FDF4" : C.backgroundSecondary, borderColor: isAnonymous ? "#10B981" : C.border }]}
-            onPress={() => setIsAnonymous(prev => !prev)}
-          >
-            <View style={styles.anonToggleLeft}>
-              <Feather name={isAnonymous ? "eye-off" : "eye"} size={18} color={isAnonymous ? "#10B981" : C.textSecondary} />
-              <View>
-                <Text style={[styles.anonToggleTitle, { color: isAnonymous ? "#10B981" : C.text, fontFamily: "Inter_600SemiBold" }]}>
-                  {isAnonymous ? "Posting Anonymously" : "Post Anonymously"}
-                </Text>
-                <Text style={[styles.anonToggleSub, { color: C.textTertiary, fontFamily: "Inter_400Regular" }]}>
-                  {isAnonymous ? "Only program, year & gender emoji visible to others" : "Hide your identity from other users"}
-                </Text>
+          {/* Anonymous Toggle — hidden in confessions mode (always anonymous) */}
+          {isConfessionsMode ? (
+            <View style={[styles.anonToggleRow, { backgroundColor: "#F3F4F6", borderColor: "#6B7280" }]}>
+              <View style={styles.anonToggleLeft}>
+                <Feather name="eye-off" size={18} color="#6B7280" />
+                <View>
+                  <Text style={[styles.anonToggleTitle, { color: "#6B7280", fontFamily: "Inter_600SemiBold" }]}>Always Anonymous</Text>
+                  <Text style={[styles.anonToggleSub, { color: "#9CA3AF", fontFamily: "Inter_400Regular" }]}>
+                    Confessions are always posted anonymously
+                  </Text>
+                </View>
               </View>
+              <Feather name="lock" size={16} color="#9CA3AF" />
             </View>
-            <Switch
-              value={isAnonymous}
-              onValueChange={setIsAnonymous}
-              trackColor={{ false: C.border, true: "#10B981" }}
-              thumbColor="#fff"
-            />
-          </Pressable>
+          ) : (
+            <Pressable
+              style={[styles.anonToggleRow, { backgroundColor: isAnonymous ? "#F0FDF4" : C.backgroundSecondary, borderColor: isAnonymous ? "#10B981" : C.border }]}
+              onPress={() => setIsAnonymous(prev => !prev)}
+            >
+              <View style={styles.anonToggleLeft}>
+                <Feather name={isAnonymous ? "eye-off" : "eye"} size={18} color={isAnonymous ? "#10B981" : C.textSecondary} />
+                <View>
+                  <Text style={[styles.anonToggleTitle, { color: isAnonymous ? "#10B981" : C.text, fontFamily: "Inter_600SemiBold" }]}>
+                    {isAnonymous ? "Posting Anonymously" : "Post Anonymously"}
+                  </Text>
+                  <Text style={[styles.anonToggleSub, { color: C.textTertiary, fontFamily: "Inter_400Regular" }]}>
+                    {isAnonymous ? "Only program, year & gender emoji visible to others" : "Hide your identity from other users"}
+                  </Text>
+                </View>
+              </View>
+              <Switch
+                value={isAnonymous}
+                onValueChange={setIsAnonymous}
+                trackColor={{ false: C.border, true: "#10B981" }}
+                thumbColor="#fff"
+              />
+            </Pressable>
+          )}
 
           {/* Content Input */}
           <TextInput
             style={[styles.textInput, { color: C.text, fontFamily: "Inter_400Regular" }]}
-            placeholder="What's on your mind? Share updates, ask questions, find study partners..."
+            placeholder={isConfessionsMode
+              ? "Share your confession anonymously… your identity is safe here"
+              : "What's on your mind? Share updates, ask questions, find study partners..."}
             placeholderTextColor={C.textTertiary}
             multiline
             value={content}
