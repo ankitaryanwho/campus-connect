@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useRef, useState } from "r
 import * as Notifications from "expo-notifications";
 import * as Device from "expo-device";
 import Constants from "expo-constants";
-import { Platform } from "react-native";
+import { Platform, Alert } from "react-native";
 import { useRouter } from "expo-router";
 import { useAuth } from "./AuthContext";
 
@@ -45,7 +45,11 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     if (!IS_NATIVE || !user || !authToken) return;
 
     registerForPushNotificationsAsync().then(async (token) => {
-      if (!token) return;
+      if (!token) {
+        Alert.alert("Push Debug", "Token generation failed or returned null. Check console for [push] logs.");
+        return;
+      }
+      Alert.alert("Push Debug", `Token OK:\n${token.substring(0, 40)}...`);
       setExpoPushToken(token);
 
       try {
@@ -161,12 +165,16 @@ async function registerForPushNotificationsAsync(): Promise<string | null> {
       Constants.expoConfig?.extra?.eas?.projectId ??
       Constants.easConfig?.projectId;
     if (!projectId) {
-      console.warn("[push] No EAS projectId found — push token will not work on standalone builds");
+      Alert.alert("Push Debug", "No projectId found in Constants — token will fail on standalone builds");
+      return null;
     }
-    const tokenData = await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined);
+    Alert.alert("Push Debug", `Requesting token for projectId:\n${projectId}`);
+    const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
     console.log("[push] Got Expo push token:", tokenData.data);
     return tokenData.data;
-  } catch (e) {
+  } catch (e: any) {
+    const msg = e?.message ?? String(e);
+    Alert.alert("Push Debug — ERROR", msg);
     console.warn("[push] Could not get Expo push token:", e);
     return null;
   }
