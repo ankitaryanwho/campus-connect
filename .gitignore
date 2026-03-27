@@ -11,6 +11,9 @@ out-tsc
 # dependencies
 node_modules
 
+# pnpm lockfile — excluded so EAS Build uses --no-frozen-lockfile
+pnpm-lock.yaml
+
 # IDEs and editors
 /.idea
 .project
