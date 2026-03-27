@@ -26,19 +26,50 @@ async function getPushTokens(userId: string): Promise<string[]> {
   }
 }
 
-// ─── Send via Firebase Admin (direct FCM) ────────────────────────────────────
+// ─── Send via Expo Push API (for ExponentPushToken format) ───────────────────
+
+async function sendViaExpoPush(tokens: string[], title: string, body: string, data: Record<string, string> = {}) {
+  const messages = tokens.map(to => ({ to, title, body, data, sound: "default", priority: "high" }));
+  try {
+    const response = await fetch("https://exp.host/--/api/v2/push/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(messages),
+    });
+    const result = await response.json() as any;
+    const items = Array.isArray(result?.data) ? result.data : [result?.data].filter(Boolean);
+    items.forEach((item: any, i: number) => {
+      if (item?.status === "error") {
+        console.error(`[push/expo] Token ${tokens[i]?.substring(0, 30)} failed: ${item.message}`);
+      } else {
+        console.log(`[push/expo] Sent to ${tokens[i]?.substring(0, 30)}: ${item?.status}`);
+      }
+    });
+  } catch (err) {
+    console.error("[push/expo] Failed:", err);
+  }
+}
+
+// ─── Route each token to the right sender ─────────────────────────────────────
 
 async function sendPushNotifications(tokens: string[], title: string, body: string, data: Record<string, string> = {}) {
   if (!tokens.length) return;
-  await Promise.all(tokens.map(token => sendFcmNotification(token, title, body, data)));
+
+  const expoTokens = tokens.filter(t => t.startsWith("ExponentPushToken["));
+  const fcmTokens = tokens.filter(t => !t.startsWith("ExponentPushToken["));
+
+  if (expoTokens.length > 0) {
+    await sendViaExpoPush(expoTokens, title, body, data);
+  }
+  if (fcmTokens.length > 0) {
+    await Promise.all(fcmTokens.map(t => sendFcmNotification(t, title, body, data)));
+  }
 }
 
 // ─── Public helper ────────────────────────────────────────────────────────────
-// Saves an in-app notification AND sends a real push notification.
 
 export async function notifyUser(userId: string, payload: NotifyPayload) {
   try {
-    // 1. Save in-app notification
     await db.insert(notificationsTable).values({
       id: generateId(),
       userId,
@@ -48,7 +79,6 @@ export async function notifyUser(userId: string, payload: NotifyPayload) {
       data: payload.data ? JSON.stringify(payload.data) : null,
     });
 
-    // 2. Send push (best-effort)
     const tokens = await getPushTokens(userId);
     if (tokens.length) {
       await sendPushNotifications(tokens, payload.title, payload.body, payload.data ?? {});
@@ -57,8 +87,6 @@ export async function notifyUser(userId: string, payload: NotifyPayload) {
     console.error("[notify] Error notifying user:", err);
   }
 }
-
-// ─── Notify multiple users at once ───────────────────────────────────────────
 
 export async function notifyUsers(userIds: string[], payload: NotifyPayload) {
   await Promise.all(userIds.map(uid => notifyUser(uid, payload)));

@@ -52,15 +52,17 @@ function RootLayoutNav() {
   );
 }
 
-async function checkAndApplyUpdate() {
-  if (__DEV__) return;
+async function checkAndApplyUpdate(): Promise<boolean> {
+  if (__DEV__) return true;
   try {
     const update = await Updates.checkForUpdateAsync();
     if (update.isAvailable) {
       await Updates.fetchUpdateAsync();
       await Updates.reloadAsync();
+      return false;
     }
   } catch {}
+  return true;
 }
 
 export default function RootLayout() {
@@ -70,18 +72,22 @@ export default function RootLayout() {
     Inter_600SemiBold,
     Inter_700Bold,
   });
+  const [updateChecked, setUpdateChecked] = React.useState(__DEV__);
 
   useEffect(() => {
-    checkAndApplyUpdate();
+    checkAndApplyUpdate().then(done => {
+      if (done) setUpdateChecked(true);
+    });
   }, []);
 
   useEffect(() => {
-    if (fontsLoaded || fontError) {
+    if ((fontsLoaded || fontError) && updateChecked) {
       SplashScreen.hideAsync();
     }
-  }, [fontsLoaded, fontError]);
+  }, [fontsLoaded, fontError, updateChecked]);
 
   if (!fontsLoaded && !fontError) return null;
+  if (!updateChecked) return null;
 
   return (
     <SafeAreaProvider>
