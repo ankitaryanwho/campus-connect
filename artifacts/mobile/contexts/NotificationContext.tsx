@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 import * as Notifications from "expo-notifications";
 import * as Device from "expo-device";
+import Constants from "expo-constants";
 import { Platform } from "react-native";
 import { useRouter } from "expo-router";
 import { useAuth } from "./AuthContext";
@@ -156,10 +157,17 @@ async function registerForPushNotificationsAsync(): Promise<string | null> {
   }
 
   try {
-    const token = (await Notifications.getExpoPushTokenAsync()).data;
-    return token;
+    const projectId =
+      Constants.expoConfig?.extra?.eas?.projectId ??
+      Constants.easConfig?.projectId;
+    if (!projectId) {
+      console.warn("[push] No EAS projectId found — push token will not work on standalone builds");
+    }
+    const tokenData = await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined);
+    console.log("[push] Got Expo push token:", tokenData.data);
+    return tokenData.data;
   } catch (e) {
-    console.warn("[push] Could not get Expo push token", e);
+    console.warn("[push] Could not get Expo push token:", e);
     return null;
   }
 }
