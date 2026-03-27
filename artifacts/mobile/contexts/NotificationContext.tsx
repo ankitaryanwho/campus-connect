@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 import * as Notifications from "expo-notifications";
 import * as Device from "expo-device";
-import Constants from "expo-constants";
 import { Platform, Alert } from "react-native";
 import { useRouter } from "expo-router";
 import { useAuth } from "./AuthContext";
@@ -35,6 +34,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const { token: authToken, user } = useAuth();
   const router = useRouter();
   const [expoPushToken, setExpoPushToken] = useState<string | null>(null);
+
   const [unreadCount, setUnreadCount] = useState(0);
 
   const notificationListener = useRef<Notifications.EventSubscription | null>(null);
@@ -45,11 +45,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     if (!IS_NATIVE || !user || !authToken) return;
 
     registerForPushNotificationsAsync().then(async (token) => {
-      if (!token) {
-        Alert.alert("Push Debug", "Token generation failed or returned null. Check console for [push] logs.");
-        return;
-      }
-      Alert.alert("Push Debug", `Token OK:\n${token.substring(0, 40)}...`);
+      if (!token) return;
       setExpoPushToken(token);
 
       try {
@@ -62,8 +58,9 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
           },
           body: JSON.stringify({ token, platform: Platform.OS }),
         });
+        console.log("[push] Token registered with server");
       } catch (e) {
-        console.warn("[push] Failed to register token", e);
+        console.warn("[push] Failed to register token with server", e);
       }
     });
 
@@ -161,21 +158,14 @@ async function registerForPushNotificationsAsync(): Promise<string | null> {
   }
 
   try {
-    const projectId =
-      Constants.expoConfig?.extra?.eas?.projectId ??
-      Constants.easConfig?.projectId;
-    if (!projectId) {
-      Alert.alert("Push Debug", "No projectId found in Constants — token will fail on standalone builds");
-      return null;
-    }
-    Alert.alert("Push Debug", `Requesting token for projectId:\n${projectId}`);
-    const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
-    console.log("[push] Got Expo push token:", tokenData.data);
-    return tokenData.data;
+    // Use native FCM token directly — works with Firebase Admin SDK on the server
+    const deviceToken = await Notifications.getDevicePushTokenAsync();
+    console.log("[push] Got device FCM token type:", deviceToken.type);
+    return deviceToken.data as string;
   } catch (e: any) {
     const msg = e?.message ?? String(e);
-    Alert.alert("Push Debug — ERROR", msg);
-    console.warn("[push] Could not get Expo push token:", e);
+    console.warn("[push] Could not get device push token:", msg);
+    Alert.alert("Push Notification Error", msg);
     return null;
   }
 }
