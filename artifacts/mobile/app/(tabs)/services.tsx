@@ -2129,9 +2129,10 @@ export default function ServicesScreen() {
 
   const [bookConfirmItem, setBookConfirmItem] = useState<any>(null);
 
+  const OPTIMISTIC_DELIVERY_ACTIONS = new Set(["accept", "progress", "confirm", "cancel", "mark-paid", "confirm-payment"]);
+
   const actionMutation = useMutation({
     mutationFn: async ({ id, action, tab, body }: { id: string; action: string; tab: string; body?: any }) => {
-      setPendingId(id);
       const res = await apiRequest(`${endpointMap[tab]}/${id}/${action}`, {
         method: "POST",
         ...(body ? { body: JSON.stringify(body) } : {}),
@@ -2145,6 +2146,8 @@ export default function ServicesScreen() {
       return json;
     },
     onMutate: async ({ id, action, tab }: { id: string; action: string; tab: string; body?: any }) => {
+      const isOptimistic = tab === "deliveries" && OPTIMISTIC_DELIVERY_ACTIONS.has(action);
+      if (!isOptimistic) setPendingId(id);
       if (tab !== "deliveries") return {};
       await queryClient.cancelQueries({ queryKey: ["services", "deliveries"] });
       const prevDeliveries = queryClient.getQueryData(["services", "deliveries"]);
