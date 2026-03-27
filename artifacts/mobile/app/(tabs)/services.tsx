@@ -1906,8 +1906,23 @@ export default function ServicesScreen() {
     queryKey: ["services", "all"],
     queryFn: async () => {
       const res = await apiRequest("/services/all");
-      if (!res.ok) throw new Error("Failed to load");
-      return res.json();
+      if (res.ok) return res.json();
+      const [a, c, d, t, p, b] = await Promise.all([
+        apiRequest("/services/assignments").then(r => r.json()).catch(() => ({ assignments: [] })),
+        apiRequest("/services/certifications").then(r => r.json()).catch(() => ({ certifications: [] })),
+        apiRequest("/services/deliveries").then(r => r.json()).catch(() => ({ deliveries: [] })),
+        apiRequest("/services/tasks").then(r => r.json()).catch(() => ({ tasks: [] })),
+        apiRequest("/services/projects").then(r => r.json()).catch(() => ({ projects: [] })),
+        apiRequest("/services/bookings").then(r => r.json()).catch(() => ({ bookings: [] })),
+      ]);
+      return {
+        assignments: a.assignments || [],
+        certifications: c.certifications || [],
+        deliveries: d.deliveries || [],
+        tasks: t.tasks || [],
+        projects: p.projects || [],
+        bookings: b.bookings || [],
+      };
     },
     staleTime: 60_000,
     refetchInterval: 5_000,
