@@ -45,11 +45,11 @@ const WARM = {
 
 const CATEGORIES = [
   { id: "all",          label: "All",          emoji: "✦",  accent: "#1C1917", bg: "#F0EDEA" },
+  { id: "confessions",  label: "Confessions",  emoji: "🙈", accent: "#6B7280", bg: "#F3F4F6" },
   { id: "study",        label: "Study Help",   emoji: "📚", accent: "#3B82F6", bg: "#EFF6FF" },
   { id: "events",       label: "Events",       emoji: "🎪", accent: "#8B5CF6", bg: "#F5F3FF" },
   { id: "buysell",      label: "Buy / Sell",   emoji: "🛒", accent: "#F59E0B", bg: "#FFFBEB" },
   { id: "social",       label: "Social",       emoji: "💬", accent: "#10B981", bg: "#ECFDF5" },
-  { id: "confessions",  label: "Confessions",  emoji: "🙈", accent: "#6B7280", bg: "#F3F4F6" },
 ] as const;
 
 type CategoryId = typeof CATEGORIES[number]["id"];
@@ -484,7 +484,7 @@ export default function FeedScreen() {
       {/* Swim-lane strips — only shown in "All" mode */}
       {activeCategory === "all" && !isLoading && (
         <View style={{ marginTop: 4 }}>
-          {(["study", "events", "buysell", "social", "confessions"] as const).map(catId => (
+          {(["confessions", "study", "events", "buysell", "social"] as const).map(catId => (
             postsByCategory[catId].length > 0 && (
               <CategoryStrip
                 key={catId}
