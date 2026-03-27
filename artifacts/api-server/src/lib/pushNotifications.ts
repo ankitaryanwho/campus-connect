@@ -29,10 +29,19 @@ async function sendExpoPush(tokens: string[], title: string, body: string, data:
   if (!tokens.length) return;
   const messages = tokens.map(to => ({ to, title, body, data, sound: "default", priority: "high" }));
   try {
-    await fetch("https://exp.host/--/api/v2/push/send", {
+    const response = await fetch("https://exp.host/--/api/v2/push/send", {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json", "Accept-Encoding": "gzip, deflate" },
       body: JSON.stringify(messages),
+    });
+    const result = await response.json() as any;
+    const items = Array.isArray(result?.data) ? result.data : [result?.data].filter(Boolean);
+    items.forEach((item: any, i: number) => {
+      if (item?.status === "error") {
+        console.error(`[push] Token ${tokens[i]} failed: ${item.message} (${item.details?.error})`);
+      } else {
+        console.log(`[push] Sent to ${tokens[i]}: ${item?.status}`);
+      }
     });
   } catch (err) {
     console.error("[push] Failed to send:", err);
