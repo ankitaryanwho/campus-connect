@@ -1,0 +1,17 @@
+build:
+  name: Android (pnpm 10)
+  steps:
+    - eas/checkout
+    - run:
+        name: Activate pnpm 10 via Corepack
+        command: |
+          corepack enable
+          corepack prepare pnpm@10.26.1 --activate
+          echo "pnpm version: $(pnpm --version)"
+    - run:
+        name: Install dependencies
+        command: pnpm install --no-frozen-lockfile
+    - eas/prebuild
+    - eas/configure_eas_update
+    - eas/run_gradle
+    - eas/find_and_upload_build_artifacts

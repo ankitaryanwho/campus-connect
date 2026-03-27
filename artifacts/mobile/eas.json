@@ -4,6 +4,7 @@
   },
   "build": {
     "preview": {
+      "config": ".eas/build/custom-android.yml",
       "channel": "preview",
       "android": {
         "buildType": "apk"
@@ -13,6 +14,7 @@
       }
     },
     "production": {
+      "config": ".eas/build/custom-android.yml",
       "channel": "production",
       "android": {
         "buildType": "app-bundle"
