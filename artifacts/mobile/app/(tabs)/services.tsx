@@ -1905,8 +1905,8 @@ export default function ServicesScreen() {
   const { data: allData, isLoading, refetch: refetchAll } = useQuery({
     queryKey: ["services", "all"],
     queryFn: async () => {
-      const res = await apiRequest("/services/all");
-      if (res.ok) return res.json();
+      const allRes = await apiRequest("/services/all").catch(() => null);
+      if (allRes?.ok) return allRes.json();
       const [a, c, d, t, p, b] = await Promise.all([
         apiRequest("/services/assignments").then(r => r.json()).catch(() => ({ assignments: [] })),
         apiRequest("/services/certifications").then(r => r.json()).catch(() => ({ certifications: [] })),
@@ -1926,6 +1926,7 @@ export default function ServicesScreen() {
     },
     staleTime: 60_000,
     refetchInterval: 5_000,
+    retry: 1,
   });
 
   const assignData   = allData ? { assignments: allData.assignments }       : undefined;

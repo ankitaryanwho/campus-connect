@@ -28,6 +28,18 @@ async function safeUser(userId: string) {
   return u;
 }
 
+async function safeUserBatch(userIds: (string | null | undefined)[]): Promise<Map<string, any>> {
+  const ids = [...new Set(userIds.filter(Boolean) as string[])];
+  if (!ids.length) return new Map();
+  const users = await db.select().from(usersTable).where(inArray(usersTable.id, ids));
+  const map = new Map<string, any>();
+  for (const u of users) {
+    const { passwordHash: _, ...rest } = u;
+    map.set(u.id, rest);
+  }
+  return map;
+}
+
 async function currentUser(userId: string) {
   const users = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   return users[0] || null;
@@ -98,33 +110,20 @@ router.get("/all", authMiddleware, async (req, res) => {
       );
     }
 
-    const [assignments, certifications, deliveries, tasks, projects] = await Promise.all([
-      Promise.all(filteredAssignments.map(async a => ({
-        ...a,
-        poster: await safeUser(a.posterId),
-        bookedBy: a.bookedById ? await safeUser(a.bookedById) : null,
-      }))),
-      Promise.all(filteredCertifications.map(async c => ({
-        ...c,
-        poster: await safeUser(c.posterId),
-        bookedBy: c.bookedById ? await safeUser(c.bookedById) : null,
-      }))),
-      Promise.all(filteredDeliveries.map(async d => ({
-        ...d,
-        requester: await safeUser(d.requesterId),
-        deliveryAgent: d.deliveryAgentId ? await safeUser(d.deliveryAgentId) : null,
-      }))),
-      Promise.all(taskRows.map(async t => ({
-        ...t,
-        poster: await safeUser(t.posterId),
-        assignedTo: t.assignedToId ? await safeUser(t.assignedToId) : null,
-      }))),
-      Promise.all(projectRows.map(async p => ({
-        ...p,
-        poster: await safeUser(p.posterId),
-        bookedBy: p.bookedById ? await safeUser(p.bookedById) : null,
-      }))),
-    ]);
+    const allUserIds = [
+      ...filteredAssignments.map(a => a.posterId), ...filteredAssignments.map(a => a.bookedById),
+      ...filteredCertifications.map(c => c.posterId), ...filteredCertifications.map(c => c.bookedById),
+      ...filteredDeliveries.map(d => d.requesterId), ...filteredDeliveries.map(d => d.deliveryAgentId),
+      ...taskRows.map(t => t.posterId), ...taskRows.map(t => t.assignedToId),
+      ...projectRows.map(p => p.posterId), ...projectRows.map(p => p.bookedById),
+    ];
+    const userMap = await safeUserBatch(allUserIds);
+
+    const assignments  = filteredAssignments.map(a => ({ ...a, poster: userMap.get(a.posterId) || null, bookedBy: a.bookedById ? userMap.get(a.bookedById) || null : null }));
+    const certifications = filteredCertifications.map(c => ({ ...c, poster: userMap.get(c.posterId) || null, bookedBy: c.bookedById ? userMap.get(c.bookedById) || null : null }));
+    const deliveries   = filteredDeliveries.map(d => ({ ...d, requester: userMap.get(d.requesterId) || null, deliveryAgent: d.deliveryAgentId ? userMap.get(d.deliveryAgentId) || null : null }));
+    const tasks        = taskRows.map(t => ({ ...t, poster: userMap.get(t.posterId) || null, assignedTo: t.assignedToId ? userMap.get(t.assignedToId) || null : null }));
+    const projects     = projectRows.map(p => ({ ...p, poster: userMap.get(p.posterId) || null, bookedBy: p.bookedById ? userMap.get(p.bookedById) || null : null }));
 
     const activeStatuses = ["booked", "accepted", "in_progress", "completed", "rejected"];
     const [myAssignments, myCertifications, myProjects] = await Promise.all([
@@ -191,11 +190,12 @@ router.get("/assignments", authMiddleware, async (req, res) => {
       );
     }
 
-    const formatted = await Promise.all(rows.map(async a => ({
+    const userMap = await safeUserBatch([...rows.map(a => a.posterId), ...rows.map(a => a.bookedById)]);
+    const formatted = rows.map(a => ({
       ...a,
-      poster: await safeUser(a.posterId),
-      bookedBy: a.bookedById ? await safeUser(a.bookedById) : null,
-    })));
+      poster: userMap.get(a.posterId) || null,
+      bookedBy: a.bookedById ? userMap.get(a.bookedById) || null : null,
+    }));
     res.json({ assignments: formatted });
   } catch (err) {
     console.error(err);
@@ -369,11 +369,12 @@ router.get("/certifications", authMiddleware, async (req, res) => {
       );
     }
 
-    const formatted = await Promise.all(rows.map(async c => ({
+    const userMap = await safeUserBatch([...rows.map(c => c.posterId), ...rows.map(c => c.bookedById)]);
+    const formatted = rows.map(c => ({
       ...c,
-      poster: await safeUser(c.posterId),
-      bookedBy: c.bookedById ? await safeUser(c.bookedById) : null,
-    })));
+      poster: userMap.get(c.posterId) || null,
+      bookedBy: c.bookedById ? userMap.get(c.bookedById) || null : null,
+    }));
     res.json({ certifications: formatted });
   } catch (err) {
     console.error(err);
@@ -595,11 +596,12 @@ router.get("/deliveries", authMiddleware, async (req, res) => {
       );
     }
 
-    const formatted = await Promise.all(rows.map(async d => ({
+    const userMap = await safeUserBatch([...rows.map(d => d.requesterId), ...rows.map(d => d.deliveryAgentId)]);
+    const formatted = rows.map(d => ({
       ...d,
-      requester: await safeUser(d.requesterId),
-      deliveryAgent: d.deliveryAgentId ? await safeUser(d.deliveryAgentId) : null,
-    })));
+      requester: userMap.get(d.requesterId) || null,
+      deliveryAgent: d.deliveryAgentId ? userMap.get(d.deliveryAgentId) || null : null,
+    }));
     res.json({ deliveries: formatted });
   } catch (err) {
     console.error(err);
@@ -1090,11 +1092,12 @@ router.post("/deliveries/:id/rate", authMiddleware, async (req, res) => {
 router.get("/tasks", authMiddleware, async (req, res) => {
   try {
     const tasks = await db.select().from(tasksTable).orderBy(desc(tasksTable.createdAt));
-    const formatted = await Promise.all(tasks.map(async t => ({
+    const userMap = await safeUserBatch([...tasks.map(t => t.posterId), ...tasks.map(t => t.assignedToId)]);
+    const formatted = tasks.map(t => ({
       ...t,
-      poster: await safeUser(t.posterId),
-      assignedTo: t.assignedToId ? await safeUser(t.assignedToId) : null,
-    })));
+      poster: userMap.get(t.posterId) || null,
+      assignedTo: t.assignedToId ? userMap.get(t.assignedToId) || null : null,
+    }));
     res.json({ tasks: formatted });
   } catch (err) {
     res.status(500).json({ error: "ServerError", message: "Failed to get tasks" });
@@ -1197,11 +1200,12 @@ router.get("/my-earnings", authMiddleware, async (req, res) => {
 router.get("/projects", authMiddleware, async (req, res) => {
   try {
     const rows = await db.select().from(projectsTable).orderBy(desc(projectsTable.createdAt));
-    const formatted = await Promise.all(rows.map(async p => ({
+    const userMap = await safeUserBatch([...rows.map(p => p.posterId), ...rows.map(p => p.bookedById)]);
+    const formatted = rows.map(p => ({
       ...p,
-      poster: await safeUser(p.posterId),
-      bookedBy: p.bookedById ? await safeUser(p.bookedById) : null,
-    })));
+      poster: userMap.get(p.posterId) || null,
+      bookedBy: p.bookedById ? userMap.get(p.bookedById) || null : null,
+    }));
     res.json({ projects: formatted });
   } catch (err) {
     console.error(err);
