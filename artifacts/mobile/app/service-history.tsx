@@ -71,7 +71,7 @@ function formatDividerLabel(dayBucket: string): string {
   const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
   if (getDayBucket(dt.toISOString()) === getDayBucket(today.toISOString())) return "Today";
   if (getDayBucket(dt.toISOString()) === getDayBucket(yesterday.toISOString())) return "Yesterday";
-  return dt.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: dt.getFullYear() !== today.getFullYear() ? "numeric" : undefined });
+  return dt.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
 }
 
 const ACADEMIC_STEPS = [
@@ -200,10 +200,12 @@ interface HistoryData {
 function BookingCard({
   booking, C,
   onMutate, isPending, pendingId,
+  hideActions,
 }: {
   booking: BookingItem; C: ColorTokens;
   onMutate: (id: string, action: string) => void;
   isPending: boolean; pendingId: string | null;
+  hideActions?: boolean;
 }) {
   const accent   = serviceAccent(booking._type);
   const listing  = booking.listing;
@@ -321,7 +323,7 @@ function BookingCard({
       )}
 
       {/* Provider "Update Order Status" — calls API directly */}
-      {providerAction && (
+      {!hideActions && providerAction && (
         <TouchableOpacity
           style={[BC.actionBtn, { backgroundColor: accent, opacity: thisPending ? 0.6 : 1 }]}
           onPress={() => onMutate(booking.id, providerAction.action)}
@@ -341,7 +343,7 @@ function BookingCard({
       )}
 
       {/* Booker "Confirm Delivery" — calls API directly */}
-      {canConfirm && (
+      {!hideActions && canConfirm && (
         <TouchableOpacity
           style={[BC.actionBtn, { backgroundColor: "#10B981", opacity: thisPending ? 0.6 : 1 }]}
           onPress={() => onMutate(booking.id, "confirm")}
@@ -358,7 +360,7 @@ function BookingCard({
       )}
 
       {/* Booker "Track Order" — opens Services tab booking detail modal */}
-      {canTrack && (
+      {!hideActions && canTrack && (
         <Pressable
           style={[BC.trackBtn, { borderColor: accent }]}
           onPress={openTracking}
@@ -579,6 +581,7 @@ export default function ServiceHistoryScreen() {
         onMutate={onMutate}
         isPending={actionMutation.isPending}
         pendingId={pendingId}
+        hideActions
       />
     );
   }
