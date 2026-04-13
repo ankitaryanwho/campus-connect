@@ -31,6 +31,17 @@ export const insertMessageSchema = createInsertSchema(messagesTable).omit({ crea
 export type InsertMessage = z.infer<typeof insertMessageSchema>;
 export type Message = typeof messagesTable.$inferSelect;
 
+export const orderMessagesTable = pgTable("order_messages", {
+  id: text("id").primaryKey(),
+  orderId: text("order_id").notNull(),
+  orderType: text("order_type").notNull(),
+  senderId: text("sender_id").notNull().references(() => usersTable.id),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type OrderMessage = typeof orderMessagesTable.$inferSelect;
+
 export const chatroomsTable = pgTable("chatrooms", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),

@@ -9,6 +9,7 @@ import servicesRouter from "./services";
 import notificationsRouter from "./notifications";
 import adminRouter from "./admin";
 import syncRouter from "./sync";
+import orderChatRouter from "./order-chat";
 
 const router: IRouter = Router();
 
@@ -19,6 +20,7 @@ router.use("/users", usersRouter);
 router.use("/chat", chatRouter);
 router.use("/wallet", walletRouter);
 router.use("/services", servicesRouter);
+router.use("/services/order-chat", orderChatRouter);
 router.use("/notifications", notificationsRouter);
 router.use("/admin", adminRouter);
 router.use("/", syncRouter);

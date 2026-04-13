@@ -97,13 +97,15 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
   function handleNotificationTap(data: any) {
     if (!data) return;
-    const { screen, tab, itemId } = data as { screen?: string; tab?: string; itemId?: string };
+    const { screen, tab, itemId, openOrderChat, orderType } = data as { screen?: string; tab?: string; itemId?: string; openOrderChat?: string; orderType?: string };
 
     if (!screen) return;
 
     setTimeout(() => {
       try {
-        if (screen === "/(tabs)/services" && tab) {
+        if (screen === "/(tabs)/services" && openOrderChat) {
+          router.push({ pathname: "/(tabs)/services" as any, params: { tab: tab ?? "active", openOrderChat, orderType: orderType ?? "deliveries" } });
+        } else if (screen === "/(tabs)/services" && tab) {
           router.push({ pathname: "/(tabs)/services" as any, params: { tab, itemId: itemId ?? "" } });
         } else if (screen === "/(tabs)/wallet") {
           router.push("/(tabs)/wallet" as any);

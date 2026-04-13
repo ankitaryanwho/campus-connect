@@ -10,6 +10,7 @@ import { eq, desc, sql, and, inArray } from "drizzle-orm";
 import { authMiddleware } from "../lib/auth";
 import { generateId } from "../lib/id";
 import { notifyUser, notifyUsers } from "../lib/pushNotifications";
+import { deleteOrderMessages } from "./order-chat";
 
 const router = Router();
 
@@ -403,6 +404,7 @@ router.post("/assignments/:id/confirm", authMiddleware, async (req, res) => {
     await db.update(assignmentsTable).set({ status: "delivered", statusHistory: history }).where(eq(assignmentsTable.id, id));
     const updated = await db.select().from(assignmentsTable).where(eq(assignmentsTable.id, id)).limit(1);
     res.json({ ...updated[0], poster: await safeUser(updated[0].posterId), bookedBy: await safeUser(userId) });
+    deleteOrderMessages(id).catch(() => {});
   } catch (err) { console.error(err); res.status(500).json({ error: "ServerError" }); }
 });
 
@@ -569,6 +571,7 @@ router.post("/certifications/:id/confirm", authMiddleware, async (req, res) => {
     await db.update(certificationsTable).set({ status: "delivered", statusHistory: history }).where(eq(certificationsTable.id, id));
     const updated = await db.select().from(certificationsTable).where(eq(certificationsTable.id, id)).limit(1);
     res.json({ ...updated[0], poster: await safeUser(updated[0].posterId), bookedBy: await safeUser(userId) });
+    deleteOrderMessages(id).catch(() => {});
   } catch (err) { console.error(err); res.status(500).json({ error: "ServerError" }); }
 });
 
@@ -852,6 +855,7 @@ router.post("/deliveries/:id/confirm", authMiddleware, async (req, res) => {
     const updated = await db.update(deliveriesTable).set({ status: "delivered", statusHistory: history }).where(eq(deliveriesTable.id, id)).returning();
     const [requester, agent] = await Promise.all([safeUser(userId), updated[0].deliveryAgentId ? safeUser(updated[0].deliveryAgentId) : Promise.resolve(null)]);
     res.json({ ...updated[0], requester, deliveryAgent: agent });
+    deleteOrderMessages(id).catch(() => {});
     try {
       if (updated[0].deliveryAgentId) {
         await notifyUser(updated[0].deliveryAgentId, {
@@ -1414,6 +1418,7 @@ router.post("/projects/:id/confirm", authMiddleware, async (req, res) => {
     await db.update(projectsTable).set({ status: "delivered", statusHistory: history }).where(eq(projectsTable.id, id));
     const updated = await db.select().from(projectsTable).where(eq(projectsTable.id, id)).limit(1);
     res.json({ ...updated[0], poster: await safeUser(updated[0].posterId), bookedBy: await safeUser(userId) });
+    deleteOrderMessages(id).catch(() => {});
   } catch (err) { console.error(err); res.status(500).json({ error: "ServerError" }); }
 });
 
