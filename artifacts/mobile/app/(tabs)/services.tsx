@@ -1180,12 +1180,12 @@ function getStepsForItem(item: any): { labels: string[]; index: number } {
   }
   if (item._type === "deliveries") {
     if (item.pickupType === "outlet") {
-      const labels = ["Accepted", "Heading Out", "Order Placed", "Collecting", "On the Way", "Arrived", "Delivered"];
-      const map: Record<string, number> = { accepted: 0, reaching_pickup: 1, placed_order: 2, collecting_order: 3, reaching_drop: 4, completed: 5, delivered: 6 };
+      const labels = ["Awaiting Agent", "Accepted", "Heading Out", "Order Placed", "Collecting", "On the Way", "Arrived", "Delivered"];
+      const map: Record<string, number> = { pending: 0, accepted: 1, reaching_pickup: 2, placed_order: 3, collecting_order: 4, reaching_drop: 5, completed: 6, delivered: 7 };
       return { labels, index: map[s] ?? 0 };
     }
-    const labels = ["Accepted", "Heading Out", "On the Way", "Arrived", "Delivered"];
-    const map: Record<string, number> = { accepted: 0, reaching_pickup: 1, reaching_drop: 2, completed: 3, delivered: 4 };
+    const labels = ["Awaiting Agent", "Accepted", "Heading Out", "On the Way", "Arrived", "Delivered"];
+    const map: Record<string, number> = { pending: 0, accepted: 1, reaching_pickup: 2, reaching_drop: 3, completed: 4, delivered: 5 };
     return { labels, index: map[s] ?? 0 };
   }
   const labels = ["Booked", "Accepted", "In Progress", "Completed", "Done"];
@@ -1195,11 +1195,26 @@ function getStepsForItem(item: any): { labels: string[]; index: number } {
 
 // ─── Delivery Active CTA — contextual buttons for delivery Active Now cards ───
 
-function DeliveryActiveCTA({ item, isAgent, isRequester, isPending, cameraActionId, onCameraAction, onOpenQRUpload, onOpenPaymentModal, onPayDeliveryCharge, onReviewPayment, onMarkReceived, onTrackPress, meta }: any) {
+function DeliveryActiveCTA({ item, isAgent, isRequester, isPending, cameraActionId, onCameraAction, onOpenQRUpload, onOpenPaymentModal, onPayDeliveryCharge, onReviewPayment, onMarkReceived, onTrackPress, onCancelDelivery, meta }: any) {
   const isOutlet = item.pickupType === "outlet";
   const deliveryFee = parseFloat(item.deliveryFee || "30");
   const gst = parseFloat((deliveryFee * 0.18).toFixed(2));
   const subtotal = item.subtotal ? parseFloat(item.subtotal) : 0;
+
+  // Requester's own pending delivery — no agent has accepted yet
+  if (isRequester && item.status === "pending") {
+    return (
+      <Pressable
+        style={{ marginTop: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: "#EF4444", alignItems: "center" }}
+        onPress={() => onCancelDelivery?.(item.id)}
+        disabled={isPending}
+      >
+        {isPending
+          ? <ActivityIndicator size="small" color="#fff" />
+          : <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 12 }}>Cancel Order</Text>}
+      </Pressable>
+    );
+  }
 
   if (isAgent) {
     // 1. Accepted + no selfie → show "Take Live Selfie" on card
@@ -1360,7 +1375,7 @@ function DeliveryActiveCTA({ item, isAgent, isRequester, isPending, cameraAction
 
 // ─── Compact Active Job Card (matches Priority Lane mockup exactly) ────────────
 
-function CompactActiveCard({ item, C, user, onTrackPress, onAccept, onReject, onDismissRejection, isPending, onCameraAction, onOpenQRUpload, onOpenPaymentModal, onPayDeliveryCharge, onReviewPayment, onMarkReceived, cameraActionId }: any) {
+function CompactActiveCard({ item, C, user, onTrackPress, onAccept, onReject, onDismissRejection, isPending, onCameraAction, onOpenQRUpload, onOpenPaymentModal, onPayDeliveryCharge, onReviewPayment, onMarkReceived, onCancelDelivery, cameraActionId }: any) {
   const meta = CAT_META[item._type] || CAT_META.tasks;
   const { labels, index } = getStepsForItem(item);
   const progress = labels.length > 1 ? index / (labels.length - 1) : 1;
@@ -1493,7 +1508,7 @@ function CompactActiveCard({ item, C, user, onTrackPress, onAccept, onReject, on
                 onCameraAction={onCameraAction} onOpenQRUpload={onOpenQRUpload}
                 onOpenPaymentModal={onOpenPaymentModal} onPayDeliveryCharge={onPayDeliveryCharge}
                 onReviewPayment={onReviewPayment} onMarkReceived={onMarkReceived}
-                onTrackPress={onTrackPress} meta={meta}
+                onTrackPress={onTrackPress} onCancelDelivery={onCancelDelivery} meta={meta}
               />
             ) : (
               <Pressable
@@ -1890,6 +1905,7 @@ export default function ServicesScreen() {
   const [showPostModal, setShowPostModal] = useState(false);
   const [postType, setPostType] = useState("tasks");
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [rejectedDeliveryIds, setRejectedDeliveryIds] = useState<Set<string>>(new Set());
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [refreshing, setRefreshing] = useState(false);
   // Delivery compact-card camera state
@@ -2084,12 +2100,14 @@ export default function ServicesScreen() {
   const isActiveJobLegacy = (item: any) => {
     // Academic types are handled via booking records (myBookings) or syntheticBookings below
     if (ACADEMIC_CATS.includes(item._type)) return false;
+    const uid = user?.id;
+    const isStudentOf  = item.bookedBy?.id === uid || item.requester?.id === uid || item.requesterId === uid;
+    const isProviderOf = item.poster?.id === uid || item.deliveryAgent?.id === uid || item.assignedTo?.id === uid || item.deliveryAgentId === uid;
+    // Requester's own pending delivery shows in Active Now (waiting for an agent to accept)
+    if (item._type === "deliveries" && item.status === "pending" && isStudentOf) return true;
     const idle = ["open", "pending", "delivered", "cancelled"];
     if (idle.includes(item.status)) return false;
-    const uid = user?.id;
-    const isStudent  = item.bookedBy?.id === uid || item.requester?.id === uid || item.requesterId === uid;
-    const isProvider = item.poster?.id === uid || item.deliveryAgent?.id === uid || item.assignedTo?.id === uid || item.deliveryAgentId === uid;
-    return isStudent || isProvider;
+    return isStudentOf || isProviderOf;
   };
 
   // Synthesize booking-display objects from OLD-MODEL academic listing rows.
@@ -2132,9 +2150,11 @@ export default function ServicesScreen() {
       return item.poster?.id !== user?.id;
     }
     if (!["open", "pending"].includes(item.status)) return false;
-    // Delivery: students only see their own request (use raw ID as fallback if populated object is null)
-    if (item._type === "deliveries" && !isProvider) {
-      return item.requester?.id === user?.id || item.requesterId === user?.id;
+    // Deliveries: agents see all pending orders to accept/reject; requesters see their
+    // own pending delivery in "Active Now" instead (not here in Open Listings)
+    if (item._type === "deliveries") {
+      if (rejectedDeliveryIds.has(item.id)) return false; // Agent already rejected this one
+      return isProvider; // Only agents (providers) see open delivery listings here
     }
     return true;
   };
@@ -2155,7 +2175,9 @@ export default function ServicesScreen() {
   const catBookings = ACADEMIC_CATS.includes(activeCat)
     ? myBookings.filter(b => b._type === activeCat && isVisibleBooking(b))
     : [];
-  const activeJobs: any[] = ACADEMIC_CATS.includes(activeCat)
+  const sortByRecent = (a: any, b: any) =>
+    new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime();
+  const activeJobs: any[] = (ACADEMIC_CATS.includes(activeCat)
     ? [...catBookings, ...syntheticBookings.filter(b => b._type === activeCat)]
     : activeCat === "all"
       ? [
@@ -2163,7 +2185,8 @@ export default function ServicesScreen() {
           ...myBookings.filter(isVisibleBooking),
           ...syntheticBookings,
         ]
-      : filteredItems.filter(isActiveJobLegacy);
+      : filteredItems.filter(isActiveJobLegacy)
+  ).sort(sortByRecent);
   const openListings    = filteredItems.filter(isOpenListing);
 
   const totalActive     = allDeliveriesAndTasks.filter(isActiveJobLegacy).length
@@ -2264,6 +2287,10 @@ export default function ServicesScreen() {
           if (!old?.deliveries) return old;
           return { ...old, deliveries: old.deliveries.map((d: any) => d.id === vars.id ? { ...d, ...data } : d) };
         });
+      }
+      // Track deliveries the agent rejected locally so they vanish from Open Listings
+      if (vars.action === "reject" && vars.tab === "deliveries") {
+        setRejectedDeliveryIds(prev => new Set([...prev, vars.id]));
       }
       queryClient.invalidateQueries({ queryKey: ["services", "all"] });
       queryClient.invalidateQueries({ queryKey: ["wallet"] });
@@ -2598,6 +2625,7 @@ export default function ServicesScreen() {
                     onPayDeliveryCharge={handlePayDeliveryCharge}
                     onReviewPayment={handleReviewPayment}
                     onMarkReceived={handleMarkReceived}
+                    onCancelDelivery={(id: string) => actionMutation.mutate({ id, action: "cancel", tab: "deliveries" })}
                   />
                 ))}
               </View>
