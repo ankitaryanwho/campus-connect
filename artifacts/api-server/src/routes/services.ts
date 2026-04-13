@@ -1524,22 +1524,15 @@ router.get("/my-history", authMiddleware, async (req, res) => {
       ...myProjects.map(p => p.id),
     ];
 
-    // Bookings where I am the student (booker)
+    // Bookings where I am the student (booker) — fetch ALL statuses for complete history
     const bookerBookingsRaw = await db.select().from(serviceBookingsTable)
-      .where(and(
-        eq(serviceBookingsTable.studentId, userId),
-        // exclude dismissed only — include delivered for history
-        sql`${serviceBookingsTable.status} NOT IN ('dismissed')`
-      ))
+      .where(eq(serviceBookingsTable.studentId, userId))
       .orderBy(desc(serviceBookingsTable.createdAt));
 
-    // Bookings on my own listings (I am the provider / lister)
+    // Bookings on my own listings (I am the provider / lister) — fetch ALL statuses
     const listerBookingsRaw = myListingIds.length > 0
       ? await db.select().from(serviceBookingsTable)
-          .where(and(
-            inArray(serviceBookingsTable.listingId, myListingIds),
-            sql`${serviceBookingsTable.status} NOT IN ('dismissed')`
-          ))
+          .where(inArray(serviceBookingsTable.listingId, myListingIds))
           .orderBy(desc(serviceBookingsTable.createdAt))
       : ([] as ServiceBooking[]);
 
@@ -1587,9 +1580,11 @@ router.get("/my-history", authMiddleware, async (req, res) => {
       };
     });
 
-    const terminalStatuses = new Set(["delivered", "dismissed", "cancelled"]);
+    // Terminal = order is fully done (no more actions possible)
+    const terminalStatuses = new Set(["delivered", "dismissed", "cancelled", "rejected"]);
     const active    = enriched.filter(b => !terminalStatuses.has(b.status));
-    const completed = enriched.filter(b => b.status === "delivered");
+    // Completed tab = all terminal orders so user can see full history
+    const completed = enriched.filter(b => terminalStatuses.has(b.status));
 
     res.json({ active, completed });
   } catch (err) {

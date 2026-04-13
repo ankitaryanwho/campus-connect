@@ -497,7 +497,7 @@ export default function ServiceHistoryScreen() {
         <View style={{ flex: 1 }}>
           <Text style={[S.headerTitle, { color: C.text }]}>Your Activity</Text>
           <Text style={[S.headerSub, { color: C.textSecondary }]}>
-            {active.length} active · {completed.length} completed
+            {active.length} active · {completed.length} in history
           </Text>
         </View>
         <Pressable style={S.iconBtn} onPress={onRefresh}>
@@ -513,7 +513,7 @@ export default function ServiceHistoryScreen() {
           return (
             <Pressable key={t} style={[S.tabItem, on && S.tabItemOn]} onPress={() => setTab(t)}>
               <Text style={[S.tabText, { color: on ? "#5B4FE8" : C.textSecondary }, on && S.tabTextOn]}>
-                {t === "active" ? "Active Jobs" : "Completed Jobs"}
+                {t === "active" ? "Active Jobs" : "History"}
               </Text>
               {cnt > 0 && (
                 <View style={[S.tabBadge, { backgroundColor: on ? "#5B4FE8" : C.border }]}>
