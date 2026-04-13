@@ -46,6 +46,34 @@ function formatRupee(n: string | number | null | undefined): string {
   return isNaN(num) ? "0" : num.toLocaleString("en-IN");
 }
 
+function formatCardTime(d: string | null | undefined): string {
+  if (!d) return "";
+  const dt = new Date(d);
+  return dt.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }).toUpperCase();
+}
+
+function formatCardDate(d: string | null | undefined): string {
+  if (!d) return "";
+  const dt = new Date(d);
+  return dt.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+}
+
+function getDayBucket(d: string | null | undefined): string {
+  if (!d) return "unknown";
+  const dt = new Date(d);
+  return `${dt.getFullYear()}-${dt.getMonth()}-${dt.getDate()}`;
+}
+
+function formatDividerLabel(dayBucket: string): string {
+  const [year, month, day] = dayBucket.split("-").map(Number);
+  const dt = new Date(year, month, day);
+  const today = new Date();
+  const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
+  if (getDayBucket(dt.toISOString()) === getDayBucket(today.toISOString())) return "Today";
+  if (getDayBucket(dt.toISOString()) === getDayBucket(yesterday.toISOString())) return "Yesterday";
+  return dt.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: dt.getFullYear() !== today.getFullYear() ? "numeric" : undefined });
+}
+
 const ACADEMIC_STEPS = [
   { id: "booked",      label: "Booked"      },
   { id: "accepted",    label: "Accepted"    },
@@ -219,6 +247,16 @@ function BookingCard({
         </View>
       </View>
 
+      {/* Timestamp */}
+      {booking.createdAt ? (
+        <View style={BC.timestampRow}>
+          <Feather name="clock" size={11} color={C.textTertiary} />
+          <Text style={[BC.timestampText, { color: C.textTertiary }]}>
+            {formatCardDate(booking.createdAt)} · {formatCardTime(booking.createdAt)}
+          </Text>
+        </View>
+      ) : null}
+
       {/* Title */}
       <Text style={[BC.title, { color: C.text }]} numberOfLines={2}>{title}</Text>
 
@@ -366,8 +404,10 @@ const BC = StyleSheet.create({
   rejectedText:    { fontSize: 12, fontFamily: "Inter_600SemiBold", color: "#EF4444" },
   deliveredBanner: { flexDirection: "row", alignItems: "center", gap: 7, backgroundColor: "#D1FAE5", padding: 10, borderRadius: 10 },
   deliveredText:   { fontSize: 12, fontFamily: "Inter_600SemiBold", color: "#059669" },
-  infoBanner:  { flexDirection: "row", alignItems: "center", gap: 7, padding: 10, borderRadius: 10 },
-  infoText:    { fontSize: 12, fontFamily: "Inter_400Regular" },
+  infoBanner:   { flexDirection: "row", alignItems: "center", gap: 7, padding: 10, borderRadius: 10 },
+  infoText:     { fontSize: 12, fontFamily: "Inter_400Regular" },
+  timestampRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+  timestampText:{ fontSize: 11, fontFamily: "Inter_400Regular" },
 });
 
 // ─── Delivery Card ─────────────────────────────────────────────────────────────
@@ -401,6 +441,15 @@ function DeliveryCard({ item, C }: { item: DeliveryHistoryItem; C: ColorTokens }
           <Text style={[BC.statusText, { color: sc }]}>{sl}</Text>
         </View>
       </View>
+
+      {item.createdAt ? (
+        <View style={BC.timestampRow}>
+          <Feather name="clock" size={11} color="#A8A29E" />
+          <Text style={[BC.timestampText, { color: "#A8A29E" }]}>
+            {formatCardDate(item.createdAt)} · {formatCardTime(item.createdAt)}
+          </Text>
+        </View>
+      ) : null}
 
       <View style={{ gap: 3 }}>
         <Text style={[BC.title, { color: C.text }]} numberOfLines={1}>
@@ -534,6 +583,35 @@ export default function ServiceHistoryScreen() {
     );
   }
 
+  function renderWithDividers(items: HistoryItem[]) {
+    const buckets: { bucket: string; items: HistoryItem[] }[] = [];
+    for (const item of items) {
+      const bucket = getDayBucket(item.createdAt);
+      const last = buckets[buckets.length - 1];
+      if (last && last.bucket === bucket) {
+        last.items.push(item);
+      } else {
+        buckets.push({ bucket, items: [item] });
+      }
+    }
+    return (
+      <>
+        {buckets.map(({ bucket, items: group }) => (
+          <View key={bucket}>
+            <View style={S.dateDivider}>
+              <View style={[S.dateDividerLine, { backgroundColor: C.border }]} />
+              <Text style={[S.dateDividerText, { color: C.textTertiary, backgroundColor: C.background }]}>
+                {formatDividerLabel(bucket)}
+              </Text>
+              <View style={[S.dateDividerLine, { backgroundColor: C.border }]} />
+            </View>
+            {group.map(renderCard)}
+          </View>
+        ))}
+      </>
+    );
+  }
+
   function renderActiveContent() {
     if (historyQuery.isLoading) return <ActivityIndicator color={C.primary} style={{ marginTop: 40 }} />;
     if (historyQuery.isError)   return renderEmpty("Could not load jobs.\nPull down to try again.");
@@ -553,7 +631,7 @@ export default function ServiceHistoryScreen() {
                   <Text style={[S.groupBadgeText, { color: "#5B4FE8" }]}>{activeAsProvider.length}</Text>
                 </View>
               </View>
-              {activeAsProvider.map(renderCard)}
+              {renderWithDividers(activeAsProvider)}
             </View>
           )}
           {hasCustomer && (
@@ -565,7 +643,7 @@ export default function ServiceHistoryScreen() {
                   <Text style={[S.groupBadgeText, { color: "#D97706" }]}>{activeAsCustomer.length}</Text>
                 </View>
               </View>
-              {activeAsCustomer.map(renderCard)}
+              {renderWithDividers(activeAsCustomer)}
             </View>
           )}
           {!hasProvider && !hasCustomer && renderEmpty("No active jobs.")}
@@ -573,14 +651,14 @@ export default function ServiceHistoryScreen() {
       );
     }
 
-    return <>{active.map(renderCard)}</>;
+    return renderWithDividers(active);
   }
 
   function renderCompletedContent() {
     if (historyQuery.isLoading) return <ActivityIndicator color={C.primary} style={{ marginTop: 40 }} />;
     if (historyQuery.isError)   return renderEmpty("Could not load history.\nPull down to try again.");
     if (allHistory.length === 0) return renderEmpty("No completed orders yet.");
-    return <>{allHistory.map(renderCard)}</>;
+    return renderWithDividers(allHistory);
   }
 
   return (
@@ -657,6 +735,9 @@ const S = StyleSheet.create({
   groupTitle:   { fontSize: 13, fontFamily: "Inter_700Bold", flex: 1 },
   groupBadge:   { minWidth: 22, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center", paddingHorizontal: 6 },
   groupBadgeText: { fontSize: 11, fontFamily: "Inter_700Bold" },
-  empty:        { alignItems: "center", paddingVertical: 60, gap: 12, borderWidth: 0.5, borderRadius: 16, borderStyle: "dashed", marginTop: 8 },
-  emptyText:    { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 22 },
+  empty:            { alignItems: "center", paddingVertical: 60, gap: 12, borderWidth: 0.5, borderRadius: 16, borderStyle: "dashed", marginTop: 8 },
+  emptyText:        { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 22 },
+  dateDivider:      { flexDirection: "row", alignItems: "center", gap: 8, marginVertical: 6 },
+  dateDividerLine:  { flex: 1, height: 0.5 },
+  dateDividerText:  { fontSize: 11, fontFamily: "Inter_600SemiBold", paddingHorizontal: 4 },
 });
