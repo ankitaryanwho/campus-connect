@@ -1979,6 +1979,19 @@ export default function ServicesScreen() {
   });
   const outletItems = outletData?.items || [];
 
+  const { data: myHistoryData } = useQuery({
+    queryKey: ["my-history"],
+    queryFn: async () => {
+      const res = await apiRequest("/services/my-history");
+      if (!res.ok) return { active: [], completed: [] };
+      return res.json();
+    },
+    staleTime: 5_000,
+    refetchInterval: 5_000,
+  });
+  const bannerActiveCount    = (myHistoryData?.active    || []).length;
+  const bannerHistoryCount   = (myHistoryData?.completed || []).length;
+
   // Tag each item with its _type so renderCard can dispatch correctly
   const rawAssignments    = (assignData?.assignments    || []).map((i: any) => ({ ...i, _type: "assignments" }));
   const rawCertifications = (certData?.certifications   || []).map((i: any) => ({ ...i, _type: "certifications" }));
@@ -2465,7 +2478,7 @@ export default function ServicesScreen() {
         <View>
           <Text style={[CS.headerTitle, { color: C.text }]}>Services</Text>
           <Text style={[CS.headerSub, { color: C.textTertiary }]}>
-            {totalActive > 0 ? `${totalActive} active · ` : ""}{totalOpen} open listing{totalOpen !== 1 ? "s" : ""}
+            {bannerActiveCount > 0 ? `${bannerActiveCount} active · ` : ""}{totalOpen} open listing{totalOpen !== 1 ? "s" : ""}
           </Text>
         </View>
         <View style={{ flexDirection: "row", gap: 8 }}>
@@ -2476,7 +2489,7 @@ export default function ServicesScreen() {
             <Pressable style={[CS.headerIconBtn, { backgroundColor: C.backgroundSecondary, borderColor: C.border }]}>
               <Feather name="bell" size={17} color={C.textSecondary} />
             </Pressable>
-            {totalActive > 0 && <View style={CS.notifDot} />}
+            {bannerActiveCount > 0 && <View style={CS.notifDot} />}
           </View>
         </View>
       </View>
@@ -2531,10 +2544,10 @@ export default function ServicesScreen() {
               <Text style={[CS.activityTitle, { color: C.text }]}>Your activity</Text>
               <View style={{ flexDirection: "row", gap: 14, marginTop: 2 }}>
                 <Text style={[CS.activityStat, { color: C.textSecondary }]}>
-                  <Text style={{ color: "#5B4FE8", fontFamily: "Inter_700Bold" }}>{totalActive}</Text> active job{totalActive !== 1 ? "s" : ""}
+                  <Text style={{ color: "#5B4FE8", fontFamily: "Inter_700Bold" }}>{bannerActiveCount}</Text> active job{bannerActiveCount !== 1 ? "s" : ""}
                 </Text>
                 <Text style={[CS.activityStat, { color: C.textSecondary }]}>
-                  <Text style={{ color: "#10B981", fontFamily: "Inter_700Bold" }}>{totalCompleted}</Text> completed
+                  <Text style={{ color: "#10B981", fontFamily: "Inter_700Bold" }}>{bannerHistoryCount}</Text> in history
                 </Text>
               </View>
             </View>
