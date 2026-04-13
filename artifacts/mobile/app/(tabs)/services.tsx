@@ -1576,9 +1576,12 @@ function CompactActiveCard({ item, C, user, onTrackPress, onAccept, onReject, on
 
 function OrderMiniChat({ item, C, onClose }: any) {
   const { apiRequest } = useAuth();
+  const { showToast } = useToast();
   const scrollRef = useRef<any>(null);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  // Local optimistic messages added immediately on send
+  const [optimistic, setOptimistic] = useState<any[]>([]);
   const orderId = item.id;
   const orderType = item._type;
   const orderTitle = item.title || item.pickupLocation || "Order";
@@ -1590,81 +1593,111 @@ function OrderMiniChat({ item, C, onClose }: any) {
       if (!res.ok) return { messages: [] };
       return res.json();
     },
-    refetchInterval: 5000,
+    refetchInterval: 6000,
   });
 
-  const messages: any[] = data?.messages ?? [];
+  // Merge server messages + optimistic ones, deduplicating by content+timestamp proximity
+  const serverMessages: any[] = data?.messages ?? [];
+  const allMessages = [...serverMessages, ...optimistic.filter(o =>
+    !serverMessages.some(s => s.content === o.content && Math.abs(new Date(s.createdAt).getTime() - o.createdAt) < 10000)
+  )].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    if (allMessages.length > 0) {
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+    }
+  }, [allMessages.length]);
 
   const handleSend = async () => {
-    if (!text.trim() || sending) return;
+    const content = text.trim();
+    if (!content || sending) return;
     setSending(true);
+    // Optimistic: add immediately to local state
+    const tempMsg = { id: `temp-${Date.now()}`, content, isSelf: true, senderName: "You", createdAt: Date.now() };
+    setOptimistic(prev => [...prev, tempMsg]);
+    setText("");
     try {
-      await apiRequest(`/services/order-chat/${orderId}`, {
+      const res = await apiRequest(`/services/order-chat/${orderId}`, {
         method: "POST",
-        body: JSON.stringify({ content: text.trim(), orderType, orderTitle }),
+        body: JSON.stringify({ content, orderType, orderTitle }),
       });
-      setText("");
-      refetch();
-    } catch {} finally {
+      if (!res.ok) throw new Error("send failed");
+      // Refresh from server to get real message ID
+      await refetch();
+      // Remove the optimistic placeholder now server has the real one
+      setOptimistic(prev => prev.filter(m => m.id !== tempMsg.id));
+    } catch {
+      // Roll back optimistic message and show error
+      setOptimistic(prev => prev.filter(m => m.id !== tempMsg.id));
+      setText(content);
+      showToast("Failed to send message", "error");
+    } finally {
       setSending(false);
     }
   };
 
   return (
-    <View style={{ marginTop: 12, backgroundColor: C.backgroundSecondary, borderRadius: 14, overflow: "hidden", borderWidth: 1, borderColor: "#E0D9FF" }}>
+    <View style={{ marginTop: 12, borderRadius: 14, overflow: "hidden", borderWidth: 1, borderColor: "#E0D9FF" }}>
       {/* Header */}
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 12, paddingVertical: 8, backgroundColor: "#EDE9FE" }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
           <Feather name="message-circle" size={13} color="#5B4FE8" />
           <Text style={{ fontSize: 12, fontFamily: "Inter_700Bold", color: "#5B4FE8" }}>Order Chat</Text>
         </View>
-        <Pressable onPress={onClose} style={{ padding: 2 }}>
+        <Pressable onPress={onClose} style={{ padding: 4 }}>
           <Feather name="x" size={14} color="#5B4FE8" />
         </Pressable>
       </View>
 
-      {/* Messages */}
-      <ScrollView
-        ref={scrollRef}
-        style={{ maxHeight: 200 }}
-        contentContainerStyle={{ padding: 10, gap: 4 }}
-        onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
-        keyboardShouldPersistTaps="handled"
-      >
-        {messages.length === 0 ? (
-          <Text style={{ fontSize: 11, color: C.textTertiary, textAlign: "center", paddingVertical: 16, fontFamily: "Inter_400Regular" }}>
-            No messages yet. Send the first one!
-          </Text>
-        ) : (
-          messages.map((msg: any) => (
-            <View key={msg.id} style={{ alignSelf: msg.isSelf ? "flex-end" : "flex-start", maxWidth: "82%", marginBottom: 4 }}>
-              <View style={{
-                backgroundColor: msg.isSelf ? "#5B4FE8" : C.surface,
-                paddingHorizontal: 10,
-                paddingVertical: 6,
-                borderRadius: 14,
-                borderBottomRightRadius: msg.isSelf ? 3 : 14,
-                borderBottomLeftRadius: msg.isSelf ? 14 : 3,
-                ...(msg.isSelf ? {} : { borderWidth: 0.5, borderColor: C.border }),
-              }}>
-                <Text style={{ fontSize: 12, color: msg.isSelf ? "#fff" : C.text, fontFamily: "Inter_400Regular" }}>
-                  {msg.content}
+      {/* Messages list */}
+      <View style={{ backgroundColor: "#F9F8FF", minHeight: 80, maxHeight: 210 }}>
+        <ScrollView
+          ref={scrollRef}
+          contentContainerStyle={{ padding: 10, paddingBottom: 6 }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          {allMessages.length === 0 ? (
+            <Text style={{ fontSize: 11, color: "#9CA3AF", textAlign: "center", paddingVertical: 18, fontFamily: "Inter_400Regular" }}>
+              No messages yet — say hello!
+            </Text>
+          ) : (
+            allMessages.map((msg: any) => (
+              <View key={msg.id} style={{ alignSelf: msg.isSelf ? "flex-end" : "flex-start", maxWidth: "80%", marginBottom: 6 }}>
+                <View style={{
+                  backgroundColor: msg.isSelf ? "#5B4FE8" : "#FFFFFF",
+                  paddingHorizontal: 11,
+                  paddingVertical: 7,
+                  borderRadius: 16,
+                  borderBottomRightRadius: msg.isSelf ? 3 : 16,
+                  borderBottomLeftRadius: msg.isSelf ? 16 : 3,
+                  shadowColor: "#000",
+                  shadowOffset: { width: 0, height: 1 },
+                  shadowOpacity: 0.06,
+                  shadowRadius: 2,
+                  elevation: 1,
+                  ...(!msg.isSelf ? { borderWidth: 0.5, borderColor: "#E5E7EB" } : {}),
+                }}>
+                  <Text style={{ fontSize: 13, color: msg.isSelf ? "#FFFFFF" : "#111827", fontFamily: "Inter_400Regular", lineHeight: 18 }}>
+                    {msg.content}
+                  </Text>
+                </View>
+                <Text style={{ fontSize: 9, color: "#9CA3AF", fontFamily: "Inter_400Regular", marginTop: 2, textAlign: msg.isSelf ? "right" : "left" }}>
+                  {msg.isSelf ? "You" : msg.senderName} · {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                 </Text>
               </View>
-              <Text style={{ fontSize: 9, color: C.textTertiary, fontFamily: "Inter_400Regular", marginTop: 1, textAlign: msg.isSelf ? "right" : "left" }}>
-                {msg.isSelf ? "You" : msg.senderName} · {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-              </Text>
-            </View>
-          ))
-        )}
-      </ScrollView>
+            ))
+          )}
+        </ScrollView>
+      </View>
 
       {/* Input row */}
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, padding: 8, borderTopWidth: 0.5, borderColor: "#E0D9FF" }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, padding: 8, backgroundColor: "#fff", borderTopWidth: 0.5, borderColor: "#E0D9FF" }}>
         <TextInput
-          style={{ flex: 1, fontSize: 13, color: C.text, fontFamily: "Inter_400Regular", backgroundColor: C.surface, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 0.5, borderColor: C.border }}
+          style={{ flex: 1, fontSize: 13, color: "#111827", fontFamily: "Inter_400Regular", backgroundColor: "#F3F4F6", borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8 }}
           placeholder="Type a message…"
-          placeholderTextColor={C.textTertiary}
+          placeholderTextColor="#9CA3AF"
           value={text}
           onChangeText={setText}
           returnKeyType="send"
@@ -1672,13 +1705,13 @@ function OrderMiniChat({ item, C, onClose }: any) {
           blurOnSubmit={false}
         />
         <Pressable
-          disabled={!text.trim() || sending}
           onPress={handleSend}
-          style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: text.trim() ? "#5B4FE8" : "#E7E5E4", alignItems: "center", justifyContent: "center" }}
+          disabled={!text.trim() || sending}
+          style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: text.trim() ? "#5B4FE8" : "#E5E7EB", alignItems: "center", justifyContent: "center" }}
         >
           {sending
             ? <ActivityIndicator size="small" color="#fff" />
-            : <Feather name="send" size={13} color={text.trim() ? "#fff" : "#A8A29E"} />}
+            : <Feather name="send" size={14} color={text.trim() ? "#fff" : "#9CA3AF"} />}
         </Pressable>
       </View>
     </View>
