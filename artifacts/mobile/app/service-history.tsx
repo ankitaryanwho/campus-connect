@@ -2,8 +2,9 @@ import React, { useState, useCallback } from "react";
 import {
   View, Text, ScrollView, Pressable,
   StyleSheet, ActivityIndicator, RefreshControl, Platform,
+  DimensionValue,
 } from "react-native";
-import { router } from "expo-router";
+import { router, Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -13,6 +14,38 @@ import { useColorScheme } from "react-native";
 
 const isWeb = Platform.OS === "web";
 
+// ─── Lookup maps (typed, no `as any`) ─────────────────────────────────────────
+const SERVICE_LABEL: Record<string, string> = {
+  assignments: "Assignment", certifications: "Certification", projects: "Project",
+};
+const SERVICE_EMOJI: Record<string, string> = {
+  assignments: "📝", certifications: "🏆", projects: "💼",
+};
+const SERVICE_ACCENT: Record<string, string> = {
+  assignments: "#5B4FE8", certifications: "#10B981", projects: "#6366F1",
+};
+const STATUS_LABEL: Record<string, string> = {
+  booked: "Booked", accepted: "Accepted", rejected: "Rejected",
+  in_progress: "In Progress", completed: "Done", delivered: "Delivered",
+  cancelled: "Cancelled",
+};
+const STATUS_COLOR: Record<string, string> = {
+  delivered: "#10B981", in_progress: "#8B5CF6", accepted: "#5B4FE8",
+  booked: "#F59E0B", rejected: "#EF4444", cancelled: "#EF4444",
+  completed: "#5B4FE8",
+};
+
+function serviceLabel(t: string) { return SERVICE_LABEL[t] ?? t; }
+function serviceEmoji(t: string) { return SERVICE_EMOJI[t] ?? "📦"; }
+function serviceAccent(t: string) { return SERVICE_ACCENT[t] ?? "#5B4FE8"; }
+function statusLabel(s: string) { return STATUS_LABEL[s] ?? s; }
+function statusColor(s: string) { return STATUS_COLOR[s] ?? "#A8A29E"; }
+
+function formatRupee(n: string | number | null | undefined): string {
+  const num = typeof n === "string" ? parseFloat(n) : (n ?? 0);
+  return isNaN(num) ? "0" : num.toLocaleString("en-IN");
+}
+
 const ACADEMIC_STEPS = [
   { id: "booked",      label: "Booked"      },
   { id: "accepted",    label: "Accepted"    },
@@ -21,47 +54,21 @@ const ACADEMIC_STEPS = [
   { id: "delivered",   label: "Delivered"   },
 ];
 
-function statusColor(s: string): string {
-  if (s === "delivered")                     return "#10B981";
-  if (s === "in_progress")                   return "#8B5CF6";
-  if (s === "accepted")                      return "#5B4FE8";
-  if (s === "booked")                        return "#F59E0B";
-  if (s === "rejected" || s === "cancelled") return "#EF4444";
-  if (s === "completed")                     return "#5B4FE8";
-  return "#A8A29E";
-}
-
-function statusLabel(s: string): string {
-  const m: Record<string, string> = {
-    booked: "Booked", accepted: "Accepted", rejected: "Rejected",
-    in_progress: "In Progress", completed: "Done", delivered: "Delivered",
-    cancelled: "Cancelled",
-  };
-  return m[s] || s;
-}
-
-function serviceLabel(t: string) { return ({ assignments: "Assignment", certifications: "Certification", projects: "Project" } as any)[t] || t; }
-function serviceEmoji(t: string) { return ({ assignments: "📝", certifications: "🏆", projects: "💼" } as any)[t] || "📦"; }
-function serviceAccent(t: string) { return ({ assignments: "#5B4FE8", certifications: "#10B981", projects: "#6366F1" } as any)[t] || "#5B4FE8"; }
-
-function formatRupee(n: any): string {
-  const num = typeof n === "string" ? parseFloat(n) : (n || 0);
-  return isNaN(num) ? "0" : num.toLocaleString("en-IN");
-}
-
-function getStepIndex(status: string) {
+function getStepIndex(status: string): number {
   const idx = ACADEMIC_STEPS.findIndex(s => s.id === status);
   return idx === -1 ? 0 : idx;
 }
 
+type ColorTokens = typeof Colors.light;
+
 // ─── Read-only Status Timeline ────────────────────────────────────────────────
-function StatusTimeline({ booking, accent }: { booking: any; accent: string }) {
+function StatusTimeline({ booking, accent }: { booking: BookingItem; accent: string }) {
   const idx = getStepIndex(booking.status);
-  const pct = Math.round((idx / (ACADEMIC_STEPS.length - 1)) * 100);
+  const pct: DimensionValue = `${Math.round((idx / (ACADEMIC_STEPS.length - 1)) * 100)}%`;
   return (
     <View style={TL.wrap}>
       <View style={TL.track}>
-        <View style={[TL.fill, { backgroundColor: accent, width: `${pct}%` as any }]} />
+        <View style={[TL.fill, { backgroundColor: accent, width: pct }]} />
       </View>
       <View style={TL.steps}>
         {ACADEMIC_STEPS.map((step, i) => {
@@ -69,16 +76,25 @@ function StatusTimeline({ booking, accent }: { booking: any; accent: string }) {
           const active = i === idx;
           return (
             <View key={step.id} style={TL.step}>
-              {done   ? <Feather name="check-circle" size={14} color={accent} /> :
-               active ? (
+              {done ? (
+                <Feather name="check-circle" size={14} color={accent} />
+              ) : active ? (
                 <View style={[TL.activeDot, { borderColor: accent }]}>
                   <View style={[TL.activeDotInner, { backgroundColor: accent }]} />
                 </View>
-              ) : <Feather name="circle" size={14} color="#D6D3D1" />}
-              <Text numberOfLines={2} style={[TL.stepLabel, {
-                color: active ? accent : done ? "#78716C" : "#D6D3D1",
-                fontFamily: active ? "Inter_700Bold" : "Inter_400Regular",
-              }]}>{step.label}</Text>
+              ) : (
+                <Feather name="circle" size={14} color="#D6D3D1" />
+              )}
+              <Text
+                numberOfLines={2}
+                style={[
+                  TL.stepLabel,
+                  { color: active ? accent : done ? "#78716C" : "#D6D3D1" },
+                  active && TL.stepLabelActive,
+                ]}
+              >
+                {step.label}
+              </Text>
             </View>
           );
         })}
@@ -93,36 +109,51 @@ const TL = StyleSheet.create({
   fill:  { height: 4, borderRadius: 2 },
   steps: { flexDirection: "row", justifyContent: "space-between" },
   step:  { alignItems: "center", flex: 1, gap: 4 },
-  stepLabel:      { fontSize: 9, textAlign: "center", lineHeight: 11 },
-  activeDot:      { width: 14, height: 14, borderRadius: 7, borderWidth: 2, alignItems: "center", justifyContent: "center" },
-  activeDotInner: { width: 5, height: 5, borderRadius: 3 },
+  stepLabel:       { fontSize: 9, textAlign: "center", lineHeight: 11, fontFamily: "Inter_400Regular" },
+  stepLabelActive: { fontFamily: "Inter_700Bold" },
+  activeDot:       { width: 14, height: 14, borderRadius: 7, borderWidth: 2, alignItems: "center", justifyContent: "center" },
+  activeDotInner:  { width: 5, height: 5, borderRadius: 3 },
 });
 
+// ─── Types ─────────────────────────────────────────────────────────────────────
+interface UserRef   { id: string; name?: string }
+interface ListingRef { title?: string; subject?: string; courseName?: string; projectTitle?: string; price?: string | number; budget?: string | number; poster?: UserRef }
+interface BookingItem {
+  id: string;
+  _type: string;
+  _myPerspective: "lister" | "booker";
+  status: string;
+  listing?: ListingRef;
+  student?: UserRef;
+  provider?: UserRef;
+  amount?: string | number;
+  totalPaid?: string;
+}
+
 // ─── Booking Card ──────────────────────────────────────────────────────────────
-function BookingCard({ booking, C }: { booking: any; C: any }) {
+function BookingCard({ booking, C }: { booking: BookingItem; C: ColorTokens }) {
   const accent    = serviceAccent(booking._type);
   const listing   = booking.listing;
   const sc        = statusColor(booking.status);
   const isLister  = booking._myPerspective === "lister";
-  const isBooker  = booking._myPerspective === "booker";
   const isTerminal = ["delivered", "rejected", "cancelled", "dismissed"].includes(booking.status);
 
-  const title = listing?.title || listing?.subject || listing?.courseName || listing?.projectTitle
-    || `${serviceLabel(booking._type)} Order`;
-  const studentName  = booking.student?.name  || "—";
-  const providerName = booking.provider?.name || listing?.poster?.name || "—";
+  const title = listing?.title ?? listing?.subject ?? listing?.courseName ?? listing?.projectTitle
+    ?? `${serviceLabel(booking._type)} Order`;
+  const studentName  = booking.student?.name  ?? "—";
+  const providerName = booking.provider?.name ?? listing?.poster?.name ?? "—";
   const amount       = booking.amount ?? listing?.price ?? listing?.budget ?? 0;
 
   function openDetail() {
     router.push({
-      pathname: "/(tabs)/services" as any,
+      pathname: "/(tabs)/services" as Href,
       params: { tab: booking._type, openBookingId: booking.id },
     });
   }
 
   return (
     <View style={[BC.card, { backgroundColor: C.surface, borderColor: C.border }]}>
-      {/* Header: type tag + status badge */}
+      {/* Header */}
       <View style={BC.headerRow}>
         <View style={[BC.typeTag, { backgroundColor: accent + "18" }]}>
           <Text style={BC.typeEmoji}>{serviceEmoji(booking._type)}</Text>
@@ -143,14 +174,14 @@ function BookingCard({ booking, C }: { booking: any; C: any }) {
           <Feather name="user" size={11} color={C.textTertiary} />
           <Text style={[BC.metaText, { color: C.textTertiary }]}>
             Order By{" "}
-            <Text style={{ color: C.text, fontFamily: "Inter_600SemiBold" }}>{studentName}</Text>
+            <Text style={[BC.metaHighlight, { color: C.text }]}>{studentName}</Text>
           </Text>
         </View>
         <View style={[BC.metaItem, { justifyContent: "flex-end" }]}>
           <Feather name="briefcase" size={11} color={C.textTertiary} />
           <Text style={[BC.metaText, { color: C.textTertiary }]}>
             Agent{" "}
-            <Text style={{ color: C.text, fontFamily: "Inter_600SemiBold" }}>{providerName}</Text>
+            <Text style={[BC.metaHighlight, { color: C.text }]}>{providerName}</Text>
           </Text>
         </View>
       </View>
@@ -191,7 +222,7 @@ function BookingCard({ booking, C }: { booking: any; C: any }) {
         </View>
       )}
 
-      {/* Action button — navigates into Services tab booking detail modal */}
+      {/* Action button — navigates to Services tab booking detail modal */}
       {!isTerminal && (
         <Pressable
           style={[BC.actionBtn, { backgroundColor: accent }]}
@@ -229,16 +260,17 @@ const BC = StyleSheet.create({
   statusBadge: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   statusDot:   { width: 6, height: 6, borderRadius: 3 },
   statusText:  { fontSize: 11, fontFamily: "Inter_600SemiBold" },
-  title:  { fontSize: 15, fontFamily: "Inter_600SemiBold", lineHeight: 21 },
-  metaRow:  { flexDirection: "row", justifyContent: "space-between", flexWrap: "wrap", gap: 6 },
-  metaItem: { flexDirection: "row", alignItems: "center", gap: 4, flex: 1 },
-  metaText: { fontSize: 12, fontFamily: "Inter_400Regular" },
-  priceRow:   { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 10, borderTopWidth: 0.5 },
-  priceLabel: { fontSize: 11, fontFamily: "Inter_400Regular" },
-  priceValue: { fontSize: 18, fontFamily: "Inter_700Bold" },
+  title:       { fontSize: 15, fontFamily: "Inter_600SemiBold", lineHeight: 21 },
+  metaRow:     { flexDirection: "row", justifyContent: "space-between", flexWrap: "wrap", gap: 6 },
+  metaItem:    { flexDirection: "row", alignItems: "center", gap: 4, flex: 1 },
+  metaText:    { fontSize: 12, fontFamily: "Inter_400Regular" },
+  metaHighlight: { fontFamily: "Inter_600SemiBold" },
+  priceRow:    { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 10, borderTopWidth: 0.5 },
+  priceLabel:  { fontSize: 11, fontFamily: "Inter_400Regular" },
+  priceValue:  { fontSize: 18, fontFamily: "Inter_700Bold" },
   escrowChip:  { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#EDE9FE", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
   escrowText:  { fontSize: 11, fontFamily: "Inter_600SemiBold", color: "#5B4FE8" },
-  actionBtn:    { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, paddingVertical: 12, borderRadius: 12 },
+  actionBtn:   { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, paddingVertical: 12, borderRadius: 12 },
   actionBtnText: { color: "#fff", fontSize: 14, fontFamily: "Inter_600SemiBold", flex: 1, textAlign: "center" },
   rejectedBanner:  { flexDirection: "row", alignItems: "center", gap: 7, backgroundColor: "#FEF2F2", padding: 10, borderRadius: 10 },
   rejectedText:    { fontSize: 12, fontFamily: "Inter_600SemiBold", color: "#EF4444" },
@@ -246,13 +278,18 @@ const BC = StyleSheet.create({
   deliveredText:   { fontSize: 12, fontFamily: "Inter_600SemiBold", color: "#059669" },
 });
 
+// ─── History response type ─────────────────────────────────────────────────────
+interface HistoryData {
+  active:    BookingItem[];
+  completed: BookingItem[];
+}
+
 // ─── Main Screen ───────────────────────────────────────────────────────────────
 export default function ServiceHistoryScreen() {
   const insets      = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const C           = Colors[colorScheme === "dark" ? "dark" : "light"];
   const { user, apiRequest } = useAuth();
-  const queryClient = useQueryClient();
   const [tab, setTab]           = useState<"active" | "completed">("active");
   const [refreshing, setRefreshing] = useState(false);
 
@@ -260,10 +297,10 @@ export default function ServiceHistoryScreen() {
 
   const historyQuery = useQuery({
     queryKey: ["serviceHistory"],
-    queryFn: async () => {
+    queryFn: async (): Promise<HistoryData> => {
       const res = await apiRequest("/services/my-history");
       if (!res.ok) throw new Error("Failed to load history");
-      return res.json() as Promise<{ active: any[]; completed: any[] }>;
+      return res.json();
     },
   });
 
@@ -272,8 +309,13 @@ export default function ServiceHistoryScreen() {
     try { await historyQuery.refetch(); } finally { setRefreshing(false); }
   }, [historyQuery]);
 
-  const active    = historyQuery.data?.active    || [];
-  const completed = historyQuery.data?.completed || [];
+  const rawActive    = historyQuery.data?.active    ?? [];
+  const rawCompleted = historyQuery.data?.completed ?? [];
+
+  // Students only see their own bookings (booker perspective).
+  // Providers see both: lister (jobs they do) and booker (services they bought).
+  const active    = isProvider ? rawActive    : rawActive.filter(b => b._myPerspective === "booker");
+  const completed = isProvider ? rawCompleted : rawCompleted.filter(b => b._myPerspective === "booker");
 
   const activeAsLister = active.filter(b => b._myPerspective === "lister");
   const activeAsBooker = active.filter(b => b._myPerspective === "booker");
@@ -287,7 +329,7 @@ export default function ServiceHistoryScreen() {
     );
   }
 
-  function renderCard(b: any) {
+  function renderCard(b: BookingItem) {
     return <BookingCard key={b.id} booking={b} C={C} />;
   }
 
@@ -382,7 +424,9 @@ export default function ServiceHistoryScreen() {
       <ScrollView
         contentContainerStyle={S.content}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.primary} />}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.primary} />
+        }
       >
         {tab === "active" ? renderActiveContent() : renderCompletedContent()}
       </ScrollView>
@@ -391,23 +435,23 @@ export default function ServiceHistoryScreen() {
 }
 
 const S = StyleSheet.create({
-  container: { flex: 1 },
-  header: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 0.5, gap: 10 },
-  headerTitle: { fontSize: 18, fontFamily: "Inter_700Bold" },
-  headerSub:   { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 1 },
-  iconBtn:     { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" },
-  tabBar:      { flexDirection: "row", borderBottomWidth: 0.5, paddingHorizontal: 16 },
-  tabItem:     { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 13, borderBottomWidth: 2, borderBottomColor: "transparent" },
-  tabItemOn:   { borderBottomColor: "#5B4FE8" },
-  tabText:     { fontSize: 14, fontFamily: "Inter_500Medium" },
-  tabTextOn:   { fontFamily: "Inter_700Bold" },
-  tabBadge:    { minWidth: 20, height: 20, borderRadius: 10, alignItems: "center", justifyContent: "center", paddingHorizontal: 5 },
-  tabBadgeText:{ fontSize: 11, fontFamily: "Inter_700Bold" },
-  content:     { padding: 14, gap: 10, paddingBottom: 100 },
-  groupHeader: { flexDirection: "row", alignItems: "center", gap: 7, marginBottom: 8, paddingBottom: 8, borderBottomWidth: 0.5 },
-  groupTitle:  { fontSize: 13, fontFamily: "Inter_700Bold", flex: 1 },
-  groupBadge:  { minWidth: 22, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center", paddingHorizontal: 6 },
+  container:    { flex: 1 },
+  header:       { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 0.5, gap: 10 },
+  headerTitle:  { fontSize: 18, fontFamily: "Inter_700Bold" },
+  headerSub:    { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 1 },
+  iconBtn:      { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" },
+  tabBar:       { flexDirection: "row", borderBottomWidth: 0.5, paddingHorizontal: 16 },
+  tabItem:      { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 13, borderBottomWidth: 2, borderBottomColor: "transparent" },
+  tabItemOn:    { borderBottomColor: "#5B4FE8" },
+  tabText:      { fontSize: 14, fontFamily: "Inter_500Medium" },
+  tabTextOn:    { fontFamily: "Inter_700Bold" },
+  tabBadge:     { minWidth: 20, height: 20, borderRadius: 10, alignItems: "center", justifyContent: "center", paddingHorizontal: 5 },
+  tabBadgeText: { fontSize: 11, fontFamily: "Inter_700Bold" },
+  content:      { padding: 14, gap: 10, paddingBottom: 100 },
+  groupHeader:  { flexDirection: "row", alignItems: "center", gap: 7, marginBottom: 8, paddingBottom: 8, borderBottomWidth: 0.5 },
+  groupTitle:   { fontSize: 13, fontFamily: "Inter_700Bold", flex: 1 },
+  groupBadge:   { minWidth: 22, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center", paddingHorizontal: 6 },
   groupBadgeText: { fontSize: 11, fontFamily: "Inter_700Bold" },
-  empty:       { alignItems: "center", paddingVertical: 60, gap: 12, borderWidth: 0.5, borderRadius: 16, borderStyle: "dashed", marginTop: 8 },
-  emptyText:   { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 22 },
+  empty:        { alignItems: "center", paddingVertical: 60, gap: 12, borderWidth: 0.5, borderRadius: 16, borderStyle: "dashed", marginTop: 8 },
+  emptyText:    { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 22 },
 });
