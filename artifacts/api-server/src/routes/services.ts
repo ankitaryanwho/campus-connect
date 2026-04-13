@@ -4,6 +4,7 @@ import {
   assignmentsTable, certificationsTable, deliveriesTable, outletItemsTable,
   tasksTable, taskApplicationsTable, projectsTable, usersTable, serviceBookingsTable,
   walletsTable, transactionsTable,
+  type Assignment, type Certification, type Project, type ServiceBooking,
 } from "@workspace/db/schema";
 import { eq, desc, sql, and, inArray } from "drizzle-orm";
 import { authMiddleware } from "../lib/auth";
@@ -1540,11 +1541,12 @@ router.get("/my-history", authMiddleware, async (req, res) => {
             sql`${serviceBookingsTable.status} NOT IN ('dismissed')`
           ))
           .orderBy(desc(serviceBookingsTable.createdAt))
-      : [] as any[];
+      : ([] as ServiceBooking[]);
 
-    // Merge and deduplicate
+    // Merge and deduplicate (tag each row with which perspective the user has)
+    type RawBooking = ServiceBooking & { _myPerspective: "booker" | "lister" };
     const seenIds = new Set<string>();
-    const allRaw: any[] = [];
+    const allRaw: RawBooking[] = [];
     for (const b of [...listerBookingsRaw, ...bookerBookingsRaw]) {
       if (!seenIds.has(b.id)) {
         seenIds.add(b.id);
@@ -1553,12 +1555,13 @@ router.get("/my-history", authMiddleware, async (req, res) => {
     }
 
     // Wave 2: batch-load all referenced listings and users
+    type ListingRow = (Assignment | Certification | Project) & { _table: string };
     const [allAssignments, allCertifications, allProjects] = await Promise.all([
       db.select().from(assignmentsTable),
       db.select().from(certificationsTable),
       db.select().from(projectsTable),
     ]);
-    const listingIndex = new Map<string, any>();
+    const listingIndex = new Map<string, ListingRow>();
     for (const a of allAssignments) listingIndex.set(`assignments:${a.id}`, { ...a, _table: "assignments" });
     for (const c of allCertifications) listingIndex.set(`certifications:${c.id}`, { ...c, _table: "certifications" });
     for (const p of allProjects) listingIndex.set(`projects:${p.id}`, { ...p, _table: "projects" });
@@ -1572,7 +1575,7 @@ router.get("/my-history", authMiddleware, async (req, res) => {
     const userMap = await safeUserBatch(userIdsNeeded);
 
     // Enrich each booking
-    const enriched = allRaw.map((b: any) => {
+    const enriched = allRaw.map((b: RawBooking) => {
       const listing = listingIndex.get(`${b.serviceType}:${b.listingId}`) || null;
       const provider = listing ? (userMap.get(listing.posterId) || null) : null;
       return {
