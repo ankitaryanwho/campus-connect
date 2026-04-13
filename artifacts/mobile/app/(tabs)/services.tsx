@@ -2111,6 +2111,8 @@ export default function ServicesScreen() {
       if (isStudentOf) return true;           // Requester: see own pending order
       if (isProvider) return true;            // Agent: see all available pending orders
     }
+    // "completed" = agent arrived / provider done, student has NOT yet confirmed → KEEP in Active Now
+    // Only "delivered" = both sides confirmed → remove (goes to history)
     const idle = ["open", "pending", "delivered", "cancelled"];
     if (idle.includes(item.status)) return false;
     return isStudentOf || isProviderOf;
@@ -2122,6 +2124,8 @@ export default function ServicesScreen() {
   const syntheticBookings: any[] = allItems.filter(i => {
     if (!ACADEMIC_CATS.includes(i._type)) return false;
     if (i.status === "open") return false; // Normal open listing — not a synthetic booking
+    // Fully confirmed orders belong in history, not Active Now
+    if (["delivered", "dismissed", "cancelled"].includes(i.status)) return false;
     if (myActiveBookingByListing.has(i.id)) return false; // Real booking exists, no need to synthesize
     const uid = user?.id;
     const isLister = i.poster?.id === uid;
