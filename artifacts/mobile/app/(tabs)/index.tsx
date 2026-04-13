@@ -424,12 +424,22 @@ export default function FeedScreen() {
 
   const posts = data?.posts || [];
 
-  // Group posts by stored category (falls back to keyword detection for legacy posts)
+  // Group posts by category.
+  // Anonymous posts always go to confessions.
+  // For non-anonymous posts: use the DB category only when it is explicitly set to a
+  // non-default value (study / events / buysell); everything else falls back to
+  // keyword-based detection so legacy posts (which defaulted to "social") are
+  // correctly distributed across study / events / buysell / social.
   const postsByCategory = React.useMemo(() => {
     const groups: Record<string, Post[]> = { study: [], events: [], buysell: [], social: [], confessions: [] };
     for (const p of posts) {
-      const cat = (p as any).category as string | undefined;
-      const bucket = cat && groups[cat] !== undefined ? cat : (p.isAnonymous ? "confessions" : detectCategory(p.content));
+      let bucket: string;
+      if (p.isAnonymous) {
+        bucket = "confessions";
+      } else {
+        const cat = (p as any).category as string | undefined;
+        bucket = (cat && cat !== "social" && groups[cat] !== undefined) ? cat : detectCategory(p.content);
+      }
       groups[bucket].push(p);
     }
     return groups;
@@ -437,7 +447,7 @@ export default function FeedScreen() {
 
   // Filtered posts for the feed section
   const feedPosts = React.useMemo(() => {
-    if (activeCategory === "all") return posts.filter(p => !p.isAnonymous && (!(p as any).category || (p as any).category !== "confessions"));
+    if (activeCategory === "all") return posts.filter(p => !p.isAnonymous);
     if (activeCategory === "confessions") return postsByCategory.confessions;
     return postsByCategory[activeCategory] ?? [];
   }, [posts, postsByCategory, activeCategory]);
