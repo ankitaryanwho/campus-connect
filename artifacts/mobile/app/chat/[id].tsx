@@ -111,7 +111,7 @@ export default function ChatDetailScreen() {
           contentContainerStyle={{ paddingHorizontal: 14, paddingVertical: 12 }}
           showsVerticalScrollIndicator={false}
           renderItem={({ item }) => {
-            const isMe = item.senderId === user?.id;
+            const isMe = item.isSelf === true;
             const orderCtx = item.metadata?.orderContext ?? null;
             return (
               <View style={[styles.messageRow, isMe && styles.messageRowRight]}>
