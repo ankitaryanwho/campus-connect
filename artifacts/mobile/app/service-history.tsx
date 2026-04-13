@@ -144,9 +144,28 @@ interface BookingItem {
   amount?: string | number;
   totalPaid?: string;
 }
+interface DeliveryHistoryItem {
+  id: string;
+  _kind: "delivery";
+  _type: "deliveries";
+  _myPerspective: "requester" | "agent";
+  status: string;
+  pickupType: string;
+  pickupLocation: string;
+  dropLocation: string;
+  deliveryFee: string | number | null;
+  subtotal:    string | number | null;
+  requester: { name: string; avatar?: string } | null;
+  agent:     { name: string; avatar?: string } | null;
+  createdAt: string;
+}
+
+type HistoryItem = BookingItem | DeliveryHistoryItem;
+
 interface HistoryData {
-  active:    BookingItem[];
-  completed: BookingItem[];
+  active:    HistoryItem[];
+  completed: HistoryItem[];
+  cancelled: HistoryItem[];
 }
 
 // ─── Booking Card ──────────────────────────────────────────────────────────────
@@ -351,6 +370,71 @@ const BC = StyleSheet.create({
   infoText:    { fontSize: 12, fontFamily: "Inter_400Regular" },
 });
 
+// ─── Delivery Card ─────────────────────────────────────────────────────────────
+const DELIVERY_STATUS_LABEL: Record<string, string> = {
+  pending: "Pending", accepted: "Accepted", collecting_order: "Collecting",
+  reaching_pickup: "En Route", reaching_drop: "On the way", delivered: "Delivered",
+  cancelled: "Cancelled",
+};
+const DELIVERY_STATUS_COLOR: Record<string, string> = {
+  pending: "#F59E0B", accepted: "#5B4FE8", collecting_order: "#8B5CF6",
+  reaching_pickup: "#6366F1", reaching_drop: "#0EA5E9", delivered: "#10B981",
+  cancelled: "#EF4444",
+};
+
+function DeliveryCard({ item, C }: { item: DeliveryHistoryItem; C: ColorTokens }) {
+  const sc    = DELIVERY_STATUS_COLOR[item.status] ?? "#A8A29E";
+  const sl    = DELIVERY_STATUS_LABEL[item.status] ?? item.status;
+  const fee   = typeof item.deliveryFee === "string" ? parseFloat(item.deliveryFee) : (item.deliveryFee ?? 0);
+  const isRequester = item._myPerspective === "requester";
+  const otherParty = isRequester ? (item.agent?.name ?? "Finding agent…") : (item.requester?.name ?? "—");
+
+  return (
+    <View style={[BC.card, { backgroundColor: C.surface, borderColor: C.border }]}>
+      <View style={BC.headerRow}>
+        <View style={[BC.typeTag, { backgroundColor: "#0EA5E918" }]}>
+          <Text style={BC.typeEmoji}>🚴</Text>
+          <Text style={[BC.typeText, { color: "#0EA5E9" }]}>Delivery</Text>
+        </View>
+        <View style={[BC.statusBadge, { backgroundColor: sc + "18" }]}>
+          <View style={[BC.statusDot, { backgroundColor: sc }]} />
+          <Text style={[BC.statusText, { color: sc }]}>{sl}</Text>
+        </View>
+      </View>
+
+      <View style={{ gap: 3 }}>
+        <Text style={[BC.title, { color: C.text }]} numberOfLines={1}>
+          {item.pickupType === "gate" ? "Gate Delivery" : item.pickupType === "outlet" ? "Outlet Order" : "Delivery Order"}
+        </Text>
+        <Text style={[BC.metaText, { color: C.textSecondary }]} numberOfLines={1}>
+          {item.pickupLocation} → {item.dropLocation}
+        </Text>
+      </View>
+
+      <View style={BC.metaRow}>
+        <View style={BC.metaItem}>
+          <Feather name="user" size={12} color={C.textTertiary} />
+          <Text style={[BC.metaText, { color: C.textSecondary }]}>
+            {isRequester ? "Agent: " : "Requester: "}
+            <Text style={BC.metaHighlight}>{otherParty}</Text>
+          </Text>
+        </View>
+        <View style={BC.metaItem}>
+          <Feather name={isRequester ? "shopping-bag" : "briefcase"} size={12} color={C.textTertiary} />
+          <Text style={[BC.metaText, { color: C.textSecondary }]}>
+            {isRequester ? "Placed by me" : "I'm delivering"}
+          </Text>
+        </View>
+      </View>
+
+      <View style={[BC.priceRow, { borderTopColor: C.border }]}>
+        <Text style={[BC.priceLabel, { color: C.textTertiary }]}>Delivery fee</Text>
+        <Text style={[BC.priceValue, { color: C.text }]}>₹{fee.toLocaleString("en-IN")}</Text>
+      </View>
+    </View>
+  );
+}
+
 // ─── Main Screen ───────────────────────────────────────────────────────────────
 export default function ServiceHistoryScreen() {
   const insets      = useSafeAreaInsets();
@@ -399,18 +483,31 @@ export default function ServiceHistoryScreen() {
 
   const rawActive    = historyQuery.data?.active    ?? [];
   const rawCompleted = historyQuery.data?.completed ?? [];
+  const rawCancelled = historyQuery.data?.cancelled ?? [];
 
-  // Students only see their own bookings (booker perspective)
-  // Providers see both: lister (jobs they do) and booker (services they bought)
-  const active    = isProvider ? rawActive    : rawActive.filter(b => b._myPerspective === "booker");
-  const completed = isProvider ? rawCompleted : rawCompleted.filter(b => b._myPerspective === "booker");
+  // Students only see their own bookings/orders (booker/requester perspective)
+  // Providers see both sides: jobs they provide + services/deliveries they ordered
+  function isMine(item: HistoryItem) {
+    if (!isProvider) return item._myPerspective === "booker" || item._myPerspective === "requester";
+    return true;
+  }
+  const active    = rawActive.filter(isMine);
+  const completed = rawCompleted.filter(isMine);
+  const cancelled = rawCancelled.filter(isMine);
 
-  // "Jobs I'm Doing": post-acceptance lister work only (accepted/in_progress/completed)
-  const activeAsLister = active.filter(
-    b => b._myPerspective === "lister" && ACCEPTED_WORK_STATUSES.has(b.status)
+  // All history = completed + cancelled, sorted by date descending
+  const allHistory: HistoryItem[] = [...completed, ...cancelled].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
-  // "My Own Bookings": provider's own bookings as a student
-  const activeAsBooker = active.filter(b => b._myPerspective === "booker");
+
+  // Active grouping: "Jobs I'm Providing" vs "My Orders"
+  const activeAsProvider = active.filter(item =>
+    item._myPerspective === "lister" ||
+    (item._myPerspective === "agent" && ACCEPTED_WORK_STATUSES.has(item.status))
+  );
+  const activeAsCustomer = active.filter(item =>
+    item._myPerspective === "booker" || item._myPerspective === "requester"
+  );
 
   function renderEmpty(msg: string) {
     return (
@@ -421,11 +518,14 @@ export default function ServiceHistoryScreen() {
     );
   }
 
-  function renderCard(b: BookingItem) {
+  function renderCard(item: HistoryItem) {
+    if ((item as DeliveryHistoryItem)._kind === "delivery") {
+      return <DeliveryCard key={item.id} item={item as DeliveryHistoryItem} C={C} />;
+    }
     return (
       <BookingCard
-        key={b.id}
-        booking={b}
+        key={item.id}
+        booking={item as BookingItem}
         C={C}
         onMutate={onMutate}
         isPending={actionMutation.isPending}
@@ -440,35 +540,35 @@ export default function ServiceHistoryScreen() {
     if (active.length === 0)    return renderEmpty("No active jobs yet.\nBook a service to get started.");
 
     if (isProvider) {
-      const hasLister = activeAsLister.length > 0;
-      const hasBooker = activeAsBooker.length > 0;
+      const hasProvider = activeAsProvider.length > 0;
+      const hasCustomer = activeAsCustomer.length > 0;
       return (
         <>
-          {hasLister && (
+          {hasProvider && (
             <View>
               <View style={[S.groupHeader, { borderColor: C.border }]}>
                 <Feather name="briefcase" size={13} color="#5B4FE8" />
-                <Text style={[S.groupTitle, { color: C.text }]}>Jobs I&apos;m Doing</Text>
+                <Text style={[S.groupTitle, { color: C.text }]}>Jobs I&apos;m Providing</Text>
                 <View style={[S.groupBadge, { backgroundColor: "#EDE9FE" }]}>
-                  <Text style={[S.groupBadgeText, { color: "#5B4FE8" }]}>{activeAsLister.length}</Text>
+                  <Text style={[S.groupBadgeText, { color: "#5B4FE8" }]}>{activeAsProvider.length}</Text>
                 </View>
               </View>
-              {activeAsLister.map(renderCard)}
+              {activeAsProvider.map(renderCard)}
             </View>
           )}
-          {hasBooker && (
-            <View style={{ marginTop: hasLister ? 8 : 0 }}>
+          {hasCustomer && (
+            <View style={{ marginTop: hasProvider ? 8 : 0 }}>
               <View style={[S.groupHeader, { borderColor: C.border }]}>
                 <Feather name="shopping-bag" size={13} color="#F59E0B" />
-                <Text style={[S.groupTitle, { color: C.text }]}>My Own Bookings</Text>
+                <Text style={[S.groupTitle, { color: C.text }]}>My Orders</Text>
                 <View style={[S.groupBadge, { backgroundColor: "#FEF3C7" }]}>
-                  <Text style={[S.groupBadgeText, { color: "#D97706" }]}>{activeAsBooker.length}</Text>
+                  <Text style={[S.groupBadgeText, { color: "#D97706" }]}>{activeAsCustomer.length}</Text>
                 </View>
               </View>
-              {activeAsBooker.map(renderCard)}
+              {activeAsCustomer.map(renderCard)}
             </View>
           )}
-          {!hasLister && !hasBooker && renderEmpty("No active jobs.")}
+          {!hasProvider && !hasCustomer && renderEmpty("No active jobs.")}
         </>
       );
     }
@@ -479,8 +579,8 @@ export default function ServiceHistoryScreen() {
   function renderCompletedContent() {
     if (historyQuery.isLoading) return <ActivityIndicator color={C.primary} style={{ marginTop: 40 }} />;
     if (historyQuery.isError)   return renderEmpty("Could not load history.\nPull down to try again.");
-    if (completed.length === 0) return renderEmpty("No completed jobs yet.");
-    return <>{completed.map(renderCard)}</>;
+    if (allHistory.length === 0) return renderEmpty("No completed orders yet.");
+    return <>{allHistory.map(renderCard)}</>;
   }
 
   return (
@@ -497,7 +597,7 @@ export default function ServiceHistoryScreen() {
         <View style={{ flex: 1 }}>
           <Text style={[S.headerTitle, { color: C.text }]}>Your Activity</Text>
           <Text style={[S.headerSub, { color: C.textSecondary }]}>
-            {active.length} active · {completed.length} in history
+            {active.length} active · {completed.length} completed
           </Text>
         </View>
         <Pressable style={S.iconBtn} onPress={onRefresh}>
@@ -509,11 +609,11 @@ export default function ServiceHistoryScreen() {
       <View style={[S.tabBar, { backgroundColor: C.surface, borderBottomColor: C.border }]}>
         {(["active", "completed"] as const).map(t => {
           const on  = tab === t;
-          const cnt = t === "active" ? active.length : completed.length;
+          const cnt = t === "active" ? active.length : allHistory.length;
           return (
             <Pressable key={t} style={[S.tabItem, on && S.tabItemOn]} onPress={() => setTab(t)}>
               <Text style={[S.tabText, { color: on ? "#5B4FE8" : C.textSecondary }, on && S.tabTextOn]}>
-                {t === "active" ? "Active Jobs" : "History"}
+                {t === "active" ? "Active Jobs" : "Completed"}
               </Text>
               {cnt > 0 && (
                 <View style={[S.tabBadge, { backgroundColor: on ? "#5B4FE8" : C.border }]}>

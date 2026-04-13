@@ -1512,7 +1512,7 @@ router.get("/my-history", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
 
-    // Wave 1: fetch listing IDs posted by this user + all bookings involving them
+    // ── Academic bookings (assignments / certifications / projects) ─────────────
     const [myAssignments, myCertifications, myProjects] = await Promise.all([
       db.select({ id: assignmentsTable.id }).from(assignmentsTable).where(eq(assignmentsTable.posterId, userId)),
       db.select({ id: certificationsTable.id }).from(certificationsTable).where(eq(certificationsTable.posterId, userId)),
@@ -1524,19 +1524,16 @@ router.get("/my-history", authMiddleware, async (req, res) => {
       ...myProjects.map(p => p.id),
     ];
 
-    // Bookings where I am the student (booker) — fetch ALL statuses for complete history
     const bookerBookingsRaw = await db.select().from(serviceBookingsTable)
       .where(eq(serviceBookingsTable.studentId, userId))
       .orderBy(desc(serviceBookingsTable.createdAt));
 
-    // Bookings on my own listings (I am the provider / lister) — fetch ALL statuses
     const listerBookingsRaw = myListingIds.length > 0
       ? await db.select().from(serviceBookingsTable)
           .where(inArray(serviceBookingsTable.listingId, myListingIds))
           .orderBy(desc(serviceBookingsTable.createdAt))
       : ([] as ServiceBooking[]);
 
-    // Merge and deduplicate (tag each row with which perspective the user has)
     type RawBooking = ServiceBooking & { _myPerspective: "booker" | "lister" };
     const seenIds = new Set<string>();
     const allRaw: RawBooking[] = [];
@@ -1547,17 +1544,16 @@ router.get("/my-history", authMiddleware, async (req, res) => {
       }
     }
 
-    // Wave 2: batch-load all referenced listings and users
     type ListingRow = (Assignment | Certification | Project) & { _table: string };
-    const [allAssignments, allCertifications, allProjects] = await Promise.all([
+    const [allAsgn, allCert, allProj] = await Promise.all([
       db.select().from(assignmentsTable),
       db.select().from(certificationsTable),
       db.select().from(projectsTable),
     ]);
     const listingIndex = new Map<string, ListingRow>();
-    for (const a of allAssignments) listingIndex.set(`assignments:${a.id}`, { ...a, _table: "assignments" });
-    for (const c of allCertifications) listingIndex.set(`certifications:${c.id}`, { ...c, _table: "certifications" });
-    for (const p of allProjects) listingIndex.set(`projects:${p.id}`, { ...p, _table: "projects" });
+    for (const a of allAsgn)  listingIndex.set(`assignments:${a.id}`,    { ...a, _table: "assignments" });
+    for (const c of allCert)  listingIndex.set(`certifications:${c.id}`, { ...c, _table: "certifications" });
+    for (const p of allProj)  listingIndex.set(`projects:${p.id}`,       { ...p, _table: "projects" });
 
     const userIdsNeeded: (string | null | undefined)[] = [];
     for (const b of allRaw) {
@@ -1565,14 +1561,34 @@ router.get("/my-history", authMiddleware, async (req, res) => {
       const listing = listingIndex.get(`${b.serviceType}:${b.listingId}`);
       if (listing) userIdsNeeded.push(listing.posterId);
     }
+
+    // ── Delivery orders (as requester + as delivery agent) ────────────────────
+    const [deliveriesAsRequester, deliveriesAsAgent] = await Promise.all([
+      db.select(DELIVERY_LIST_COLS).from(deliveriesTable)
+        .where(eq(deliveriesTable.requesterId, userId))
+        .orderBy(desc(deliveriesTable.createdAt)),
+      db.select(DELIVERY_LIST_COLS).from(deliveriesTable)
+        .where(eq(deliveriesTable.deliveryAgentId, userId))
+        .orderBy(desc(deliveriesTable.createdAt)),
+    ]);
+
+    // Collect all user IDs needed for deliveries
+    const deliveryUserIds: (string | null | undefined)[] = [];
+    for (const d of [...deliveriesAsRequester, ...deliveriesAsAgent]) {
+      deliveryUserIds.push(d.requesterId);
+      deliveryUserIds.push(d.deliveryAgentId);
+    }
+    userIdsNeeded.push(...deliveryUserIds);
+
     const userMap = await safeUserBatch(userIdsNeeded);
 
-    // Enrich each booking
-    const enriched = allRaw.map((b: RawBooking) => {
+    // Enrich academic bookings
+    const enrichedBookings = allRaw.map((b: RawBooking) => {
       const listing = listingIndex.get(`${b.serviceType}:${b.listingId}`) || null;
       const provider = listing ? (userMap.get(listing.posterId) || null) : null;
       return {
         ...b,
+        _kind: "booking" as const,
         _type: b.serviceType,
         listing: listing ? { ...listing, poster: provider } : null,
         student: userMap.get(b.studentId) || null,
@@ -1580,13 +1596,43 @@ router.get("/my-history", authMiddleware, async (req, res) => {
       };
     });
 
-    // Terminal = order is fully done (no more actions possible)
-    const terminalStatuses = new Set(["delivered", "dismissed", "cancelled", "rejected"]);
-    const active    = enriched.filter(b => !terminalStatuses.has(b.status));
-    // Completed tab = all terminal orders so user can see full history
-    const completed = enriched.filter(b => terminalStatuses.has(b.status));
+    // Deduplicate and tag delivery orders
+    const seenDeliveryIds = new Set<string>();
+    const enrichedDeliveries: any[] = [];
+    for (const d of [...deliveriesAsRequester, ...deliveriesAsAgent]) {
+      if (seenDeliveryIds.has(d.id)) continue;
+      seenDeliveryIds.add(d.id);
+      enrichedDeliveries.push({
+        ...d,
+        _kind: "delivery" as const,
+        _type: "deliveries",
+        _myPerspective: d.requesterId === userId ? "requester" : "agent",
+        requester: userMap.get(d.requesterId) || null,
+        agent: d.deliveryAgentId ? (userMap.get(d.deliveryAgentId) || null) : null,
+      });
+    }
 
-    res.json({ active, completed });
+    // ── Categorise into active / completed / cancelled ─────────────────────────
+    // active    = still in progress (any non-terminal status)
+    // completed = successfully delivered
+    // cancelled = dismissed / cancelled / rejected (visible in history tab)
+
+    const DELIVERY_TERMINAL = new Set(["delivered", "cancelled"]);
+    const BOOKING_TERMINAL  = new Set(["delivered", "dismissed", "cancelled", "rejected"]);
+
+    const activeBookings    = enrichedBookings.filter(b => !BOOKING_TERMINAL.has(b.status));
+    const completedBookings = enrichedBookings.filter(b => b.status === "delivered");
+    const cancelledBookings = enrichedBookings.filter(b => BOOKING_TERMINAL.has(b.status) && b.status !== "delivered");
+
+    const activeDeliveries    = enrichedDeliveries.filter(d => !DELIVERY_TERMINAL.has(d.status));
+    const completedDeliveries = enrichedDeliveries.filter(d => d.status === "delivered");
+    const cancelledDeliveries = enrichedDeliveries.filter(d => DELIVERY_TERMINAL.has(d.status) && d.status !== "delivered");
+
+    res.json({
+      active:    [...activeBookings,    ...activeDeliveries],
+      completed: [...completedBookings, ...completedDeliveries],
+      cancelled: [...cancelledBookings, ...cancelledDeliveries],
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "ServerError", message: "Failed to load service history" });

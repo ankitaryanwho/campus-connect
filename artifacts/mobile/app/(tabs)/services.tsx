@@ -2547,7 +2547,7 @@ export default function ServicesScreen() {
                   <Text style={{ color: "#5B4FE8", fontFamily: "Inter_700Bold" }}>{bannerActiveCount}</Text> active job{bannerActiveCount !== 1 ? "s" : ""}
                 </Text>
                 <Text style={[CS.activityStat, { color: C.textSecondary }]}>
-                  <Text style={{ color: "#10B981", fontFamily: "Inter_700Bold" }}>{bannerHistoryCount}</Text> in history
+                  <Text style={{ color: "#10B981", fontFamily: "Inter_700Bold" }}>{bannerHistoryCount}</Text> completed
                 </Text>
               </View>
             </View>
