@@ -1514,7 +1514,7 @@ function CompactActiveCard({ item, C, user, onTrackPress, onAccept, onReject, on
 
 // ─── Compact Open Listing Row (matches Priority Lane mockup exactly) ───────────
 
-function CompactListingRow({ item, C, user, onBook, onAccept, onReject, onApply, isPending, isLast, hasActiveBooking }: any) {
+function CompactListingRow({ item, C, user, onBook, onAccept, onReject, onApply, onCancel, isPending, isLast, hasActiveBooking }: any) {
   const meta = CAT_META[item._type] || CAT_META.tasks;
   const uid = user?.id;
   const isProviderRole = user?.role === "provider";
@@ -1534,6 +1534,8 @@ function CompactListingRow({ item, C, user, onBook, onAccept, onReject, onApply,
   // ── Determine which action(s) to show ──
   // Deliveries: anyone (not requester) can Accept + Reject a pending pickup
   const canAcceptReject = !isOwnListing && item._type === "deliveries" && item.status === "pending";
+  // Requester can cancel their own pending delivery (before any agent accepts)
+  const canCancel = isOwnListing && item._type === "deliveries" && item.status === "pending";
   // Tasks: anyone (not poster) can Apply
   const canApply = !isOwnListing && item._type === "tasks" && item.status === "open";
   // Assignments/Certifications/Projects: multi-booking model — listings are always bookable
@@ -1644,6 +1646,19 @@ function CompactListingRow({ item, C, user, onBook, onAccept, onReject, onApply,
             <Feather name="check" size={10} color={meta.accent} />
             <Text style={{ color: meta.accent, fontSize: 9, fontFamily: "Inter_700Bold" }}>Booked</Text>
           </View>
+        )}
+
+        {/* Requester: cancel own pending delivery before any agent accepts */}
+        {canCancel && (
+          <Pressable
+            style={{ backgroundColor: "#FEE2E2", paddingHorizontal: 9, paddingVertical: 4, borderRadius: 8 }}
+            onPress={() => onCancel?.(item.id)}
+            disabled={isPending}
+          >
+            {isPending
+              ? <ActivityIndicator size="small" color="#EF4444" />
+              : <Text style={{ color: "#EF4444", fontSize: 10, fontFamily: "Inter_700Bold" }}>Cancel</Text>}
+          </Pressable>
         )}
       </View>
     </View>
@@ -2619,6 +2634,7 @@ export default function ServicesScreen() {
                     onAccept={(id: string, type: string) => actionMutation.mutate({ id, action: "accept", tab: type })}
                     onReject={(id: string, type: string) => actionMutation.mutate({ id, action: "reject", tab: type })}
                     onApply={(id: string, type: string) => actionMutation.mutate({ id, action: "apply", tab: type })}
+                    onCancel={(id: string) => actionMutation.mutate({ id, action: "cancel", tab: "deliveries" })}
                   />
                 ))}
               </View>
