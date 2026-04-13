@@ -1584,8 +1584,8 @@ router.get("/my-history", authMiddleware, async (req, res) => {
       };
     });
 
-    const activeStatuses = new Set(["booked", "accepted", "in_progress", "completed", "rejected"]);
-    const active    = enriched.filter(b => activeStatuses.has(b.status));
+    const terminalStatuses = new Set(["delivered", "dismissed", "cancelled"]);
+    const active    = enriched.filter(b => !terminalStatuses.has(b.status));
     const completed = enriched.filter(b => b.status === "delivered");
 
     res.json({ active, completed });
