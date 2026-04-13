@@ -197,8 +197,12 @@ router.post("/conversations/:conversationId/messages", authMiddleware, async (re
       return;
     }
 
+    const { metadata } = req.body;
     const msgId = generateId();
-    await db.insert(messagesTable).values({ id: msgId, content: content.trim(), senderId: userId, conversationId });
+    await db.insert(messagesTable).values({
+      id: msgId, content: content.trim(), senderId: userId, conversationId,
+      ...(metadata ? { metadata } : {}),
+    });
     await db.update(conversationsTable).set({ updatedAt: new Date() }).where(eq(conversationsTable.id, conversationId));
 
     const msgs = await db.select().from(messagesTable).where(eq(messagesTable.id, msgId)).limit(1);

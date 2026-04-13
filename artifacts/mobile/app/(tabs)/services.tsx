@@ -1375,10 +1375,11 @@ function DeliveryActiveCTA({ item, isAgent, isRequester, isPending, cameraAction
 
 // ─── Compact Active Job Card (matches Priority Lane mockup exactly) ────────────
 
-function CompactActiveCard({ item, C, user, onTrackPress, onAccept, onReject, onDismissRejection, isPending, onCameraAction, onOpenQRUpload, onOpenPaymentModal, onPayDeliveryCharge, onReviewPayment, onMarkReceived, onCancelDelivery, cameraActionId }: any) {
+function CompactActiveCard({ item, C, user, onTrackPress, onAccept, onReject, onDismissRejection, isPending, onCameraAction, onOpenQRUpload, onOpenPaymentModal, onPayDeliveryCharge, onReviewPayment, onMarkReceived, onCancelDelivery, onTextAgent, cameraActionId }: any) {
   const meta = CAT_META[item._type] || CAT_META.tasks;
   const { labels, index } = getStepsForItem(item);
   const progress = labels.length > 1 ? index / (labels.length - 1) : 1;
+  const router = useRouter();
 
   const uid = user?.id;
   const isProvider = item.poster?.id === uid || item.deliveryAgent?.id === uid || item.assignedTo?.id === uid || item.deliveryAgentId === uid;
@@ -1396,6 +1397,11 @@ function CompactActiveCard({ item, C, user, onTrackPress, onAccept, onReject, on
   const studentName = item.bookedBy?.name || item.requester?.name || null;
   // Who is handling the order (provider/agent side)
   const agentName = item.poster?.name || item.deliveryAgent?.name || item.assignedTo?.name || null;
+  const agentId   = item.poster?.id   || item.deliveryAgent?.id   || item.assignedTo?.id   || null;
+  const agentPhone = item.poster?.phone || item.deliveryAgent?.phone || item.assignedTo?.phone || null;
+  // Show Call/Text buttons when the order is accepted and the current user is the student side
+  const isAcceptedOrBeyond = !["open", "pending", "booked", "rejected", "cancelled", "delivered", "dismissed"].includes(item.status);
+  const showContactButtons = isAcceptedOrBeyond && !!agentId && !isProvider;
   // Short order ID
   const orderId = `#${item.id.substring(0, 8).toUpperCase()}`;
   const rawPrice = item._type === "deliveries"
@@ -1419,7 +1425,13 @@ function CompactActiveCard({ item, C, user, onTrackPress, onAccept, onReject, on
         </View>
         <View style={{ alignItems: "flex-end", gap: 2 }}>
           {price ? <Text style={{ fontSize: 15, fontFamily: "Inter_800ExtraBold", color: meta.accent }}>{price}</Text> : null}
-          {agentName ? <Text style={{ fontSize: 9, color: "#78716C" }}>Agent {agentName}</Text> : null}
+          {agentName && agentId ? (
+            <Pressable onPress={() => router.push(`/profile/${agentId}` as any)} hitSlop={8}>
+              <Text style={{ fontSize: 9, color: meta.accent, fontFamily: "Inter_600SemiBold", textDecorationLine: "underline" }}>Agent {agentName}</Text>
+            </Pressable>
+          ) : agentName ? (
+            <Text style={{ fontSize: 9, color: "#78716C" }}>Agent {agentName}</Text>
+          ) : null}
         </View>
       </View>
 
@@ -1483,6 +1495,28 @@ function CompactActiveCard({ item, C, user, onTrackPress, onAccept, onReject, on
               })}
             </View>
 
+            {/* ── Contact agent: Call + Text — only for student on accepted orders ── */}
+            {showContactButtons && (
+              <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
+                {agentPhone ? (
+                  <Pressable
+                    onPress={() => Linking.openURL(`tel:${agentPhone}`)}
+                    style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, backgroundColor: "#D1FAE5", paddingVertical: 8, borderRadius: 10 }}
+                  >
+                    <Feather name="phone" size={13} color="#059669" />
+                    <Text style={{ fontSize: 12, fontFamily: "Inter_700Bold", color: "#059669" }}>Call</Text>
+                  </Pressable>
+                ) : null}
+                <Pressable
+                  onPress={() => onTextAgent?.(item)}
+                  style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, backgroundColor: "#EDE9FE", paddingVertical: 8, borderRadius: 10 }}
+                >
+                  <Feather name="message-circle" size={13} color="#5B4FE8" />
+                  <Text style={{ fontSize: 12, fontFamily: "Inter_700Bold", color: "#5B4FE8" }}>Text</Text>
+                </Pressable>
+              </View>
+            )}
+
             {/* CTA — Accept/Reject for provider awaiting acceptance or unaccepted delivery; delivery-aware CTA; status button otherwise */}
             {awaitingAcceptance || canAcceptPendingDelivery ? (
               <View style={{ marginTop: 12, flexDirection: "row", gap: 8 }}>
@@ -1534,12 +1568,16 @@ function CompactActiveCard({ item, C, user, onTrackPress, onAccept, onReject, on
 function CompactListingRow({ item, C, user, onBook, onAccept, onReject, onApply, onCancel, isPending, hasActiveBooking }: any) {
   const meta = CAT_META[item._type] || CAT_META.tasks;
   const uid = user?.id;
+  const router = useRouter();
   const isOwnListing = item.poster?.id === uid || item.requester?.id === uid || item.requesterId === uid;
 
   const title = item.title || item.pickupLocation || "Delivery Request";
-  const author = item._type === "deliveries"
+  const author   = item._type === "deliveries"
     ? (item.requester?.name || "—")
     : (item.poster?.name || "—");
+  const authorId = item._type === "deliveries"
+    ? (item.requester?.id || item.requesterId || null)
+    : (item.poster?.id || null);
   const subject = item.subject || item.category || (item._type === "deliveries" ? item.pickupLocation : null);
   const rawPrice = parseFloat(item.price || item.deliveryFee || "20");
   const price = `₹${rawPrice.toFixed(0)}`;
@@ -1584,9 +1622,17 @@ function CompactListingRow({ item, C, user, onBook, onAccept, onReject, onApply,
             <Text style={{ fontSize: 13, fontFamily: "Inter_700Bold", color: "#1C1917", flex: 1 }} numberOfLines={1}>{title}</Text>
             <Text style={{ fontSize: 9, fontFamily: "Inter_500Medium", color: "#A8A29E" }}>{orderId}</Text>
           </View>
-          <Text style={{ fontSize: 10, color: "#78716C", marginTop: 2 }}>
-            {item._type === "deliveries" ? `By ${author}` : `Provider: ${author}`}
-          </Text>
+          {authorId && authorId !== uid ? (
+            <Pressable onPress={() => router.push(`/profile/${authorId}` as any)} hitSlop={8}>
+              <Text style={{ fontSize: 10, color: meta.accent, fontFamily: "Inter_600SemiBold", marginTop: 2, textDecorationLine: "underline" }}>
+                {item._type === "deliveries" ? `By ${author}` : `Agent: ${author}`}
+              </Text>
+            </Pressable>
+          ) : (
+            <Text style={{ fontSize: 10, color: "#78716C", marginTop: 2 }}>
+              {item._type === "deliveries" ? `By ${author}` : `Agent: ${author}`}
+            </Text>
+          )}
         </View>
         <View style={{ alignItems: "flex-end", gap: 2 }}>
           <Text style={{ fontSize: 17, fontFamily: "Inter_800ExtraBold", color: meta.accent }}>{price}</Text>
@@ -1928,6 +1974,10 @@ export default function ServicesScreen() {
   const [walletConfirmItem, setWalletConfirmItem] = useState<any>(null);
   const [paymentReviewItem, setPaymentReviewItem] = useState<any>(null);
   const [reviewImageFullscreen, setReviewImageFullscreen] = useState(false);
+  // Text-agent modal — opened from the "Text" button on accepted active-order cards
+  const [textModalItem, setTextModalItem] = useState<any>(null);
+  const [textModalContent, setTextModalContent] = useState("");
+  const [textModalSending, setTextModalSending] = useState(false);
   const { showToast } = useToast();
   const isWeb = Platform.OS === "web";
 
@@ -2643,6 +2693,7 @@ export default function ServicesScreen() {
                     onReviewPayment={handleReviewPayment}
                     onMarkReceived={handleMarkReceived}
                     onCancelDelivery={(id: string) => actionMutation.mutate({ id, action: "cancel", tab: "deliveries" })}
+                    onTextAgent={(i: any) => { setTextModalItem(i); setTextModalContent(""); }}
                   />
                 ))}
               </View>
@@ -3100,6 +3151,112 @@ export default function ServicesScreen() {
               resizeMode="contain"
             />
           )}
+        </View>
+      </Modal>
+
+      {/* ── Text-Agent Compose Modal ── */}
+      <Modal
+        visible={!!textModalItem}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setTextModalItem(null)}
+      >
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" }}>
+          <View style={{ backgroundColor: C.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 40, paddingTop: 8 }}>
+            {/* Handle */}
+            <View style={{ width: 40, height: 4, backgroundColor: "#E7E5E4", borderRadius: 2, alignSelf: "center", marginBottom: 16 }} />
+
+            {/* Header */}
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, marginBottom: 14 }}>
+              <Text style={{ fontSize: 17, fontFamily: "Inter_700Bold", color: C.text }}>Message Agent</Text>
+              <Pressable onPress={() => setTextModalItem(null)} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: C.backgroundSecondary, alignItems: "center", justifyContent: "center" }}>
+                <Feather name="x" size={18} color={C.text} />
+              </Pressable>
+            </View>
+
+            {/* Order context chip */}
+            {textModalItem && (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#EDE9FE", borderRadius: 10, marginHorizontal: 20, marginBottom: 14, padding: 10 }}>
+                <Feather name="package" size={14} color="#5B4FE8" />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 11, fontFamily: "Inter_600SemiBold", color: "#5B4FE8" }}>Order Message</Text>
+                  <Text style={{ fontSize: 12, color: "#78716C", fontFamily: "Inter_500Medium" }} numberOfLines={1}>
+                    {textModalItem.title || textModalItem.pickupLocation || `#${textModalItem.id?.substring(0, 8)?.toUpperCase()}`}
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            {/* Text input */}
+            <View style={{ marginHorizontal: 20, marginBottom: 14, backgroundColor: C.backgroundSecondary, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 10, flexDirection: "row", alignItems: "flex-end", gap: 10 }}>
+              <TextInput
+                style={{ flex: 1, fontSize: 15, color: C.text, fontFamily: "Inter_400Regular", maxHeight: 120 }}
+                placeholder="Type your message…"
+                placeholderTextColor={C.textTertiary}
+                value={textModalContent}
+                onChangeText={setTextModalContent}
+                multiline
+                autoFocus
+              />
+            </View>
+
+            {/* Send button */}
+            <Pressable
+              disabled={!textModalContent.trim() || textModalSending}
+              onPress={async () => {
+                if (!textModalItem || !textModalContent.trim()) return;
+                const agentId = textModalItem.poster?.id || textModalItem.deliveryAgent?.id || textModalItem.assignedTo?.id;
+                if (!agentId) return;
+                setTextModalSending(true);
+                try {
+                  const convRes = await apiRequest("/chat/conversations", {
+                    method: "POST",
+                    body: JSON.stringify({ participantId: agentId, isAnonymous: false }),
+                  });
+                  const convData = await convRes.json();
+                  const convId = convData.id || convData.conversation?.id;
+                  if (!convId) throw new Error("No conversation ID");
+                  await apiRequest(`/chat/conversations/${convId}/messages`, {
+                    method: "POST",
+                    body: JSON.stringify({
+                      content: textModalContent.trim(),
+                      metadata: {
+                        orderContext: {
+                          id: textModalItem.id,
+                          title: textModalItem.title || textModalItem.pickupLocation || "Order",
+                          type: textModalItem._type,
+                        },
+                      },
+                    }),
+                  });
+                  setTextModalItem(null);
+                  setTextModalContent("");
+                  router.push(`/chat/${convId}` as any);
+                } catch {
+                  showToast("Failed to send message", "error");
+                } finally {
+                  setTextModalSending(false);
+                }
+              }}
+              style={{
+                marginHorizontal: 20,
+                backgroundColor: textModalContent.trim() ? "#5B4FE8" : "#E7E5E4",
+                paddingVertical: 14,
+                borderRadius: 14,
+                alignItems: "center",
+                flexDirection: "row",
+                justifyContent: "center",
+                gap: 8,
+              }}
+            >
+              {textModalSending
+                ? <ActivityIndicator size="small" color="#fff" />
+                : <>
+                    <Feather name="send" size={15} color={textModalContent.trim() ? "#fff" : "#A8A29E"} />
+                    <Text style={{ color: textModalContent.trim() ? "#fff" : "#A8A29E", fontSize: 15, fontFamily: "Inter_600SemiBold" }}>Send Message</Text>
+                  </>}
+            </Pressable>
+          </View>
         </View>
       </Modal>
 

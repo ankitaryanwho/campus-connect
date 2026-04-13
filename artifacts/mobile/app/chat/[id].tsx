@@ -112,14 +112,36 @@ export default function ChatDetailScreen() {
           showsVerticalScrollIndicator={false}
           renderItem={({ item }) => {
             const isMe = item.senderId === user?.id;
+            const orderCtx = item.metadata?.orderContext ?? null;
             return (
               <View style={[styles.messageRow, isMe && styles.messageRowRight]}>
                 {!isMe && <Avatar name={item.senderName} avatar={item.senderAvatar} size={30} C={C} />}
-                <View style={[styles.bubble, isMe ? { backgroundColor: C.primary } : { backgroundColor: C.surface, borderColor: C.border, borderWidth: 0.5 }]}>
-                  <Text style={[styles.bubbleText, { color: isMe ? "#fff" : C.text, fontFamily: "Inter_400Regular" }]}>{item.content}</Text>
-                  <Text style={[styles.bubbleTime, { color: isMe ? "rgba(255,255,255,0.7)" : C.textTertiary, fontFamily: "Inter_400Regular" }]}>
-                    {formatTime(item.createdAt)}
-                  </Text>
+                <View style={{ maxWidth: "75%" as any }}>
+                  {/* Order-context banner — shown when message was sent from an order card */}
+                  {orderCtx && (
+                    <View style={{
+                      backgroundColor: isMe ? "rgba(255,255,255,0.18)" : "#EDE9FE",
+                      borderRadius: 12, borderBottomLeftRadius: 4, borderBottomRightRadius: 4,
+                      paddingHorizontal: 10, paddingVertical: 6, marginBottom: 2,
+                      flexDirection: "row", alignItems: "center", gap: 6,
+                    }}>
+                      <Feather name="package" size={12} color={isMe ? "#fff" : "#5B4FE8"} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 9, fontFamily: "Inter_600SemiBold", color: isMe ? "rgba(255,255,255,0.85)" : "#5B4FE8" }}>
+                          Order Message
+                        </Text>
+                        <Text style={{ fontSize: 10, color: isMe ? "rgba(255,255,255,0.7)" : "#78716C", fontFamily: "Inter_500Medium" }} numberOfLines={1}>
+                          {orderCtx.title || orderCtx.id?.substring(0, 8)?.toUpperCase()}
+                        </Text>
+                      </View>
+                    </View>
+                  )}
+                  <View style={[styles.bubble, isMe ? { backgroundColor: C.primary } : { backgroundColor: C.surface, borderColor: C.border, borderWidth: 0.5 }, orderCtx && { borderTopLeftRadius: 4, borderTopRightRadius: 4 }]}>
+                    <Text style={[styles.bubbleText, { color: isMe ? "#fff" : C.text, fontFamily: "Inter_400Regular" }]}>{item.content}</Text>
+                    <Text style={[styles.bubbleTime, { color: isMe ? "rgba(255,255,255,0.7)" : C.textTertiary, fontFamily: "Inter_400Regular" }]}>
+                      {formatTime(item.createdAt)}
+                    </Text>
+                  </View>
                 </View>
               </View>
             );
