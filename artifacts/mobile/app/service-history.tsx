@@ -294,8 +294,8 @@ function BookingCard({
       {/* Price row */}
       <View style={[BC.priceRow, { borderTopColor: C.border }]}>
         <View>
-          <Text style={[BC.priceLabel, { color: C.textSecondary }]}>Amount</Text>
-          <Text style={[BC.priceValue, { color: accent }]}>₹{formatRupee(amount)}</Text>
+          <Text style={[BC.priceLabel, { color: C.textSecondary }]}>{isLister ? "Amount Earned" : "Amount"}</Text>
+          <Text style={[BC.priceValue, { color: accent }]}>₹{formatRupee(isLister ? amount * 0.8 : amount)}</Text>
         </View>
         {booking.totalPaid && parseFloat(booking.totalPaid) > 0
           && !["rejected", "delivered", "cancelled"].includes(booking.status) && (
@@ -429,7 +429,6 @@ function DeliveryCard({ item, C }: { item: DeliveryHistoryItem; C: ColorTokens }
   const sl    = DELIVERY_STATUS_LABEL[item.status] ?? item.status;
   const fee   = typeof item.deliveryFee === "string" ? parseFloat(item.deliveryFee) : (item.deliveryFee ?? 0);
   const isRequester = item._myPerspective === "requester";
-  const otherParty = isRequester ? (item.agent?.name ?? "Finding agent…") : (item.requester?.name ?? "—");
 
   return (
     <View style={[BC.card, { backgroundColor: C.surface, borderColor: C.border }]}>
@@ -464,23 +463,24 @@ function DeliveryCard({ item, C }: { item: DeliveryHistoryItem; C: ColorTokens }
 
       <View style={BC.metaRow}>
         <View style={BC.metaItem}>
-          <Feather name="user" size={12} color={C.textTertiary} />
+          <Feather name="shopping-bag" size={12} color={C.textTertiary} />
           <Text style={[BC.metaText, { color: C.textSecondary }]}>
-            {isRequester ? "Agent: " : "Requester: "}
-            <Text style={BC.metaHighlight}>{otherParty}</Text>
+            {"Ordered By: "}
+            <Text style={[BC.metaHighlight, { fontFamily: "Inter_700Bold" }]}>{item.requester?.name ?? "—"}</Text>
           </Text>
         </View>
         <View style={BC.metaItem}>
-          <Feather name={isRequester ? "shopping-bag" : "briefcase"} size={12} color={C.textTertiary} />
+          <Feather name="briefcase" size={12} color={C.textTertiary} />
           <Text style={[BC.metaText, { color: C.textSecondary }]}>
-            {isRequester ? "Placed by me" : "I'm delivering"}
+            {"Agent: "}
+            <Text style={[BC.metaHighlight, { fontFamily: "Inter_700Bold" }]}>{item.agent?.name ?? "Finding agent…"}</Text>
           </Text>
         </View>
       </View>
 
       <View style={[BC.priceRow, { borderTopColor: C.border }]}>
-        <Text style={[BC.priceLabel, { color: C.textTertiary }]}>Delivery fee</Text>
-        <Text style={[BC.priceValue, { color: C.text }]}>₹{fee.toLocaleString("en-IN")}</Text>
+        <Text style={[BC.priceLabel, { color: C.textTertiary }]}>{isRequester ? "Delivery Fee" : "Amount Earned"}</Text>
+        <Text style={[BC.priceValue, { color: C.text }]}>₹{(isRequester ? fee : fee * 0.8).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</Text>
       </View>
     </View>
   );
