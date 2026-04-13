@@ -301,7 +301,7 @@ function BookingCard({
           && !["rejected", "delivered", "cancelled"].includes(booking.status) && (
           <View style={BC.escrowChip}>
             <Feather name="lock" size={11} color="#5B4FE8" />
-            <Text style={BC.escrowText}>₹{formatRupee(booking.totalPaid)} in escrow</Text>
+            <Text style={BC.escrowText}>{isLister ? "Amount held in escrow" : `₹${formatRupee(booking.totalPaid)} in escrow`}</Text>
           </View>
         )}
       </View>
