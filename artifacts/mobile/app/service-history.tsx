@@ -489,7 +489,7 @@ export default function ServiceHistoryScreen() {
   const C           = Colors[colorScheme === "dark" ? "dark" : "light"];
   const { user, apiRequest } = useAuth();
   const queryClient = useQueryClient();
-  const [tab, setTab]           = useState<"jobs" | "orders">("jobs");
+  const [tab, setTab]           = useState<"active" | "completed">("active");
   const [refreshing, setRefreshing] = useState(false);
   const [pendingId, setPendingId]   = useState<string | null>(null);
 
@@ -530,17 +530,29 @@ export default function ServiceHistoryScreen() {
   const rawCompleted = historyQuery.data?.completed ?? [];
   const rawCancelled = historyQuery.data?.cancelled ?? [];
 
-  // Merge all items, sorted by date descending
-  const allItems: HistoryItem[] = [...rawActive, ...rawCompleted, ...rawCancelled].sort(
+  const isProvider = user?.role === "provider";
+
+  // Students only see their own bookings/orders (booker/requester perspective)
+  // Providers see both sides: jobs they provide + services/deliveries they ordered
+  function isMine(item: HistoryItem) {
+    if (!isProvider) return item._myPerspective === "booker" || item._myPerspective === "requester";
+    return true;
+  }
+  const active    = rawActive.filter(isMine);
+  const completed = rawCompleted.filter(isMine);
+  const cancelled = rawCancelled.filter(isMine);
+
+  // All history = completed + cancelled, sorted by date descending
+  const allHistory: HistoryItem[] = [...completed, ...cancelled].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
 
-  // My Jobs: orders where the current user is the provider / agent
-  const myJobs = allItems.filter(item =>
-    item._myPerspective === "lister" || item._myPerspective === "agent"
+  // Active grouping: "Jobs I'm Providing" vs "My Orders"
+  const activeAsProvider = active.filter(item =>
+    item._myPerspective === "lister" ||
+    (item._myPerspective === "agent" && ACCEPTED_WORK_STATUSES.has(item.status))
   );
-  // My Orders: orders where the current user is the customer / requester
-  const myOrders = allItems.filter(item =>
+  const activeAsCustomer = active.filter(item =>
     item._myPerspective === "booker" || item._myPerspective === "requester"
   );
 
@@ -599,18 +611,53 @@ export default function ServiceHistoryScreen() {
     );
   }
 
-  function renderJobsContent() {
+  function renderActiveContent() {
     if (historyQuery.isLoading) return <ActivityIndicator color={C.primary} style={{ marginTop: 40 }} />;
     if (historyQuery.isError)   return renderEmpty("Could not load jobs.\nPull down to try again.");
-    if (myJobs.length === 0)    return renderEmpty("No jobs yet.\nAccept a service or delivery to see them here.");
-    return renderWithDividers(myJobs);
+    if (active.length === 0)    return renderEmpty("No active jobs yet.\nBook a service to get started.");
+
+    if (isProvider) {
+      const hasProvider = activeAsProvider.length > 0;
+      const hasCustomer = activeAsCustomer.length > 0;
+      return (
+        <>
+          {hasProvider && (
+            <View>
+              <View style={[S.groupHeader, { borderColor: C.border }]}>
+                <Feather name="briefcase" size={13} color="#5B4FE8" />
+                <Text style={[S.groupTitle, { color: C.text }]}>Jobs I&apos;m Providing</Text>
+                <View style={[S.groupBadge, { backgroundColor: "#EDE9FE" }]}>
+                  <Text style={[S.groupBadgeText, { color: "#5B4FE8" }]}>{activeAsProvider.length}</Text>
+                </View>
+              </View>
+              {renderWithDividers(activeAsProvider)}
+            </View>
+          )}
+          {hasCustomer && (
+            <View style={{ marginTop: hasProvider ? 8 : 0 }}>
+              <View style={[S.groupHeader, { borderColor: C.border }]}>
+                <Feather name="shopping-bag" size={13} color="#F59E0B" />
+                <Text style={[S.groupTitle, { color: C.text }]}>My Orders</Text>
+                <View style={[S.groupBadge, { backgroundColor: "#FEF3C7" }]}>
+                  <Text style={[S.groupBadgeText, { color: "#D97706" }]}>{activeAsCustomer.length}</Text>
+                </View>
+              </View>
+              {renderWithDividers(activeAsCustomer)}
+            </View>
+          )}
+          {!hasProvider && !hasCustomer && renderEmpty("No active jobs.")}
+        </>
+      );
+    }
+
+    return renderWithDividers(active);
   }
 
-  function renderOrdersContent() {
+  function renderCompletedContent() {
     if (historyQuery.isLoading) return <ActivityIndicator color={C.primary} style={{ marginTop: 40 }} />;
-    if (historyQuery.isError)   return renderEmpty("Could not load orders.\nPull down to try again.");
-    if (myOrders.length === 0)  return renderEmpty("No orders yet.\nBook a service to get started.");
-    return renderWithDividers(myOrders);
+    if (historyQuery.isError)   return renderEmpty("Could not load history.\nPull down to try again.");
+    if (allHistory.length === 0) return renderEmpty("No completed orders yet.");
+    return renderWithDividers(allHistory);
   }
 
   return (
@@ -627,7 +674,7 @@ export default function ServiceHistoryScreen() {
         <View style={{ flex: 1 }}>
           <Text style={[S.headerTitle, { color: C.text }]}>Your Activity</Text>
           <Text style={[S.headerSub, { color: C.textSecondary }]}>
-            {myJobs.length} jobs · {myOrders.length} orders
+            {active.length} active · {completed.length} completed
           </Text>
         </View>
         <Pressable style={S.iconBtn} onPress={onRefresh}>
@@ -637,13 +684,13 @@ export default function ServiceHistoryScreen() {
 
       {/* Tab bar */}
       <View style={[S.tabBar, { backgroundColor: C.surface, borderBottomColor: C.border }]}>
-        {(["jobs", "orders"] as const).map(t => {
+        {(["active", "completed"] as const).map(t => {
           const on  = tab === t;
-          const cnt = t === "jobs" ? myJobs.length : myOrders.length;
+          const cnt = t === "active" ? active.length : allHistory.length;
           return (
             <Pressable key={t} style={[S.tabItem, on && S.tabItemOn]} onPress={() => setTab(t)}>
               <Text style={[S.tabText, { color: on ? "#5B4FE8" : C.textSecondary }, on && S.tabTextOn]}>
-                {t === "jobs" ? "My Jobs" : "My Orders"}
+                {t === "active" ? "Active Jobs" : "Completed"}
               </Text>
               {cnt > 0 && (
                 <View style={[S.tabBadge, { backgroundColor: on ? "#5B4FE8" : C.border }]}>
@@ -663,7 +710,7 @@ export default function ServiceHistoryScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.primary} />
         }
       >
-        {tab === "jobs" ? renderJobsContent() : renderOrdersContent()}
+        {tab === "active" ? renderActiveContent() : renderCompletedContent()}
       </ScrollView>
     </View>
   );
