@@ -1388,6 +1388,8 @@ function CompactActiveCard({ item, C, user, onTrackPress, onAccept, onReject, on
   const isRequester = isDelivery && (item.requester?.id === uid || item.requesterId === uid);
   // Provider has not yet accepted — needs to review the booking
   const awaitingAcceptance = isProvider && ["booked", "pending"].includes(item.status);
+  // Agent (provider role) viewing a pending delivery they can accept (not yet assigned to anyone)
+  const canAcceptPendingDelivery = isDelivery && item.status === "pending" && !isRequester && user?.role === "provider";
 
   const title = item.title || item.pickupLocation || "Delivery Request";
   // Who placed/requested the order (student side)
@@ -1481,8 +1483,8 @@ function CompactActiveCard({ item, C, user, onTrackPress, onAccept, onReject, on
               })}
             </View>
 
-            {/* CTA — Accept/Reject for provider awaiting acceptance; delivery-aware CTA for deliveries; status button otherwise */}
-            {awaitingAcceptance ? (
+            {/* CTA — Accept/Reject for provider awaiting acceptance or unaccepted delivery; delivery-aware CTA; status button otherwise */}
+            {awaitingAcceptance || canAcceptPendingDelivery ? (
               <View style={{ marginTop: 12, flexDirection: "row", gap: 8 }}>
                 <Pressable
                   style={{ flex: 1, paddingVertical: 9, borderRadius: 12, backgroundColor: "#10B981", alignItems: "center" }}
@@ -2103,8 +2105,12 @@ export default function ServicesScreen() {
     const uid = user?.id;
     const isStudentOf  = item.bookedBy?.id === uid || item.requester?.id === uid || item.requesterId === uid;
     const isProviderOf = item.poster?.id === uid || item.deliveryAgent?.id === uid || item.assignedTo?.id === uid || item.deliveryAgentId === uid;
-    // Requester's own pending delivery shows in Active Now (waiting for an agent to accept)
-    if (item._type === "deliveries" && item.status === "pending" && isStudentOf) return true;
+    // Pending deliveries show in Active Now for both the requester AND any agent who can accept them
+    if (item._type === "deliveries" && item.status === "pending") {
+      if (rejectedDeliveryIds.has(item.id)) return false;
+      if (isStudentOf) return true;           // Requester: see own pending order
+      if (isProvider) return true;            // Agent: see all available pending orders
+    }
     const idle = ["open", "pending", "delivered", "cancelled"];
     if (idle.includes(item.status)) return false;
     return isStudentOf || isProviderOf;
@@ -2150,12 +2156,8 @@ export default function ServicesScreen() {
       return item.poster?.id !== user?.id;
     }
     if (!["open", "pending"].includes(item.status)) return false;
-    // Deliveries: agents see all pending orders to accept/reject; requesters see their
-    // own pending delivery in "Active Now" instead (not here in Open Listings)
-    if (item._type === "deliveries") {
-      if (rejectedDeliveryIds.has(item.id)) return false; // Agent already rejected this one
-      return isProvider; // Only agents (providers) see open delivery listings here
-    }
+    // Deliveries: all pending orders go to "Active Now" for both agents and requesters
+    if (item._type === "deliveries") return false;
     return true;
   };
 
