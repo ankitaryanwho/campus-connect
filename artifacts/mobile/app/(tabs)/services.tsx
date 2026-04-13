@@ -1529,16 +1529,14 @@ function CompactActiveCard({ item, C, user, onTrackPress, onAccept, onReject, on
   );
 }
 
-// ─── Compact Open Listing Row (matches Priority Lane mockup exactly) ───────────
+// ─── Open Listing Card (styled like CompactActiveCard — full card with header strip) ──
 
-function CompactListingRow({ item, C, user, onBook, onAccept, onReject, onApply, onCancel, isPending, isLast, hasActiveBooking }: any) {
+function CompactListingRow({ item, C, user, onBook, onAccept, onReject, onApply, onCancel, isPending, hasActiveBooking }: any) {
   const meta = CAT_META[item._type] || CAT_META.tasks;
   const uid = user?.id;
-  const isProviderRole = user?.role === "provider";
   const isOwnListing = item.poster?.id === uid || item.requester?.id === uid || item.requesterId === uid;
 
   const title = item.title || item.pickupLocation || "Delivery Request";
-  // Deliveries are posted by students — show requester name. All others posted by providers — show poster name.
   const author = item._type === "deliveries"
     ? (item.requester?.name || "—")
     : (item.poster?.name || "—");
@@ -1548,19 +1546,13 @@ function CompactListingRow({ item, C, user, onBook, onAccept, onReject, onApply,
   const urgent = item._type === "deliveries" && item.status === "pending";
   const orderId = `#${item.id.substring(0, 8).toUpperCase()}`;
 
-  // ── Determine which action(s) to show ──
-  // Deliveries: anyone (not requester) can Accept + Reject a pending pickup
   const canAcceptReject = !isOwnListing && item._type === "deliveries" && item.status === "pending";
-  // Requester can cancel their own pending delivery (before any agent accepts)
   const canCancel = isOwnListing && item._type === "deliveries" && item.status === "pending";
-  // Tasks: anyone (not poster) can Apply
   const canApply = !isOwnListing && item._type === "tasks" && item.status === "open";
-  // Assignments/Certifications/Projects: multi-booking model — listings are always bookable
-  // hasActiveBooking comes from service_bookings table (new model)
-  // isBookedByMeLegacy is a fallback for old single-booking model rows (bookedById on listing)
   const isBookedByMeLegacy = item.bookedBy?.id === uid || item.bookedById === uid;
   const canBook = !isOwnListing && !hasActiveBooking && !isBookedByMeLegacy
     && (item._type === "assignments" || item._type === "certifications" || item._type === "projects");
+  const alreadyBooked = (hasActiveBooking || isBookedByMeLegacy) && !isOwnListing;
 
   const timeLabel = (() => {
     if (!item.createdAt) return null;
@@ -1571,110 +1563,124 @@ function CompactListingRow({ item, C, user, onBook, onAccept, onReject, onApply,
     return `${Math.floor(hrs / 24)}d ago`;
   })();
 
+  const deadlineLabel = item.deadline
+    ? new Date(item.deadline).toLocaleDateString("en-IN", { day: "numeric", month: "short" })
+    : null;
+
   return (
-    <View style={{
-      flexDirection: "row", alignItems: "center", gap: 12,
-      paddingHorizontal: 14, paddingVertical: 12,
-      borderBottomWidth: isLast ? 0 : 0.5, borderBottomColor: "#F0EDEA",
-    }}>
-      {/* Category emoji icon */}
-      <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: meta.bg, alignItems: "center", justifyContent: "center" }}>
-        <Text style={{ fontSize: 20 }}>{meta.emoji}</Text>
-      </View>
-
-      {/* Info */}
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 2, flexWrap: "nowrap" }}>
-          {urgent && (
-            <View style={{ backgroundColor: "#EF4444", paddingHorizontal: 5, paddingVertical: 2, borderRadius: 20 }}>
-              <Text style={{ color: "#fff", fontSize: 8, fontFamily: "Inter_700Bold" }}>URGENT</Text>
-            </View>
-          )}
-          <Text style={{ fontSize: 12, fontFamily: "Inter_700Bold", color: C.text, flex: 1 }} numberOfLines={1}>{title}</Text>
-          <Text style={{ fontSize: 9, fontFamily: "Inter_400Regular", color: C.textTertiary }}>{orderId}</Text>
+    <View style={{ borderRadius: 16, overflow: "hidden", borderWidth: 1.5, borderColor: meta.accent + "33" }}>
+      {/* ── Coloured header strip (mirrors CompactActiveCard) ── */}
+      <View style={{ backgroundColor: meta.bg, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 10, flexDirection: "row", alignItems: "center", gap: 8 }}>
+        <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.7)", alignItems: "center", justifyContent: "center" }}>
+          <Text style={{ fontSize: 22 }}>{meta.emoji}</Text>
         </View>
-        <Text style={{ fontSize: 10, color: C.textSecondary }} numberOfLines={1}>
-          {item._type === "deliveries" ? "By " : "Provider: "}{author}{subject ? "  ·  " : ""}
-          {subject ? <Text style={{ color: meta.accent, fontFamily: "Inter_500Medium" }}>{subject}</Text> : null}
-        </Text>
-        {timeLabel ? (
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 3, marginTop: 2 }}>
-            <Feather name="clock" size={9} color={C.textTertiary} />
-            <Text style={{ fontSize: 9, color: C.textTertiary }}>{timeLabel}</Text>
+        <View style={{ flex: 1 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+            {urgent && (
+              <View style={{ backgroundColor: "#EF4444", paddingHorizontal: 5, paddingVertical: 2, borderRadius: 20 }}>
+                <Text style={{ color: "#fff", fontSize: 8, fontFamily: "Inter_700Bold" }}>URGENT</Text>
+              </View>
+            )}
+            <Text style={{ fontSize: 13, fontFamily: "Inter_700Bold", color: "#1C1917", flex: 1 }} numberOfLines={1}>{title}</Text>
+            <Text style={{ fontSize: 9, fontFamily: "Inter_500Medium", color: "#A8A29E" }}>{orderId}</Text>
           </View>
-        ) : null}
+          <Text style={{ fontSize: 10, color: "#78716C", marginTop: 2 }}>
+            {item._type === "deliveries" ? `By ${author}` : `Provider: ${author}`}
+          </Text>
+        </View>
+        <View style={{ alignItems: "flex-end", gap: 2 }}>
+          <Text style={{ fontSize: 17, fontFamily: "Inter_800ExtraBold", color: meta.accent }}>{price}</Text>
+          {timeLabel ? <Text style={{ fontSize: 9, color: "#78716C" }}>{timeLabel}</Text> : null}
+        </View>
       </View>
 
-      {/* Price + action buttons */}
-      <View style={{ alignItems: "flex-end", gap: 5 }}>
-        <Text style={{ fontSize: 15, fontFamily: "Inter_800ExtraBold", color: meta.accent }}>{price}</Text>
+      {/* ── Card body ── */}
+      <View style={{ backgroundColor: C.surface, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 12, gap: 10 }}>
+        {/* Chips row — subject / deadline */}
+        {(subject || deadlineLabel) && (
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+            {subject ? (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: meta.bg, paddingHorizontal: 9, paddingVertical: 4, borderRadius: 20 }}>
+                <Text style={{ fontSize: 11, color: meta.accent, fontFamily: "Inter_600SemiBold" }}>{subject}</Text>
+              </View>
+            ) : null}
+            {deadlineLabel ? (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#FEF3C7", paddingHorizontal: 9, paddingVertical: 4, borderRadius: 20 }}>
+                <Feather name="clock" size={10} color="#D97706" />
+                <Text style={{ fontSize: 11, color: "#D97706", fontFamily: "Inter_600SemiBold" }}>Due {deadlineLabel}</Text>
+              </View>
+            ) : null}
+          </View>
+        )}
 
-        {/* Provider: Accept + Reject for deliveries */}
+        {/* Own listing notice */}
+        {isOwnListing && !canCancel && (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: meta.bg, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 }}>
+            <Feather name="tag" size={13} color={meta.accent} />
+            <Text style={{ fontSize: 11, color: meta.accent, fontFamily: "Inter_600SemiBold" }}>Your listing — open for bookings</Text>
+          </View>
+        )}
+
+        {/* Already-booked notice */}
+        {alreadyBooked && (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: meta.bg, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 }}>
+            <Feather name="check-circle" size={13} color={meta.accent} />
+            <Text style={{ fontSize: 11, color: meta.accent, fontFamily: "Inter_600SemiBold" }}>Already booked by you</Text>
+          </View>
+        )}
+
+        {/* ── Action buttons (full-width) ── */}
         {canAcceptReject && (
-          <View style={{ flexDirection: "row", gap: 5 }}>
+          <View style={{ flexDirection: "row", gap: 8 }}>
             <Pressable
-              style={{ backgroundColor: "#D1FAE5", paddingHorizontal: 9, paddingVertical: 4, borderRadius: 8 }}
+              style={{ flex: 1, backgroundColor: "#D1FAE5", paddingVertical: 11, borderRadius: 12, alignItems: "center" }}
               onPress={() => onAccept(item.id, item._type)}
               disabled={isPending}
             >
               {isPending
                 ? <ActivityIndicator size="small" color="#10B981" />
-                : <Text style={{ color: "#10B981", fontSize: 10, fontFamily: "Inter_700Bold" }}>Accept</Text>}
+                : <Text style={{ color: "#10B981", fontSize: 13, fontFamily: "Inter_700Bold" }}>Accept</Text>}
             </Pressable>
             <Pressable
-              style={{ backgroundColor: "#FEE2E2", paddingHorizontal: 9, paddingVertical: 4, borderRadius: 8 }}
+              style={{ flex: 1, backgroundColor: "#FEE2E2", paddingVertical: 11, borderRadius: 12, alignItems: "center" }}
               onPress={() => onReject(item.id, item._type)}
               disabled={isPending}
             >
-              <Text style={{ color: "#EF4444", fontSize: 10, fontFamily: "Inter_700Bold" }}>Reject</Text>
+              <Text style={{ color: "#EF4444", fontSize: 13, fontFamily: "Inter_700Bold" }}>Reject</Text>
             </Pressable>
           </View>
         )}
-
-        {/* Provider: Apply for tasks */}
         {canApply && (
           <Pressable
-            style={{ backgroundColor: meta.bg, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 }}
+            style={{ backgroundColor: meta.accent, paddingVertical: 11, borderRadius: 12, alignItems: "center" }}
             onPress={() => onApply(item.id, item._type)}
             disabled={isPending}
           >
             {isPending
-              ? <ActivityIndicator size="small" color={meta.accent} />
-              : <Text style={{ color: meta.accent, fontSize: 10, fontFamily: "Inter_700Bold" }}>Apply</Text>}
+              ? <ActivityIndicator size="small" color="#fff" />
+              : <Text style={{ color: "#fff", fontSize: 13, fontFamily: "Inter_700Bold" }}>Apply Now</Text>}
           </Pressable>
         )}
-
-        {/* Student: Book assignments/certifications */}
         {canBook && (
           <Pressable
-            style={{ backgroundColor: meta.bg, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 }}
+            style={{ backgroundColor: meta.accent, paddingVertical: 11, borderRadius: 12, alignItems: "center" }}
             onPress={() => onBook(item.id, item._type)}
             disabled={isPending}
           >
             {isPending
-              ? <ActivityIndicator size="small" color={meta.accent} />
-              : <Text style={{ color: meta.accent, fontSize: 10, fontFamily: "Inter_700Bold" }}>Book</Text>}
+              ? <ActivityIndicator size="small" color="#fff" />
+              : <Text style={{ color: "#fff", fontSize: 13, fontFamily: "Inter_700Bold" }}>Book Now</Text>}
           </Pressable>
         )}
-
-        {/* Already booked badge */}
-        {(hasActiveBooking || isBookedByMeLegacy) && !isOwnListing && (
-          <View style={{ backgroundColor: meta.bg, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, flexDirection: "row", alignItems: "center", gap: 3 }}>
-            <Feather name="check" size={10} color={meta.accent} />
-            <Text style={{ color: meta.accent, fontSize: 9, fontFamily: "Inter_700Bold" }}>Booked</Text>
-          </View>
-        )}
-
-        {/* Requester: cancel own pending delivery before any agent accepts */}
         {canCancel && (
           <Pressable
-            style={{ backgroundColor: "#FEE2E2", paddingHorizontal: 9, paddingVertical: 4, borderRadius: 8 }}
+            style={{ backgroundColor: "#FEE2E2", paddingVertical: 11, borderRadius: 12, alignItems: "center" }}
             onPress={() => onCancel?.(item.id)}
             disabled={isPending}
           >
             {isPending
               ? <ActivityIndicator size="small" color="#EF4444" />
-              : <Text style={{ color: "#EF4444", fontSize: 10, fontFamily: "Inter_700Bold" }}>Cancel</Text>}
+              : <Text style={{ color: "#EF4444", fontSize: 13, fontFamily: "Inter_700Bold" }}>Cancel Order</Text>}
           </Pressable>
         )}
       </View>
@@ -2659,14 +2665,13 @@ export default function ServicesScreen() {
                 </Text>
               </View>
             ) : (
-              <View style={{ backgroundColor: C.surface, borderRadius: 16, borderWidth: 0.5, borderColor: C.border, overflow: "hidden" }}>
-                {openListings.map((item: any, i: number) => (
+              <View style={{ gap: 12 }}>
+                {openListings.map((item: any) => (
                   <CompactListingRow
                     key={item.id}
                     item={item}
                     C={C}
                     user={user}
-                    isLast={i === openListings.length - 1}
                     isPending={pendingId === item.id && actionMutation.isPending}
                     hasActiveBooking={!!myActiveBookingByListing.get(item.id)}
                     onBook={(_id: string, _type: string) => handleBook(item)}
