@@ -436,6 +436,7 @@ export default function ServiceHistoryScreen() {
 
   function renderActiveContent() {
     if (historyQuery.isLoading) return <ActivityIndicator color={C.primary} style={{ marginTop: 40 }} />;
+    if (historyQuery.isError)   return renderEmpty("Could not load jobs.\nPull down to try again.");
     if (active.length === 0)    return renderEmpty("No active jobs yet.\nBook a service to get started.");
 
     if (isProvider) {
@@ -477,6 +478,7 @@ export default function ServiceHistoryScreen() {
 
   function renderCompletedContent() {
     if (historyQuery.isLoading) return <ActivityIndicator color={C.primary} style={{ marginTop: 40 }} />;
+    if (historyQuery.isError)   return renderEmpty("Could not load history.\nPull down to try again.");
     if (completed.length === 0) return renderEmpty("No completed jobs yet.");
     return <>{completed.map(renderCard)}</>;
   }
