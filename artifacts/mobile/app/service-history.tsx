@@ -2,19 +2,19 @@ import React, { useState, useCallback } from "react";
 import {
   View, Text, ScrollView, Pressable,
   StyleSheet, ActivityIndicator, RefreshControl, Platform,
-  DimensionValue,
+  DimensionValue, TouchableOpacity,
 } from "react-native";
 import { router, Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Colors from "@/constants/colors";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColorScheme } from "react-native";
 
 const isWeb = Platform.OS === "web";
 
-// ─── Lookup maps (typed, no `as any`) ─────────────────────────────────────────
+// ─── Lookup maps (typed, no `any`) ────────────────────────────────────────────
 const SERVICE_LABEL: Record<string, string> = {
   assignments: "Assignment", certifications: "Certification", projects: "Project",
 };
@@ -59,11 +59,23 @@ function getStepIndex(status: string): number {
   return idx === -1 ? 0 : idx;
 }
 
+// Status sets
+const TERMINAL_STATUSES = new Set(["delivered", "rejected", "cancelled", "dismissed"]);
+// "Jobs I'm Doing" = provider has accepted the work; exclude pre-acceptance (booked) + terminal
+const ACCEPTED_WORK_STATUSES = new Set(["accepted", "in_progress", "completed"]);
+
+// Provider next action for lister-side cards
+function getProviderAction(status: string): { label: string; action: string } | null {
+  if (status === "accepted")    return { label: "Mark as Started",   action: "progress" };
+  if (status === "in_progress") return { label: "Mark as Completed", action: "progress" };
+  return null;
+}
+
 type ColorTokens = typeof Colors.light;
 
 // ─── Read-only Status Timeline ────────────────────────────────────────────────
-function StatusTimeline({ booking, accent }: { booking: BookingItem; accent: string }) {
-  const idx = getStepIndex(booking.status);
+function StatusTimeline({ status, accent }: { status: string; accent: string }) {
+  const idx = getStepIndex(status);
   const pct: DimensionValue = `${Math.round((idx / (ACADEMIC_STEPS.length - 1)) * 100)}%`;
   return (
     <View style={TL.wrap}>
@@ -116,8 +128,11 @@ const TL = StyleSheet.create({
 });
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
-interface UserRef   { id: string; name?: string }
-interface ListingRef { title?: string; subject?: string; courseName?: string; projectTitle?: string; price?: string | number; budget?: string | number; poster?: UserRef }
+interface UserRef    { id: string; name?: string }
+interface ListingRef {
+  title?: string; subject?: string; courseName?: string; projectTitle?: string;
+  price?: string | number; budget?: string | number; poster?: UserRef;
+}
 interface BookingItem {
   id: string;
   _type: string;
@@ -129,22 +144,42 @@ interface BookingItem {
   amount?: string | number;
   totalPaid?: string;
 }
+interface HistoryData {
+  active:    BookingItem[];
+  completed: BookingItem[];
+}
 
 // ─── Booking Card ──────────────────────────────────────────────────────────────
-function BookingCard({ booking, C }: { booking: BookingItem; C: ColorTokens }) {
-  const accent    = serviceAccent(booking._type);
-  const listing   = booking.listing;
-  const sc        = statusColor(booking.status);
-  const isLister  = booking._myPerspective === "lister";
-  const isTerminal = ["delivered", "rejected", "cancelled", "dismissed"].includes(booking.status);
+function BookingCard({
+  booking, C,
+  onMutate, isPending, pendingId,
+}: {
+  booking: BookingItem; C: ColorTokens;
+  onMutate: (id: string, action: string) => void;
+  isPending: boolean; pendingId: string | null;
+}) {
+  const accent   = serviceAccent(booking._type);
+  const listing  = booking.listing;
+  const sc       = statusColor(booking.status);
+  const isLister = booking._myPerspective === "lister";
+  const isBooker = booking._myPerspective === "booker";
 
-  const title = listing?.title ?? listing?.subject ?? listing?.courseName ?? listing?.projectTitle
-    ?? `${serviceLabel(booking._type)} Order`;
+  const title = listing?.title ?? listing?.subject ?? listing?.courseName
+    ?? listing?.projectTitle ?? `${serviceLabel(booking._type)} Order`;
   const studentName  = booking.student?.name  ?? "—";
   const providerName = booking.provider?.name ?? listing?.poster?.name ?? "—";
   const amount       = booking.amount ?? listing?.price ?? listing?.budget ?? 0;
 
-  function openDetail() {
+  const thisPending = isPending && pendingId === booking.id;
+
+  // Provider/lister: direct API mutation for "Update Order Status"
+  const providerAction = isLister ? getProviderAction(booking.status) : null;
+  // Booker who needs to confirm delivery: direct mutation
+  const canConfirm = isBooker && booking.status === "completed";
+  // Booker tracking (not yet actionable): navigate into Services tab modal
+  const canTrack = isBooker && !canConfirm && !TERMINAL_STATUSES.has(booking.status);
+
+  function openTracking() {
     router.push({
       pathname: "/(tabs)/services" as Href,
       params: { tab: booking._type, openBookingId: booking.id },
@@ -173,22 +208,20 @@ function BookingCard({ booking, C }: { booking: BookingItem; C: ColorTokens }) {
         <View style={BC.metaItem}>
           <Feather name="user" size={11} color={C.textTertiary} />
           <Text style={[BC.metaText, { color: C.textTertiary }]}>
-            Order By{" "}
-            <Text style={[BC.metaHighlight, { color: C.text }]}>{studentName}</Text>
+            Order By <Text style={[BC.metaHighlight, { color: C.text }]}>{studentName}</Text>
           </Text>
         </View>
         <View style={[BC.metaItem, { justifyContent: "flex-end" }]}>
           <Feather name="briefcase" size={11} color={C.textTertiary} />
           <Text style={[BC.metaText, { color: C.textTertiary }]}>
-            Agent{" "}
-            <Text style={[BC.metaHighlight, { color: C.text }]}>{providerName}</Text>
+            Agent <Text style={[BC.metaHighlight, { color: C.text }]}>{providerName}</Text>
           </Text>
         </View>
       </View>
 
-      {/* Status tracker (read-only) */}
+      {/* Status timeline (read-only) */}
       {!["rejected", "cancelled"].includes(booking.status) && (
-        <StatusTimeline booking={booking} accent={accent} />
+        <StatusTimeline status={booking.status} accent={accent} />
       )}
 
       {/* Rejected banner */}
@@ -214,7 +247,7 @@ function BookingCard({ booking, C }: { booking: BookingItem; C: ColorTokens }) {
         )}
       </View>
 
-      {/* Delivered success banner */}
+      {/* Delivered success */}
       {booking.status === "delivered" && (
         <View style={BC.deliveredBanner}>
           <Feather name="check-circle" size={14} color="#059669" />
@@ -222,25 +255,60 @@ function BookingCard({ booking, C }: { booking: BookingItem; C: ColorTokens }) {
         </View>
       )}
 
-      {/* Action button — navigates to Services tab booking detail modal */}
-      {!isTerminal && (
-        <Pressable
-          style={[BC.actionBtn, { backgroundColor: accent }]}
-          onPress={openDetail}
-          android_ripple={{ color: "rgba(0,0,0,0.1)" }}
+      {/* Provider "completed" status: awaiting student confirmation */}
+      {isLister && booking.status === "completed" && (
+        <View style={[BC.infoBanner, { backgroundColor: accent + "14" }]}>
+          <Feather name="clock" size={14} color={accent} />
+          <Text style={[BC.infoText, { color: accent }]}>Awaiting student confirmation.</Text>
+        </View>
+      )}
+
+      {/* Provider "Update Order Status" — calls API directly */}
+      {providerAction && (
+        <TouchableOpacity
+          style={[BC.actionBtn, { backgroundColor: accent, opacity: thisPending ? 0.6 : 1 }]}
+          onPress={() => onMutate(booking.id, providerAction.action)}
+          disabled={thisPending}
+          activeOpacity={0.85}
         >
-          {isLister ? (
+          {thisPending ? <ActivityIndicator color="#fff" size="small" /> : (
             <>
               <Feather name="edit-2" size={14} color="#fff" />
               <Text style={BC.actionBtnText}>Update Order Status</Text>
-            </>
-          ) : (
-            <>
-              <Feather name="eye" size={14} color="#fff" />
-              <Text style={BC.actionBtnText}>Track Order</Text>
+              <Text style={[BC.actionBtnSub, { color: "rgba(255,255,255,0.8)" }]}>
+                {providerAction.label}
+              </Text>
             </>
           )}
-          <Feather name="chevron-right" size={14} color="rgba(255,255,255,0.7)" />
+        </TouchableOpacity>
+      )}
+
+      {/* Booker "Confirm Delivery" — calls API directly */}
+      {canConfirm && (
+        <TouchableOpacity
+          style={[BC.actionBtn, { backgroundColor: "#10B981", opacity: thisPending ? 0.6 : 1 }]}
+          onPress={() => onMutate(booking.id, "confirm")}
+          disabled={thisPending}
+          activeOpacity={0.85}
+        >
+          {thisPending ? <ActivityIndicator color="#fff" size="small" /> : (
+            <>
+              <Feather name="package" size={14} color="#fff" />
+              <Text style={BC.actionBtnText}>Confirm Delivery</Text>
+            </>
+          )}
+        </TouchableOpacity>
+      )}
+
+      {/* Booker "Track Order" — opens Services tab booking detail modal */}
+      {canTrack && (
+        <Pressable
+          style={[BC.trackBtn, { borderColor: accent }]}
+          onPress={openTracking}
+        >
+          <Feather name="eye" size={14} color={accent} />
+          <Text style={[BC.trackBtnText, { color: accent }]}>Track Order</Text>
+          <Feather name="chevron-right" size={14} color={accent} />
         </Pressable>
       )}
     </View>
@@ -260,29 +328,28 @@ const BC = StyleSheet.create({
   statusBadge: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   statusDot:   { width: 6, height: 6, borderRadius: 3 },
   statusText:  { fontSize: 11, fontFamily: "Inter_600SemiBold" },
-  title:       { fontSize: 15, fontFamily: "Inter_600SemiBold", lineHeight: 21 },
-  metaRow:     { flexDirection: "row", justifyContent: "space-between", flexWrap: "wrap", gap: 6 },
-  metaItem:    { flexDirection: "row", alignItems: "center", gap: 4, flex: 1 },
-  metaText:    { fontSize: 12, fontFamily: "Inter_400Regular" },
+  title:  { fontSize: 15, fontFamily: "Inter_600SemiBold", lineHeight: 21 },
+  metaRow:  { flexDirection: "row", justifyContent: "space-between", flexWrap: "wrap", gap: 6 },
+  metaItem: { flexDirection: "row", alignItems: "center", gap: 4, flex: 1 },
+  metaText: { fontSize: 12, fontFamily: "Inter_400Regular" },
   metaHighlight: { fontFamily: "Inter_600SemiBold" },
-  priceRow:    { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 10, borderTopWidth: 0.5 },
-  priceLabel:  { fontSize: 11, fontFamily: "Inter_400Regular" },
-  priceValue:  { fontSize: 18, fontFamily: "Inter_700Bold" },
+  priceRow:   { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 10, borderTopWidth: 0.5 },
+  priceLabel: { fontSize: 11, fontFamily: "Inter_400Regular" },
+  priceValue: { fontSize: 18, fontFamily: "Inter_700Bold" },
   escrowChip:  { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#EDE9FE", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
   escrowText:  { fontSize: 11, fontFamily: "Inter_600SemiBold", color: "#5B4FE8" },
-  actionBtn:   { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, paddingVertical: 12, borderRadius: 12 },
-  actionBtnText: { color: "#fff", fontSize: 14, fontFamily: "Inter_600SemiBold", flex: 1, textAlign: "center" },
+  actionBtn:   { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 12, borderRadius: 12 },
+  actionBtnText: { color: "#fff", fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  actionBtnSub:  { fontSize: 11, fontFamily: "Inter_400Regular" },
+  trackBtn:    { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, paddingVertical: 11, borderRadius: 12, borderWidth: 1.5 },
+  trackBtnText: { fontSize: 14, fontFamily: "Inter_600SemiBold", flex: 1, textAlign: "center" },
   rejectedBanner:  { flexDirection: "row", alignItems: "center", gap: 7, backgroundColor: "#FEF2F2", padding: 10, borderRadius: 10 },
   rejectedText:    { fontSize: 12, fontFamily: "Inter_600SemiBold", color: "#EF4444" },
   deliveredBanner: { flexDirection: "row", alignItems: "center", gap: 7, backgroundColor: "#D1FAE5", padding: 10, borderRadius: 10 },
   deliveredText:   { fontSize: 12, fontFamily: "Inter_600SemiBold", color: "#059669" },
+  infoBanner:  { flexDirection: "row", alignItems: "center", gap: 7, padding: 10, borderRadius: 10 },
+  infoText:    { fontSize: 12, fontFamily: "Inter_400Regular" },
 });
-
-// ─── History response type ─────────────────────────────────────────────────────
-interface HistoryData {
-  active:    BookingItem[];
-  completed: BookingItem[];
-}
 
 // ─── Main Screen ───────────────────────────────────────────────────────────────
 export default function ServiceHistoryScreen() {
@@ -290,8 +357,10 @@ export default function ServiceHistoryScreen() {
   const colorScheme = useColorScheme();
   const C           = Colors[colorScheme === "dark" ? "dark" : "light"];
   const { user, apiRequest } = useAuth();
+  const queryClient = useQueryClient();
   const [tab, setTab]           = useState<"active" | "completed">("active");
   const [refreshing, setRefreshing] = useState(false);
+  const [pendingId, setPendingId]   = useState<string | null>(null);
 
   const isProvider = user?.role === "provider";
 
@@ -304,6 +373,25 @@ export default function ServiceHistoryScreen() {
     },
   });
 
+  const actionMutation = useMutation({
+    mutationFn: async ({ id, action }: { id: string; action: string }) => {
+      const res  = await apiRequest(`/services/bookings/${id}/${action}`, { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error((json as { message?: string; error?: string }).message ?? "Action failed");
+      return json;
+    },
+    onMutate: ({ id }) => setPendingId(id),
+    onSettled: () => setPendingId(null),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["serviceHistory"] });
+      queryClient.invalidateQueries({ queryKey: ["services"] });
+    },
+  });
+
+  const onMutate = useCallback((id: string, action: string) => {
+    actionMutation.mutate({ id, action });
+  }, [actionMutation]);
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try { await historyQuery.refetch(); } finally { setRefreshing(false); }
@@ -312,12 +400,16 @@ export default function ServiceHistoryScreen() {
   const rawActive    = historyQuery.data?.active    ?? [];
   const rawCompleted = historyQuery.data?.completed ?? [];
 
-  // Students only see their own bookings (booker perspective).
-  // Providers see both: lister (jobs they do) and booker (services they bought).
+  // Students only see their own bookings (booker perspective)
+  // Providers see both: lister (jobs they do) and booker (services they bought)
   const active    = isProvider ? rawActive    : rawActive.filter(b => b._myPerspective === "booker");
   const completed = isProvider ? rawCompleted : rawCompleted.filter(b => b._myPerspective === "booker");
 
-  const activeAsLister = active.filter(b => b._myPerspective === "lister");
+  // "Jobs I'm Doing": post-acceptance lister work only (accepted/in_progress/completed)
+  const activeAsLister = active.filter(
+    b => b._myPerspective === "lister" && ACCEPTED_WORK_STATUSES.has(b.status)
+  );
+  // "My Own Bookings": provider's own bookings as a student
   const activeAsBooker = active.filter(b => b._myPerspective === "booker");
 
   function renderEmpty(msg: string) {
@@ -330,7 +422,16 @@ export default function ServiceHistoryScreen() {
   }
 
   function renderCard(b: BookingItem) {
-    return <BookingCard key={b.id} booking={b} C={C} />;
+    return (
+      <BookingCard
+        key={b.id}
+        booking={b}
+        C={C}
+        onMutate={onMutate}
+        isPending={actionMutation.isPending}
+        pendingId={pendingId}
+      />
+    );
   }
 
   function renderActiveContent() {
@@ -338,9 +439,11 @@ export default function ServiceHistoryScreen() {
     if (active.length === 0)    return renderEmpty("No active jobs yet.\nBook a service to get started.");
 
     if (isProvider) {
+      const hasLister = activeAsLister.length > 0;
+      const hasBooker = activeAsBooker.length > 0;
       return (
         <>
-          {activeAsLister.length > 0 && (
+          {hasLister && (
             <View>
               <View style={[S.groupHeader, { borderColor: C.border }]}>
                 <Feather name="briefcase" size={13} color="#5B4FE8" />
@@ -352,8 +455,8 @@ export default function ServiceHistoryScreen() {
               {activeAsLister.map(renderCard)}
             </View>
           )}
-          {activeAsBooker.length > 0 && (
-            <View style={{ marginTop: activeAsLister.length > 0 ? 8 : 0 }}>
+          {hasBooker && (
+            <View style={{ marginTop: hasLister ? 8 : 0 }}>
               <View style={[S.groupHeader, { borderColor: C.border }]}>
                 <Feather name="shopping-bag" size={13} color="#F59E0B" />
                 <Text style={[S.groupTitle, { color: C.text }]}>My Own Bookings</Text>
@@ -364,7 +467,7 @@ export default function ServiceHistoryScreen() {
               {activeAsBooker.map(renderCard)}
             </View>
           )}
-          {activeAsLister.length === 0 && activeAsBooker.length === 0 && renderEmpty("No active jobs.")}
+          {!hasLister && !hasBooker && renderEmpty("No active jobs.")}
         </>
       );
     }
