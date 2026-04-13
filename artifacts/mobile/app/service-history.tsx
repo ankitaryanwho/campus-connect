@@ -290,8 +290,8 @@ function BookingCard({
       {/* Price row */}
       <View style={[BC.priceRow, { borderTopColor: C.border }]}>
         <View>
-          <Text style={[BC.priceLabel, { color: C.textSecondary }]}>{isLister ? "Amount Earned" : "Amount"}</Text>
-          <Text style={[BC.priceValue, { color: accent }]}>₹{formatRupee(isLister ? amount * 0.8 : amount)}</Text>
+          <Text style={[BC.priceLabel, { color: C.textSecondary }]}>{isLister ? "Amount Earned" : "Amount Paid"}</Text>
+          <Text style={[BC.priceValue, { color: "#10B981" }]}>₹{formatRupee(isLister ? amount * 0.8 : amount)}</Text>
         </View>
         {booking.totalPaid && parseFloat(booking.totalPaid) > 0
           && !["rejected", "delivered", "cancelled"].includes(booking.status) && (
@@ -499,8 +499,8 @@ function DeliveryCard({ item, C }: { item: DeliveryHistoryItem; C: ColorTokens }
       {/* Price row */}
       <View style={[BC.priceRow, { borderTopColor: C.border }]}>
         <View>
-          <Text style={[BC.priceLabel, { color: C.textSecondary }]}>{isRequester ? "Delivery Fee" : "Amount Earned"}</Text>
-          <Text style={[BC.priceValue, { color: accent }]}>
+          <Text style={[BC.priceLabel, { color: C.textSecondary }]}>{isRequester ? "Delivery Fee Paid" : "Amount Earned"}</Text>
+          <Text style={[BC.priceValue, { color: "#10B981" }]}>
             ₹{(isRequester ? fee : fee * 0.8).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
           </Text>
         </View>
@@ -793,7 +793,7 @@ const S = StyleSheet.create({
   tabTextOn:    { fontFamily: "Inter_700Bold" },
   tabBadge:     { minWidth: 20, height: 20, borderRadius: 10, alignItems: "center", justifyContent: "center", paddingHorizontal: 5 },
   tabBadgeText: { fontSize: 11, fontFamily: "Inter_700Bold" },
-  content:      { padding: 14, gap: 16, paddingBottom: 100 },
+  content:      { padding: 14, gap: 20, paddingBottom: 100 },
   groupHeader:  { flexDirection: "row", alignItems: "center", gap: 7, marginBottom: 8, paddingBottom: 8, borderBottomWidth: 0.5 },
   groupTitle:   { fontSize: 13, fontFamily: "Inter_700Bold", flex: 1 },
   groupBadge:   { minWidth: 22, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center", paddingHorizontal: 6 },
