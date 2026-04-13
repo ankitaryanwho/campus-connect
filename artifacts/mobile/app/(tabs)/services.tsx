@@ -1862,7 +1862,7 @@ export default function ServicesScreen() {
   const { apiRequest, user } = useAuth();
   const queryClient = useQueryClient();
   const router = useRouter();
-  const { tab: tabParam } = useLocalSearchParams<{ tab?: string; itemId?: string }>();
+  const { tab: tabParam, openBookingId } = useLocalSearchParams<{ tab?: string; itemId?: string; openBookingId?: string }>();
   const [activeCat, setActiveCat] = useState("all");
 
   // Deep-link from notification: auto-switch to the relevant tab
@@ -2153,6 +2153,13 @@ export default function ServicesScreen() {
       setRefreshing(false);
     }
   }, [refetchAll]);
+
+  // Deep-link from Service History: auto-open booking detail modal
+  useEffect(() => {
+    if (!openBookingId || !allData) return;
+    const found = myBookings.find(b => b.id === openBookingId);
+    if (found) setSelectedItem(found);
+  }, [openBookingId, allData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Mutations ─────────────────────────────────────────────────────────────
   const endpointMap: Record<string, string> = {

@@ -1,19 +1,12 @@
 import React, { useState, useCallback } from "react";
 import {
-  View,
-  Text,
-  ScrollView,
-  Pressable,
-  StyleSheet,
-  ActivityIndicator,
-  RefreshControl,
-  TouchableOpacity,
-  Platform,
+  View, Text, ScrollView, Pressable,
+  StyleSheet, ActivityIndicator, RefreshControl, Platform,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Colors from "@/constants/colors";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColorScheme } from "react-native";
@@ -29,12 +22,12 @@ const ACADEMIC_STEPS = [
 ];
 
 function statusColor(s: string): string {
-  if (s === "delivered")                         return "#10B981";
-  if (s === "in_progress")                       return "#8B5CF6";
-  if (s === "accepted")                          return "#5B4FE8";
-  if (s === "booked")                            return "#F59E0B";
-  if (s === "rejected" || s === "cancelled")     return "#EF4444";
-  if (s === "completed")                         return "#5B4FE8";
+  if (s === "delivered")                     return "#10B981";
+  if (s === "in_progress")                   return "#8B5CF6";
+  if (s === "accepted")                      return "#5B4FE8";
+  if (s === "booked")                        return "#F59E0B";
+  if (s === "rejected" || s === "cancelled") return "#EF4444";
+  if (s === "completed")                     return "#5B4FE8";
   return "#A8A29E";
 }
 
@@ -47,12 +40,12 @@ function statusLabel(s: string): string {
   return m[s] || s;
 }
 
-function serviceLabel(t: string)  { return ({ assignments: "Assignment", certifications: "Certification", projects: "Project" } as any)[t] || t; }
-function serviceEmoji(t: string)  { return ({ assignments: "📝", certifications: "🏆", projects: "💼" } as any)[t] || "📦"; }
+function serviceLabel(t: string) { return ({ assignments: "Assignment", certifications: "Certification", projects: "Project" } as any)[t] || t; }
+function serviceEmoji(t: string) { return ({ assignments: "📝", certifications: "🏆", projects: "💼" } as any)[t] || "📦"; }
 function serviceAccent(t: string) { return ({ assignments: "#5B4FE8", certifications: "#10B981", projects: "#6366F1" } as any)[t] || "#5B4FE8"; }
 
 function formatRupee(n: any): string {
-  const num = typeof n === "string" ? parseFloat(n) : n || 0;
+  const num = typeof n === "string" ? parseFloat(n) : (n || 0);
   return isNaN(num) ? "0" : num.toLocaleString("en-IN");
 }
 
@@ -61,16 +54,15 @@ function getStepIndex(status: string) {
   return idx === -1 ? 0 : idx;
 }
 
-// ─── Status timeline (read-only, compact) ─────────────────────────────────────
+// ─── Read-only Status Timeline ────────────────────────────────────────────────
 function StatusTimeline({ booking, accent }: { booking: any; accent: string }) {
   const idx = getStepIndex(booking.status);
+  const pct = Math.round((idx / (ACADEMIC_STEPS.length - 1)) * 100);
   return (
     <View style={TL.wrap}>
-      {/* Progress bar */}
       <View style={TL.track}>
-        <View style={[TL.fill, { backgroundColor: accent, width: `${Math.round((idx / (ACADEMIC_STEPS.length - 1)) * 100)}%` as any }]} />
+        <View style={[TL.fill, { backgroundColor: accent, width: `${pct}%` as any }]} />
       </View>
-      {/* Steps */}
       <View style={TL.steps}>
         {ACADEMIC_STEPS.map((step, i) => {
           const done   = i < idx;
@@ -101,42 +93,36 @@ const TL = StyleSheet.create({
   fill:  { height: 4, borderRadius: 2 },
   steps: { flexDirection: "row", justifyContent: "space-between" },
   step:  { alignItems: "center", flex: 1, gap: 4 },
-  stepLabel:    { fontSize: 9, textAlign: "center", lineHeight: 11 },
-  activeDot:    { width: 14, height: 14, borderRadius: 7, borderWidth: 2, alignItems: "center", justifyContent: "center" },
+  stepLabel:      { fontSize: 9, textAlign: "center", lineHeight: 11 },
+  activeDot:      { width: 14, height: 14, borderRadius: 7, borderWidth: 2, alignItems: "center", justifyContent: "center" },
   activeDotInner: { width: 5, height: 5, borderRadius: 3 },
 });
 
 // ─── Booking Card ──────────────────────────────────────────────────────────────
-function BookingCard({
-  booking, userId, isProvider, onAction, isPending, pendingId, C,
-}: {
-  booking: any; userId: string; isProvider: boolean;
-  onAction: (id: string, action: "accept" | "progress" | "confirm") => void;
-  isPending: boolean; pendingId: string | null; C: any;
-}) {
-  const isLister  = booking._myPerspective === "lister";
-  const isBooker  = booking._myPerspective === "booker";
+function BookingCard({ booking, C }: { booking: any; C: any }) {
   const accent    = serviceAccent(booking._type);
   const listing   = booking.listing;
   const sc        = statusColor(booking.status);
+  const isLister  = booking._myPerspective === "lister";
+  const isBooker  = booking._myPerspective === "booker";
+  const isTerminal = ["delivered", "rejected", "cancelled", "dismissed"].includes(booking.status);
 
   const title = listing?.title || listing?.subject || listing?.courseName || listing?.projectTitle
     || `${serviceLabel(booking._type)} Order`;
-  const studentName  = booking.student?.name  || "Unknown Student";
+  const studentName  = booking.student?.name  || "—";
   const providerName = booking.provider?.name || listing?.poster?.name || "—";
   const amount       = booking.amount ?? listing?.price ?? listing?.budget ?? 0;
-  const thisIsPending = isPending && pendingId === booking.id;
 
-  // Determine actions available
-  const canAccept   = isLister && booking.status === "booked";
-  const canProgress = isLister && (booking.status === "accepted" || booking.status === "in_progress");
-  const canConfirm  = isBooker && booking.status === "completed";
-
-  const progressLabel = booking.status === "accepted" ? "Mark as Started" : "Mark as Completed";
+  function openDetail() {
+    router.push({
+      pathname: "/(tabs)/services" as any,
+      params: { tab: booking._type, openBookingId: booking.id },
+    });
+  }
 
   return (
     <View style={[BC.card, { backgroundColor: C.surface, borderColor: C.border }]}>
-      {/* Header row */}
+      {/* Header: type tag + status badge */}
       <View style={BC.headerRow}>
         <View style={[BC.typeTag, { backgroundColor: accent + "18" }]}>
           <Text style={BC.typeEmoji}>{serviceEmoji(booking._type)}</Text>
@@ -151,7 +137,7 @@ function BookingCard({
       {/* Title */}
       <Text style={[BC.title, { color: C.text }]} numberOfLines={2}>{title}</Text>
 
-      {/* Order By / Agent row */}
+      {/* Order By / Agent */}
       <View style={BC.metaRow}>
         <View style={BC.metaItem}>
           <Feather name="user" size={11} color={C.textTertiary} />
@@ -169,8 +155,8 @@ function BookingCard({
         </View>
       </View>
 
-      {/* Status tracker */}
-      {booking.status !== "rejected" && booking.status !== "cancelled" && (
+      {/* Status tracker (read-only) */}
+      {!["rejected", "cancelled"].includes(booking.status) && (
         <StatusTimeline booking={booking} accent={accent} />
       )}
 
@@ -182,14 +168,14 @@ function BookingCard({
         </View>
       )}
 
-      {/* Price + escrow */}
+      {/* Price row */}
       <View style={[BC.priceRow, { borderTopColor: C.border }]}>
         <View>
           <Text style={[BC.priceLabel, { color: C.textSecondary }]}>Amount</Text>
           <Text style={[BC.priceValue, { color: accent }]}>₹{formatRupee(amount)}</Text>
         </View>
-        {booking.totalPaid && parseFloat(booking.totalPaid) > 0 &&
-          !["rejected", "delivered", "cancelled"].includes(booking.status) && (
+        {booking.totalPaid && parseFloat(booking.totalPaid) > 0
+          && !["rejected", "delivered", "cancelled"].includes(booking.status) && (
           <View style={BC.escrowChip}>
             <Feather name="lock" size={11} color="#5B4FE8" />
             <Text style={BC.escrowText}>₹{formatRupee(booking.totalPaid)} in escrow</Text>
@@ -197,63 +183,34 @@ function BookingCard({
         )}
       </View>
 
-      {/* Action buttons */}
-      {(canAccept || canProgress || canConfirm) && (
-        <View style={BC.actions}>
-          {canAccept && (
-            <TouchableOpacity
-              style={[BC.actionBtn, { backgroundColor: "#10B981", opacity: thisIsPending ? 0.6 : 1 }]}
-              onPress={() => onAction(booking.id, "accept")}
-              disabled={thisIsPending}
-              activeOpacity={0.85}
-            >
-              {thisIsPending ? <ActivityIndicator color="#fff" size="small" /> : (
-                <>
-                  <Feather name="check" size={14} color="#fff" />
-                  <Text style={BC.actionBtnText}>Accept Booking</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          )}
-          {canProgress && (
-            <TouchableOpacity
-              style={[BC.actionBtn, { backgroundColor: accent, opacity: thisIsPending ? 0.6 : 1 }]}
-              onPress={() => onAction(booking.id, "progress")}
-              disabled={thisIsPending}
-              activeOpacity={0.85}
-            >
-              {thisIsPending ? <ActivityIndicator color="#fff" size="small" /> : (
-                <>
-                  <Feather name="arrow-right-circle" size={14} color="#fff" />
-                  <Text style={BC.actionBtnText}>{progressLabel}</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          )}
-          {canConfirm && (
-            <TouchableOpacity
-              style={[BC.actionBtn, { backgroundColor: "#10B981", opacity: thisIsPending ? 0.6 : 1 }]}
-              onPress={() => onAction(booking.id, "confirm")}
-              disabled={thisIsPending}
-              activeOpacity={0.85}
-            >
-              {thisIsPending ? <ActivityIndicator color="#fff" size="small" /> : (
-                <>
-                  <Feather name="package" size={14} color="#fff" />
-                  <Text style={BC.actionBtnText}>Confirm Delivery</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          )}
-        </View>
-      )}
-
-      {/* Delivered success */}
+      {/* Delivered success banner */}
       {booking.status === "delivered" && (
         <View style={BC.deliveredBanner}>
           <Feather name="check-circle" size={14} color="#059669" />
           <Text style={BC.deliveredText}>Delivered successfully!</Text>
         </View>
+      )}
+
+      {/* Action button — navigates into Services tab booking detail modal */}
+      {!isTerminal && (
+        <Pressable
+          style={[BC.actionBtn, { backgroundColor: accent }]}
+          onPress={openDetail}
+          android_ripple={{ color: "rgba(0,0,0,0.1)" }}
+        >
+          {isLister ? (
+            <>
+              <Feather name="edit-2" size={14} color="#fff" />
+              <Text style={BC.actionBtnText}>Update Order Status</Text>
+            </>
+          ) : (
+            <>
+              <Feather name="eye" size={14} color="#fff" />
+              <Text style={BC.actionBtnText}>Track Order</Text>
+            </>
+          )}
+          <Feather name="chevron-right" size={14} color="rgba(255,255,255,0.7)" />
+        </Pressable>
       )}
     </View>
   );
@@ -265,41 +222,39 @@ const BC = StyleSheet.create({
     shadowColor: "#000", shadowOpacity: 0.04, shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 }, elevation: 1,
   },
-  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  typeTag:   { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
-  typeEmoji: { fontSize: 11 },
-  typeText:  { fontSize: 11, fontFamily: "Inter_600SemiBold" },
+  headerRow:  { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  typeTag:    { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  typeEmoji:  { fontSize: 11 },
+  typeText:   { fontSize: 11, fontFamily: "Inter_600SemiBold" },
   statusBadge: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   statusDot:   { width: 6, height: 6, borderRadius: 3 },
   statusText:  { fontSize: 11, fontFamily: "Inter_600SemiBold" },
-  title: { fontSize: 15, fontFamily: "Inter_600SemiBold", lineHeight: 21 },
+  title:  { fontSize: 15, fontFamily: "Inter_600SemiBold", lineHeight: 21 },
   metaRow:  { flexDirection: "row", justifyContent: "space-between", flexWrap: "wrap", gap: 6 },
   metaItem: { flexDirection: "row", alignItems: "center", gap: 4, flex: 1 },
   metaText: { fontSize: 12, fontFamily: "Inter_400Regular" },
-  priceRow:    { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 10, borderTopWidth: 0.5 },
-  priceLabel:  { fontSize: 11, fontFamily: "Inter_400Regular" },
-  priceValue:  { fontSize: 18, fontFamily: "Inter_700Bold" },
+  priceRow:   { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 10, borderTopWidth: 0.5 },
+  priceLabel: { fontSize: 11, fontFamily: "Inter_400Regular" },
+  priceValue: { fontSize: 18, fontFamily: "Inter_700Bold" },
   escrowChip:  { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#EDE9FE", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
   escrowText:  { fontSize: 11, fontFamily: "Inter_600SemiBold", color: "#5B4FE8" },
-  actions:     { gap: 8 },
-  actionBtn:   { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, paddingVertical: 12, borderRadius: 12 },
-  actionBtnText: { color: "#fff", fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  rejectedBanner: { flexDirection: "row", alignItems: "center", gap: 7, backgroundColor: "#FEF2F2", padding: 10, borderRadius: 10 },
-  rejectedText:   { fontSize: 12, fontFamily: "Inter_600SemiBold", color: "#EF4444" },
+  actionBtn:    { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, paddingVertical: 12, borderRadius: 12 },
+  actionBtnText: { color: "#fff", fontSize: 14, fontFamily: "Inter_600SemiBold", flex: 1, textAlign: "center" },
+  rejectedBanner:  { flexDirection: "row", alignItems: "center", gap: 7, backgroundColor: "#FEF2F2", padding: 10, borderRadius: 10 },
+  rejectedText:    { fontSize: 12, fontFamily: "Inter_600SemiBold", color: "#EF4444" },
   deliveredBanner: { flexDirection: "row", alignItems: "center", gap: 7, backgroundColor: "#D1FAE5", padding: 10, borderRadius: 10 },
   deliveredText:   { fontSize: 12, fontFamily: "Inter_600SemiBold", color: "#059669" },
 });
 
 // ─── Main Screen ───────────────────────────────────────────────────────────────
 export default function ServiceHistoryScreen() {
-  const insets    = useSafeAreaInsets();
+  const insets      = useSafeAreaInsets();
   const colorScheme = useColorScheme();
-  const C         = Colors[colorScheme === "dark" ? "dark" : "light"];
+  const C           = Colors[colorScheme === "dark" ? "dark" : "light"];
   const { user, apiRequest } = useAuth();
   const queryClient = useQueryClient();
   const [tab, setTab]           = useState<"active" | "completed">("active");
   const [refreshing, setRefreshing] = useState(false);
-  const [pendingId, setPendingId]   = useState<string | null>(null);
 
   const isProvider = user?.role === "provider";
 
@@ -311,25 +266,6 @@ export default function ServiceHistoryScreen() {
       return res.json() as Promise<{ active: any[]; completed: any[] }>;
     },
   });
-
-  const actionMutation = useMutation({
-    mutationFn: async ({ id, action }: { id: string; action: string }) => {
-      const res = await apiRequest(`/services/bookings/${id}/${action}`, { method: "POST" });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.message || json.error || "Action failed");
-      return json;
-    },
-    onMutate: ({ id }) => setPendingId(id),
-    onSettled: () => setPendingId(null),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["serviceHistory"] });
-      queryClient.invalidateQueries({ queryKey: ["services"] });
-    },
-  });
-
-  const onAction = useCallback((id: string, action: "accept" | "progress" | "confirm") => {
-    actionMutation.mutate({ id, action });
-  }, [actionMutation]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -352,18 +288,7 @@ export default function ServiceHistoryScreen() {
   }
 
   function renderCard(b: any) {
-    return (
-      <BookingCard
-        key={b.id}
-        booking={b}
-        userId={user?.id || ""}
-        isProvider={isProvider}
-        onAction={onAction}
-        isPending={actionMutation.isPending}
-        pendingId={pendingId}
-        C={C}
-      />
-    );
+    return <BookingCard key={b.id} booking={b} C={C} />;
   }
 
   function renderActiveContent() {
