@@ -657,7 +657,44 @@ export default function ServiceHistoryScreen() {
     if (historyQuery.isLoading) return <ActivityIndicator color={C.primary} style={{ marginTop: 40 }} />;
     if (historyQuery.isError)   return renderEmpty("Could not load history.\nPull down to try again.");
     if (allHistory.length === 0) return renderEmpty("No completed orders yet.");
-    return renderWithDividers(allHistory);
+
+    const completedJobs    = allHistory.filter(item =>
+      item._myPerspective === "lister" || item._myPerspective === "agent"
+    );
+    const completedOrders  = allHistory.filter(item =>
+      item._myPerspective === "booker" || item._myPerspective === "requester"
+    );
+    const hasJobs   = completedJobs.length > 0;
+    const hasOrders = completedOrders.length > 0;
+
+    return (
+      <>
+        {hasJobs && (
+          <View>
+            <View style={[S.groupHeader, { borderColor: C.border }]}>
+              <Feather name="briefcase" size={13} color="#5B4FE8" />
+              <Text style={[S.groupTitle, { color: C.text }]}>My Jobs</Text>
+              <View style={[S.groupBadge, { backgroundColor: "#EDE9FE" }]}>
+                <Text style={[S.groupBadgeText, { color: "#5B4FE8" }]}>{completedJobs.length}</Text>
+              </View>
+            </View>
+            {renderWithDividers(completedJobs)}
+          </View>
+        )}
+        {hasOrders && (
+          <View style={{ marginTop: hasJobs ? 16 : 0 }}>
+            <View style={[S.groupHeader, { borderColor: C.border }]}>
+              <Feather name="shopping-bag" size={13} color="#F59E0B" />
+              <Text style={[S.groupTitle, { color: C.text }]}>My Orders</Text>
+              <View style={[S.groupBadge, { backgroundColor: "#FEF3C7" }]}>
+                <Text style={[S.groupBadgeText, { color: "#D97706" }]}>{completedOrders.length}</Text>
+              </View>
+            </View>
+            {renderWithDividers(completedOrders)}
+          </View>
+        )}
+      </>
+    );
   }
 
   return (
