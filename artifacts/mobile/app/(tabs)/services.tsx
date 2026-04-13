@@ -2118,21 +2118,22 @@ export default function ServicesScreen() {
     return isStudentOf || isProviderOf;
   };
 
+  // Terminal booking statuses (mirrors server BOOKING_TERMINAL) — these belong in history, not Active Now
+  const BOOKING_TERMINAL = ["delivered", "dismissed", "cancelled", "rejected"];
+
   // Synthesize booking-display objects from OLD-MODEL academic listing rows.
   // These are listings that have non-"open" status + bookedById set but no corresponding
   // service_bookings record. We wrap them so BookingDetailCard renders instead of AcademicCard.
   const syntheticBookings: any[] = allItems.filter(i => {
     if (!ACADEMIC_CATS.includes(i._type)) return false;
     if (i.status === "open") return false; // Normal open listing — not a synthetic booking
-    // Fully confirmed orders belong in history, not Active Now
-    if (["delivered", "dismissed", "cancelled"].includes(i.status)) return false;
+    // Terminal statuses (matches server BOOKING_TERMINAL) → go to history, not Active Now
+    if (BOOKING_TERMINAL.includes(i.status)) return false;
     if (myActiveBookingByListing.has(i.id)) return false; // Real booking exists, no need to synthesize
     const uid = user?.id;
     const isLister = i.poster?.id === uid;
     const isBooker = i.bookedBy?.id === uid || i.bookedById === uid;
     if (!isLister && !isBooker) return false;
-    // Provider already rejected → vanish from their dashboard entirely
-    if (isLister && i.status === "rejected") return false;
     return true;
   }).map(i => ({
     id: `synthetic_${i.id}`,   // Fake display ID — actions must use listingId
@@ -2171,10 +2172,8 @@ export default function ServicesScreen() {
   // For academic tabs, active jobs = real booking records + synthetic (old-model) bookings
   // For delivery/task tabs, active jobs = listing items with non-idle status
   // For "all" tab, merge: non-academic active listings + all real bookings + all synthetic bookings
-  // Rejected bookings: only show to the BOOKER (student), not the LISTER (provider)
   const isVisibleBooking = (b: any) => {
-    if (["delivered", "dismissed"].includes(b.status)) return false;
-    if (b.status === "rejected" && b._myPerspective === "lister") return false;
+    if (BOOKING_TERMINAL.includes(b.status)) return false;
     return true;
   };
 
