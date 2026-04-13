@@ -2513,7 +2513,10 @@ export default function ServicesScreen() {
           }
         >
           {/* Activity banner */}
-          <View style={[CS.activityBanner, { backgroundColor: C.surface, borderColor: C.border }]}>
+          <Pressable
+            style={[CS.activityBanner, { backgroundColor: C.surface, borderColor: C.border }]}
+            onPress={() => router.push("/service-history")}
+          >
             <View style={[CS.activityIcon, { backgroundColor: "#EDE9FE" }]}>
               <Feather name="activity" size={16} color="#5B4FE8" />
             </View>
@@ -2528,7 +2531,8 @@ export default function ServicesScreen() {
                 </Text>
               </View>
             </View>
-          </View>
+            <Feather name="chevron-right" size={18} color={C.textTertiary} />
+          </Pressable>
 
           {/* Active Now */}
           {activeJobs.length > 0 && (

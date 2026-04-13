@@ -1506,6 +1506,95 @@ router.get("/bookings", authMiddleware, async (req, res) => {
   }
 });
 
+// ─── GET /my-history — all bookings (active + completed) for the current user ──
+router.get("/my-history", authMiddleware, async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+
+    // Wave 1: fetch listing IDs posted by this user + all bookings involving them
+    const [myAssignments, myCertifications, myProjects] = await Promise.all([
+      db.select({ id: assignmentsTable.id }).from(assignmentsTable).where(eq(assignmentsTable.posterId, userId)),
+      db.select({ id: certificationsTable.id }).from(certificationsTable).where(eq(certificationsTable.posterId, userId)),
+      db.select({ id: projectsTable.id }).from(projectsTable).where(eq(projectsTable.posterId, userId)),
+    ]);
+    const myListingIds = [
+      ...myAssignments.map(a => a.id),
+      ...myCertifications.map(c => c.id),
+      ...myProjects.map(p => p.id),
+    ];
+
+    // Bookings where I am the student (booker)
+    const bookerBookingsRaw = await db.select().from(serviceBookingsTable)
+      .where(and(
+        eq(serviceBookingsTable.studentId, userId),
+        // exclude dismissed only — include delivered for history
+        sql`${serviceBookingsTable.status} NOT IN ('dismissed')`
+      ))
+      .orderBy(desc(serviceBookingsTable.createdAt));
+
+    // Bookings on my own listings (I am the provider / lister)
+    const listerBookingsRaw = myListingIds.length > 0
+      ? await db.select().from(serviceBookingsTable)
+          .where(and(
+            inArray(serviceBookingsTable.listingId, myListingIds),
+            sql`${serviceBookingsTable.status} NOT IN ('dismissed')`
+          ))
+          .orderBy(desc(serviceBookingsTable.createdAt))
+      : [] as any[];
+
+    // Merge and deduplicate
+    const seenIds = new Set<string>();
+    const allRaw: any[] = [];
+    for (const b of [...listerBookingsRaw, ...bookerBookingsRaw]) {
+      if (!seenIds.has(b.id)) {
+        seenIds.add(b.id);
+        allRaw.push({ ...b, _myPerspective: b.studentId === userId ? "booker" : "lister" });
+      }
+    }
+
+    // Wave 2: batch-load all referenced listings and users
+    const [allAssignments, allCertifications, allProjects] = await Promise.all([
+      db.select().from(assignmentsTable),
+      db.select().from(certificationsTable),
+      db.select().from(projectsTable),
+    ]);
+    const listingIndex = new Map<string, any>();
+    for (const a of allAssignments) listingIndex.set(`assignments:${a.id}`, { ...a, _table: "assignments" });
+    for (const c of allCertifications) listingIndex.set(`certifications:${c.id}`, { ...c, _table: "certifications" });
+    for (const p of allProjects) listingIndex.set(`projects:${p.id}`, { ...p, _table: "projects" });
+
+    const userIdsNeeded: (string | null | undefined)[] = [];
+    for (const b of allRaw) {
+      userIdsNeeded.push(b.studentId);
+      const listing = listingIndex.get(`${b.serviceType}:${b.listingId}`);
+      if (listing) userIdsNeeded.push(listing.posterId);
+    }
+    const userMap = await safeUserBatch(userIdsNeeded);
+
+    // Enrich each booking
+    const enriched = allRaw.map((b: any) => {
+      const listing = listingIndex.get(`${b.serviceType}:${b.listingId}`) || null;
+      const provider = listing ? (userMap.get(listing.posterId) || null) : null;
+      return {
+        ...b,
+        _type: b.serviceType,
+        listing: listing ? { ...listing, poster: provider } : null,
+        student: userMap.get(b.studentId) || null,
+        provider,
+      };
+    });
+
+    const activeStatuses = new Set(["booked", "accepted", "in_progress", "completed", "rejected"]);
+    const active    = enriched.filter(b => activeStatuses.has(b.status));
+    const completed = enriched.filter(b => b.status === "delivered");
+
+    res.json({ active, completed });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "ServerError", message: "Failed to load service history" });
+  }
+});
+
 router.post("/bookings/:id/accept", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
