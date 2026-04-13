@@ -2177,8 +2177,14 @@ export default function ServicesScreen() {
   const catBookings = ACADEMIC_CATS.includes(activeCat)
     ? myBookings.filter(b => b._type === activeCat && isVisibleBooking(b))
     : [];
-  const sortByRecent = (a: any, b: any) =>
-    new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime();
+  const sortByRecent = (a: any, b: any) => {
+    // Pending deliveries (awaiting agent) always float to the top
+    const aPending = a._type === "deliveries" && a.status === "pending" ? 0 : 1;
+    const bPending = b._type === "deliveries" && b.status === "pending" ? 0 : 1;
+    if (aPending !== bPending) return aPending - bPending;
+    // Within each group, sort most-recent first
+    return new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime();
+  };
   const activeJobs: any[] = (ACADEMIC_CATS.includes(activeCat)
     ? [...catBookings, ...syntheticBookings.filter(b => b._type === activeCat)]
     : activeCat === "all"
