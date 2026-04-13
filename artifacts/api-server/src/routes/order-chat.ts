@@ -38,31 +38,54 @@ async function getOrderParticipants(orderId: string, orderType: string): Promise
       if (!rows.length) return null;
       return { user1: rows[0].requesterId, user2: rows[0].deliveryAgentId ?? null };
     }
-    if (orderType === "assignments") {
-      const rows = await db.select().from(assignmentsTable).where(eq(assignmentsTable.id, orderId)).limit(1);
-      if (!rows.length) return null;
-      return { user1: rows[0].posterId, user2: rows[0].bookedById ?? null };
-    }
-    if (orderType === "certifications") {
-      const rows = await db.select().from(certificationsTable).where(eq(certificationsTable.id, orderId)).limit(1);
-      if (!rows.length) return null;
-      return { user1: rows[0].posterId, user2: rows[0].bookedById ?? null };
-    }
-    if (orderType === "projects") {
-      const rows = await db.select().from(projectsTable).where(eq(projectsTable.id, orderId)).limit(1);
-      if (!rows.length) return null;
-      return { user1: rows[0].posterId, user2: rows[0].bookedById ?? null };
-    }
+
     if (orderType === "tasks") {
       const rows = await db.select().from(tasksTable).where(eq(tasksTable.id, orderId)).limit(1);
       if (!rows.length) return null;
       return { user1: rows[0].posterId, user2: rows[0].assignedToId ?? null };
     }
-    if (orderType === "bookings") {
-      const rows = await db.select().from(serviceBookingsTable).where(eq(serviceBookingsTable.id, orderId)).limit(1);
-      if (!rows.length) return null;
-      return { user1: rows[0].providerId, user2: rows[0].studentId ?? null };
+
+    // For assignments / certifications / projects:
+    // New-model orders: orderId is a serviceBookingsTable.id (booking record)
+    // Old-model orders: orderId is the listing id with bookedById on the listing itself
+    if (orderType === "assignments" || orderType === "certifications" || orderType === "projects") {
+      // Try new-model first: check serviceBookingsTable
+      const bookingRows = await db.select().from(serviceBookingsTable).where(eq(serviceBookingsTable.id, orderId)).limit(1);
+      if (bookingRows.length) {
+        const booking = bookingRows[0];
+        // Resolve the listing to get the poster (provider) ID
+        let posterId: string | null = null;
+        if (orderType === "assignments") {
+          const listing = await db.select({ posterId: assignmentsTable.posterId }).from(assignmentsTable).where(eq(assignmentsTable.id, booking.listingId)).limit(1);
+          posterId = listing[0]?.posterId ?? null;
+        } else if (orderType === "certifications") {
+          const listing = await db.select({ posterId: certificationsTable.posterId }).from(certificationsTable).where(eq(certificationsTable.id, booking.listingId)).limit(1);
+          posterId = listing[0]?.posterId ?? null;
+        } else if (orderType === "projects") {
+          const listing = await db.select({ posterId: projectsTable.posterId }).from(projectsTable).where(eq(projectsTable.id, booking.listingId)).limit(1);
+          posterId = listing[0]?.posterId ?? null;
+        }
+        if (!posterId) return null;
+        return { user1: posterId, user2: booking.studentId };
+      }
+      // Fall back to old-model: orderId is the listing ID itself
+      if (orderType === "assignments") {
+        const rows = await db.select().from(assignmentsTable).where(eq(assignmentsTable.id, orderId)).limit(1);
+        if (!rows.length) return null;
+        return { user1: rows[0].posterId, user2: rows[0].bookedById ?? null };
+      }
+      if (orderType === "certifications") {
+        const rows = await db.select().from(certificationsTable).where(eq(certificationsTable.id, orderId)).limit(1);
+        if (!rows.length) return null;
+        return { user1: rows[0].posterId, user2: rows[0].bookedById ?? null };
+      }
+      if (orderType === "projects") {
+        const rows = await db.select().from(projectsTable).where(eq(projectsTable.id, orderId)).limit(1);
+        if (!rows.length) return null;
+        return { user1: rows[0].posterId, user2: rows[0].bookedById ?? null };
+      }
     }
+
     return null;
   } catch {
     return null;
