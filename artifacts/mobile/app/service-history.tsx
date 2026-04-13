@@ -421,17 +421,22 @@ const DELIVERY_STATUS_COLOR: Record<string, string> = {
 };
 
 function DeliveryCard({ item, C }: { item: DeliveryHistoryItem; C: ColorTokens }) {
-  const sc    = DELIVERY_STATUS_COLOR[item.status] ?? "#A8A29E";
-  const sl    = DELIVERY_STATUS_LABEL[item.status] ?? item.status;
-  const fee   = typeof item.deliveryFee === "string" ? parseFloat(item.deliveryFee) : (item.deliveryFee ?? 0);
+  const sc          = DELIVERY_STATUS_COLOR[item.status] ?? "#A8A29E";
+  const sl          = DELIVERY_STATUS_LABEL[item.status] ?? item.status;
+  const fee         = typeof item.deliveryFee === "string" ? parseFloat(item.deliveryFee) : (item.deliveryFee ?? 0);
   const isRequester = item._myPerspective === "requester";
+  const accent      = "#0EA5E9";
+  const title       = item.pickupType === "gate" ? "Gate Delivery"
+    : item.pickupType === "outlet" ? "Outlet Order"
+    : "Delivery Order";
 
   return (
     <View style={[BC.card, { backgroundColor: C.surface, borderColor: C.border }]}>
+      {/* Header */}
       <View style={BC.headerRow}>
         <View style={[BC.typeTag, { backgroundColor: "#0EA5E918" }]}>
           <Text style={BC.typeEmoji}>🚴</Text>
-          <Text style={[BC.typeText, { color: "#0EA5E9" }]}>Delivery</Text>
+          <Text style={[BC.typeText, { color: accent }]}>Delivery</Text>
         </View>
         <View style={[BC.statusBadge, { backgroundColor: sc + "18" }]}>
           <View style={[BC.statusDot, { backgroundColor: sc }]} />
@@ -439,44 +444,66 @@ function DeliveryCard({ item, C }: { item: DeliveryHistoryItem; C: ColorTokens }
         </View>
       </View>
 
+      {/* Timestamp */}
       {item.createdAt ? (
         <View style={BC.timestampRow}>
-          <Feather name="clock" size={11} color="#A8A29E" />
-          <Text style={[BC.timestampText, { color: "#A8A29E" }]}>
+          <Feather name="clock" size={11} color={C.textTertiary} />
+          <Text style={[BC.timestampText, { color: C.textTertiary }]}>
             {formatCardDate(item.createdAt)} · {formatCardTime(item.createdAt)}
           </Text>
         </View>
       ) : null}
 
-      <View style={{ gap: 3 }}>
-        <Text style={[BC.title, { color: C.text }]} numberOfLines={1}>
-          {item.pickupType === "gate" ? "Gate Delivery" : item.pickupType === "outlet" ? "Outlet Order" : "Delivery Order"}
-        </Text>
-        <Text style={[BC.metaText, { color: C.textSecondary }]} numberOfLines={1}>
-          {item.pickupLocation} → {item.dropLocation}
-        </Text>
-      </View>
+      {/* Title */}
+      <Text style={[BC.title, { color: C.text }]} numberOfLines={1}>{title}</Text>
 
+      {/* Order By / Agent */}
       <View style={BC.metaRow}>
         <View style={BC.metaItem}>
-          <Feather name="shopping-bag" size={12} color={C.textTertiary} />
-          <Text style={[BC.metaText, { color: C.textSecondary }]}>
-            {"Ordered By: "}
-            <Text style={[BC.metaHighlight, { fontFamily: "Inter_700Bold" }]}>{item.requester?.name ?? "—"}</Text>
+          <Feather name="user" size={11} color={C.textTertiary} />
+          <Text style={[BC.metaText, { color: C.textTertiary }]}>
+            {"Ordered By "}
+            <Text style={[BC.metaHighlight, { color: C.text }]}>{item.requester?.name ?? "—"}</Text>
           </Text>
         </View>
-        <View style={BC.metaItem}>
-          <Feather name="briefcase" size={12} color={C.textTertiary} />
-          <Text style={[BC.metaText, { color: C.textSecondary }]}>
-            {"Agent: "}
-            <Text style={[BC.metaHighlight, { fontFamily: "Inter_700Bold" }]}>{item.agent?.name ?? "Finding agent…"}</Text>
+        <View style={[BC.metaItem, { justifyContent: "flex-end" }]}>
+          <Feather name="briefcase" size={11} color={C.textTertiary} />
+          <Text style={[BC.metaText, { color: C.textTertiary }]}>
+            {"Agent "}
+            <Text style={[BC.metaHighlight, { color: C.text }]}>{item.agent?.name ?? "Finding agent…"}</Text>
           </Text>
         </View>
       </View>
 
+      {/* Route */}
+      <Text style={[BC.metaText, { color: C.textSecondary }]} numberOfLines={1}>
+        📍 {item.pickupLocation} → {item.dropLocation}
+      </Text>
+
+      {/* Delivered banner */}
+      {item.status === "delivered" && (
+        <View style={BC.deliveredBanner}>
+          <Feather name="check-circle" size={14} color="#059669" />
+          <Text style={BC.deliveredText}>Delivered successfully!</Text>
+        </View>
+      )}
+
+      {/* Cancelled banner */}
+      {item.status === "cancelled" && (
+        <View style={BC.rejectedBanner}>
+          <Feather name="x-circle" size={14} color="#EF4444" />
+          <Text style={BC.rejectedText}>Order was cancelled.</Text>
+        </View>
+      )}
+
+      {/* Price row */}
       <View style={[BC.priceRow, { borderTopColor: C.border }]}>
-        <Text style={[BC.priceLabel, { color: C.textTertiary }]}>{isRequester ? "Delivery Fee" : "Amount Earned"}</Text>
-        <Text style={[BC.priceValue, { color: C.text }]}>₹{(isRequester ? fee : fee * 0.8).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</Text>
+        <View>
+          <Text style={[BC.priceLabel, { color: C.textSecondary }]}>{isRequester ? "Delivery Fee" : "Amount Earned"}</Text>
+          <Text style={[BC.priceValue, { color: accent }]}>
+            ₹{(isRequester ? fee : fee * 0.8).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+          </Text>
+        </View>
       </View>
     </View>
   );
