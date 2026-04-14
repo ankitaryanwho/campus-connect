@@ -1399,9 +1399,13 @@ function CompactActiveCard({ item, C, user, onTrackPress, onAccept, onReject, on
   const agentName = item.poster?.name || item.deliveryAgent?.name || item.assignedTo?.name || null;
   const agentId   = item.poster?.id   || item.deliveryAgent?.id   || item.assignedTo?.id   || null;
   const agentPhone = item.poster?.phone || item.deliveryAgent?.phone || item.assignedTo?.phone || null;
-  // Show Call/Text buttons when the order is accepted and the current user is the student side
+  // Who is on the student/requester side of this order
+  const studentId = item.student?.id || item.bookedBy?.id || item.requester?.id || null;
+  // Show Call button only for student → they call the agent
   const isAcceptedOrBeyond = !["open", "pending", "booked", "rejected", "cancelled", "delivered", "dismissed"].includes(item.status);
   const showContactButtons = isAcceptedOrBeyond && !!agentId && !isProvider;
+  // Show Text (chat) button for BOTH sides — student contacts agent, agent contacts student
+  const showChatButton = isAcceptedOrBeyond && ((!isProvider && !!agentId) || (isProvider && !!studentId));
   // Short order ID
   const orderId = `#${item.id.substring(0, 8).toUpperCase()}`;
   const rawPrice = item._type === "deliveries"
@@ -1495,10 +1499,11 @@ function CompactActiveCard({ item, C, user, onTrackPress, onAccept, onReject, on
               })}
             </View>
 
-            {/* ── Contact agent: Call + Text — only for student on accepted orders ── */}
-            {showContactButtons && (
+            {/* ── Contact buttons: Call (student only) + Text/Chat (both sides) ── */}
+            {(showContactButtons || showChatButton) && (
               <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
-                {agentPhone ? (
+                {/* Call — only student side, only when agent phone available */}
+                {showContactButtons && agentPhone ? (
                   <Pressable
                     onPress={() => Linking.openURL(`tel:${agentPhone}`)}
                     style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, backgroundColor: "#D1FAE5", paddingVertical: 8, borderRadius: 10 }}
@@ -1507,13 +1512,16 @@ function CompactActiveCard({ item, C, user, onTrackPress, onAccept, onReject, on
                     <Text style={{ fontSize: 12, fontFamily: "Inter_700Bold", color: "#059669" }}>Call</Text>
                   </Pressable>
                 ) : null}
-                <Pressable
-                  onPress={() => onToggleOrderChat?.(item)}
-                  style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, backgroundColor: isOrderChatOpen ? "#5B4FE8" : "#EDE9FE", paddingVertical: 8, borderRadius: 10 }}
-                >
-                  <Feather name="message-circle" size={13} color={isOrderChatOpen ? "#fff" : "#5B4FE8"} />
-                  <Text style={{ fontSize: 12, fontFamily: "Inter_700Bold", color: isOrderChatOpen ? "#fff" : "#5B4FE8" }}>{isOrderChatOpen ? "Close Chat" : "Text"}</Text>
-                </Pressable>
+                {/* Text/Chat — shown to both requester and agent sides */}
+                {showChatButton && (
+                  <Pressable
+                    onPress={() => onToggleOrderChat?.(item)}
+                    style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, backgroundColor: isOrderChatOpen ? "#5B4FE8" : "#EDE9FE", paddingVertical: 8, borderRadius: 10 }}
+                  >
+                    <Feather name="message-circle" size={13} color={isOrderChatOpen ? "#fff" : "#5B4FE8"} />
+                    <Text style={{ fontSize: 12, fontFamily: "Inter_700Bold", color: isOrderChatOpen ? "#fff" : "#5B4FE8" }}>{isOrderChatOpen ? "Close Chat" : "Text"}</Text>
+                  </Pressable>
+                )}
               </View>
             )}
 
