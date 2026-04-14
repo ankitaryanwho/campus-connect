@@ -237,7 +237,7 @@ export default function ChatDetailScreen() {
       )}
 
       {/* Input bar */}
-      <View style={[styles.inputBar, { backgroundColor: C.surface, borderTopColor: C.border, paddingBottom: isWeb ? 34 : Platform.OS === "ios" ? insets.bottom + 4 : 8 }]}>
+      <View style={[styles.inputBar, { backgroundColor: C.surface, borderTopColor: C.border, paddingBottom: isWeb ? 34 : insets.bottom + 4 }]}>
         <Pressable style={[styles.iconBtn, { backgroundColor: C.backgroundSecondary }]}>
           <Feather name="plus" size={20} color={C.textSecondary} />
         </Pressable>
