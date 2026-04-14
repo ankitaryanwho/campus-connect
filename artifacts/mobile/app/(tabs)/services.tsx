@@ -1400,10 +1400,15 @@ function CompactActiveCard({ item, C, user, onTrackPress, onAccept, onReject, on
   const agentId   = item.poster?.id   || item.deliveryAgent?.id   || item.assignedTo?.id   || null;
   const agentPhone = item.poster?.phone || item.deliveryAgent?.phone || item.assignedTo?.phone || null;
   // Who is on the student/requester side of this order
-  const studentId = item.student?.id || item.bookedBy?.id || item.requester?.id || null;
-  // Show Call button only for student → they call the agent
+  const studentId    = item.student?.id    || item.bookedBy?.id    || item.requester?.id    || null;
+  const studentName2 = item.student?.name  || item.bookedBy?.name  || item.requester?.name  || null;
+  const studentPhone = item.student?.phone || item.bookedBy?.phone || item.requester?.phone || null;
+  // Which phone number to dial and whose name to show depends on which side we're on
+  const callPhone = isProvider ? studentPhone : agentPhone;
+  const callLabel = isProvider ? (studentName2 || "Student") : (agentName || "Agent");
   const isAcceptedOrBeyond = !["open", "pending", "booked", "rejected", "cancelled", "delivered", "dismissed"].includes(item.status);
-  const showContactButtons = isAcceptedOrBeyond && !!agentId && !isProvider;
+  // Show Call button for BOTH sides when there's a number to call
+  const showContactButtons = isAcceptedOrBeyond && !!callPhone;
   // Show Text (chat) button for BOTH sides — student contacts agent, agent contacts student
   const showChatButton = isAcceptedOrBeyond && ((!isProvider && !!agentId) || (isProvider && !!studentId));
   // Short order ID
@@ -1502,14 +1507,14 @@ function CompactActiveCard({ item, C, user, onTrackPress, onAccept, onReject, on
             {/* ── Contact buttons: Call (student only) + Text/Chat (both sides) ── */}
             {(showContactButtons || showChatButton) && (
               <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
-                {/* Call — only student side, only when agent phone available */}
-                {showContactButtons && agentPhone ? (
+                {/* Call — both sides, dials the counterparty's number */}
+                {showContactButtons ? (
                   <Pressable
-                    onPress={() => Linking.openURL(`tel:${agentPhone}`)}
+                    onPress={() => Linking.openURL(`tel:${callPhone}`)}
                     style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, backgroundColor: "#D1FAE5", paddingVertical: 8, borderRadius: 10 }}
                   >
                     <Feather name="phone" size={13} color="#059669" />
-                    <Text style={{ fontSize: 12, fontFamily: "Inter_700Bold", color: "#059669" }}>Call</Text>
+                    <Text style={{ fontSize: 12, fontFamily: "Inter_700Bold", color: "#059669" }}>Call {callLabel}</Text>
                   </Pressable>
                 ) : null}
                 {/* Text/Chat — shown to both requester and agent sides */}
