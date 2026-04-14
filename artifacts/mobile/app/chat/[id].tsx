@@ -186,8 +186,8 @@ export default function ChatDetailScreen() {
   return (
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: C.background }}
-      behavior={isWeb ? undefined : "padding"}
-      keyboardVerticalOffset={isWeb ? 0 : 0}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      keyboardVerticalOffset={0}
     >
       {/* Header */}
       <View style={[styles.header, { paddingTop: isWeb ? 67 : insets.top + 8, backgroundColor: C.background, borderBottomColor: C.border }]}>
@@ -237,7 +237,7 @@ export default function ChatDetailScreen() {
       )}
 
       {/* Input bar */}
-      <View style={[styles.inputBar, { backgroundColor: C.surface, borderTopColor: C.border, paddingBottom: isWeb ? 34 : insets.bottom + 6 }]}>
+      <View style={[styles.inputBar, { backgroundColor: C.surface, borderTopColor: C.border, paddingBottom: isWeb ? 34 : Platform.OS === "ios" ? insets.bottom + 4 : 8 }]}>
         <Pressable style={[styles.iconBtn, { backgroundColor: C.backgroundSecondary }]}>
           <Feather name="plus" size={20} color={C.textSecondary} />
         </Pressable>
