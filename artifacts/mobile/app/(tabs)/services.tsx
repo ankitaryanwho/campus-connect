@@ -1665,6 +1665,8 @@ function OrderMiniChat({ item, C, onClose }: any) {
           contentContainerStyle={{ padding: 10, paddingBottom: 6 }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
+          nestedScrollEnabled={true}
+          scrollEventThrottle={16}
         >
           {allMessages.length === 0 ? (
             <Text style={{ fontSize: 11, color: "#9CA3AF", textAlign: "center", paddingVertical: 18, fontFamily: "Inter_400Regular" }}>
