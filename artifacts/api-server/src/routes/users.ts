@@ -86,13 +86,14 @@ router.get("/:userId/posts", authMiddleware, async (req, res) => {
 router.put("/me/profile", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { name, bio, college, program, avatar } = req.body;
+    const { name, bio, college, program, avatar, phone } = req.body;
     const update: any = {};
     if (name !== undefined) update.name = name;
     if (bio !== undefined) update.bio = bio;
     if (college !== undefined) update.college = college;
     if (program !== undefined) update.program = program;
     if (avatar !== undefined) update.avatar = avatar;
+    if (phone !== undefined) update.phone = phone.trim() || null;
 
     await db.update(usersTable).set(update).where(eq(usersTable.id, userId));
     const users = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);

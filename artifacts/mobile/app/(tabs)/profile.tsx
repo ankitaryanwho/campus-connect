@@ -89,6 +89,7 @@ function EditField({
   onChange,
   placeholder,
   multiline = false,
+  keyboardType = "default",
   C,
 }: any) {
   return (
@@ -113,6 +114,7 @@ function EditField({
           onChangeText={onChange}
           placeholder={placeholder}
           placeholderTextColor={C.textTertiary}
+          keyboardType={keyboardType}
           multiline={multiline}
         />
       </View>
@@ -133,6 +135,7 @@ export default function ProfileScreen() {
   const [bio, setBio] = useState(user?.bio || "");
   const [college, setCollege] = useState(user?.college || "");
   const [program, setProgram] = useState(user?.program || "");
+  const [phone, setPhone] = useState(user?.phone || "");
 
   const postsQuery = useQuery({
     queryKey: ["userPosts", user?.id],
@@ -157,7 +160,7 @@ export default function ProfileScreen() {
     mutationFn: async () => {
       const res = await apiRequest("/users/me/profile", {
         method: "PUT",
-        body: JSON.stringify({ name, bio, college, program }),
+        body: JSON.stringify({ name, bio, college, program, phone }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
@@ -245,6 +248,7 @@ export default function ProfileScreen() {
             setBio(user.bio || "");
             setCollege(user.college || "");
             setProgram(user.program || "");
+            setPhone(user.phone || "");
             setEditing(true);
           }}
         >
@@ -348,6 +352,7 @@ export default function ProfileScreen() {
                   setBio(user.bio || "");
                   setCollege(user.college || "");
                   setProgram(user.program || "");
+                  setPhone(user.phone || "");
                   setEditing(true);
                 }}
               >
@@ -406,7 +411,7 @@ export default function ProfileScreen() {
                 {user.bio}
               </Text>
             ) : (
-              <Pressable onPress={() => setEditing(true)}>
+              <Pressable onPress={() => { setName(user.name); setBio(user.bio || ""); setCollege(user.college || ""); setProgram(user.program || ""); setPhone(user.phone || ""); setEditing(true); }}>
                 <Text style={[styles.addBio, { color: C.primary }]}>
                   + Add a bio to tell your story
                 </Text>
@@ -754,6 +759,14 @@ export default function ProfileScreen() {
                 value={program}
                 onChange={setProgram}
                 placeholder="e.g. BCA, BTech CSE"
+                C={C}
+              />
+              <EditField
+                label="Mobile Number"
+                value={phone}
+                onChange={setPhone}
+                placeholder="e.g. +91 98765 43210"
+                keyboardType="phone-pad"
                 C={C}
               />
 
