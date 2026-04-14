@@ -1,7 +1,7 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   View, Text, FlatList, TextInput, Pressable, StyleSheet,
-  useColorScheme, ActivityIndicator, Image, Platform, KeyboardAvoidingView,
+  useColorScheme, ActivityIndicator, Image, Platform, KeyboardAvoidingView, Keyboard,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -77,7 +77,14 @@ export default function ChatDetailScreen() {
   const { apiRequest, user } = useAuth();
   const queryClient = useQueryClient();
   const [text, setText] = useState("");
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const inputRef = useRef<TextInput>(null);
+
+  useEffect(() => {
+    const show = Keyboard.addListener("keyboardDidShow", () => setKeyboardVisible(true));
+    const hide = Keyboard.addListener("keyboardDidHide", () => setKeyboardVisible(false));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
 
   const convQuery = useQuery({
     queryKey: ["conversation", id],
@@ -186,7 +193,7 @@ export default function ChatDetailScreen() {
   return (
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: C.background }}
-      behavior={isWeb ? undefined : Platform.OS === "ios" ? "padding" : "height"}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
       keyboardVerticalOffset={0}
     >
       {/* Header */}
@@ -237,7 +244,14 @@ export default function ChatDetailScreen() {
       )}
 
       {/* Input bar */}
-      <View style={[styles.inputBar, { backgroundColor: C.surface, borderTopColor: C.border, paddingBottom: isWeb ? 34 : insets.bottom + 4 }]}>
+      <View style={[styles.inputBar, {
+        backgroundColor: C.surface,
+        borderTopColor: C.border,
+        paddingBottom: isWeb ? 34
+          : Platform.OS === "android"
+            ? keyboardVisible ? 6 : insets.bottom + 4
+            : insets.bottom + 4,
+      }]}>
         <Pressable style={[styles.iconBtn, { backgroundColor: C.backgroundSecondary }]}>
           <Feather name="plus" size={20} color={C.textSecondary} />
         </Pressable>
