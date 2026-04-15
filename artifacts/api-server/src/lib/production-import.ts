@@ -67,7 +67,6 @@ export async function runProductionImport(forceOverride?: boolean): Promise<Impo
 
   try {
     await destClient.query("BEGIN");
-    await destClient.query("SET session_replication_role = replica");
 
     if (force) {
       console.log("[import] Force mode: clearing all existing data...");
@@ -138,7 +137,6 @@ export async function runProductionImport(forceOverride?: boolean): Promise<Impo
       console.log(`[import] ${table}: ${inserted}/${rows.length} imported (${errors} errors)`);
     }
 
-    await destClient.query("SET session_replication_role = DEFAULT");
     await destClient.query("COMMIT");
     console.log("[import] Import complete.");
     return { success: true, tables: tableResults };
