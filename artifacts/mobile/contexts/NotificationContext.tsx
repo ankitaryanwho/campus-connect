@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 import * as Notifications from "expo-notifications";
 import * as Device from "expo-device";
-import { Platform, Alert } from "react-native";
+import { Platform } from "react-native";
 import { useRouter } from "expo-router";
 import { useAuth } from "./AuthContext";
 
@@ -167,7 +167,6 @@ async function registerForPushNotificationsAsync(): Promise<string | null> {
   } catch (e: any) {
     const msg = e?.message ?? String(e);
     console.warn("[push] Could not get device push token:", msg);
-    Alert.alert("Push Notification Error", msg);
     return null;
   }
 }
