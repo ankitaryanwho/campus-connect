@@ -69,8 +69,8 @@ channel = "stable-25_05"
 
 [userenv.shared]
 FIREBASE_SERVICE_ACCOUNT_JSON = ""
+VITE_API_URL = "https://workspace--davidaryan7256.replit.app"
 
 [userenv.production]
 NEON_SOURCE_URL = "postgresql://neondb_owner:npg_2rRPlbeHc1Dt@ep-divine-sky-a4dm30t7.us-east-1.aws.neon.tech/neondb?sslmode=require"
-NEON_FORCE_IMPORT = "true"
 NEON_IMPORT_SECRET = "cc-import-2024-secret"

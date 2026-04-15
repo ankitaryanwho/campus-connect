@@ -2,6 +2,12 @@ export type CustomFetchOptions = RequestInit & {
   responseType?: "json" | "text" | "blob" | "auto";
 };
 
+let _apiBaseUrl = "";
+
+export function configureApiClient({ baseUrl }: { baseUrl: string }) {
+  _apiBaseUrl = baseUrl.replace(/\/$/, "");
+}
+
 export type ErrorType<T = unknown> = ApiError<T>;
 
 export type BodyType<T> = T;
@@ -275,6 +281,11 @@ export async function customFetch<T = unknown>(
   input: RequestInfo | URL,
   options: CustomFetchOptions = {},
 ): Promise<T> {
+  // Prepend base URL for relative paths when configured
+  if (_apiBaseUrl && typeof input === "string" && input.startsWith("/")) {
+    input = `${_apiBaseUrl}${input}`;
+  }
+
   const { responseType = "auto", headers: headersInit, ...init } = options;
 
   const method = resolveMethod(input, init.method);

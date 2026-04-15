@@ -39,7 +39,8 @@ export function useAuthHeaders() {
 // Raw fetch helper for admin endpoints not in the generated API client
 export async function adminFetch(path: string, options?: RequestInit) {
   const token = localStorage.getItem("admin_token");
-  const res = await fetch(`/api/admin${path}`, {
+  const apiBase = import.meta.env.VITE_API_URL || "";
+  const res = await fetch(`${apiBase}/api/admin${path}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",

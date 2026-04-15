@@ -2,7 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import createContextHook from "@nkzw/create-context-hook";
 import React, { useState, useEffect, useCallback } from "react";
 
-const API_BASE = process.env["EXPO_PUBLIC_API_URL"] || "https://campus-connect-aryan.replit.app/api";
+const API_BASE = process.env["EXPO_PUBLIC_API_URL"] || "https://workspace--davidaryan7256.replit.app/api";
 
 export interface User {
   id: string;
