@@ -3,6 +3,7 @@ import cors from "cors";
 import router from "./routes";
 import { seedData } from "./lib/seed";
 import { runStartupMigrations } from "./lib/migrate";
+import { runProductionImport } from "./lib/production-import";
 
 const app: Express = express();
 
@@ -12,8 +13,9 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 app.use("/api", router);
 
-// Run migrations then seed on startup
+// Run migrations → production import (if NEON_SOURCE_URL set) → dev seed on startup
 runStartupMigrations()
+  .then(() => runProductionImport())
   .then(() => seedData())
   .catch(console.error);
 

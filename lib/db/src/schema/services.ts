@@ -88,6 +88,11 @@ export const deliveriesTable = pgTable("deliveries", {
 
   cancelledAt: timestamp("cancelled_at"),
 
+  // Legacy fields preserved from original production schema
+  item: text("item"),
+  fee: numeric("fee", { precision: 10, scale: 2 }).default("20"),
+  notes: text("notes"),
+
   // Rating by student after completion
   ratingHappiness: integer("rating_happiness"),
   ratingHandling: integer("rating_handling"),
