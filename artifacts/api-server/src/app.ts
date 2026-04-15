@@ -2,6 +2,7 @@ import express, { type Express } from "express";
 import cors from "cors";
 import router from "./routes";
 import { seedData } from "./lib/seed";
+import { runStartupMigrations } from "./lib/migrate";
 
 const app: Express = express();
 
@@ -11,7 +12,9 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 app.use("/api", router);
 
-// Seed data on startup
-seedData().catch(console.error);
+// Run migrations then seed on startup
+runStartupMigrations()
+  .then(() => seedData())
+  .catch(console.error);
 
 export default app;
