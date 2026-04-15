@@ -16,6 +16,7 @@ import {
   outletItemsTable,
 } from "@workspace/db/schema";
 import { authMiddleware, generateToken, verifyToken } from "../lib/auth";
+import { runProductionImport } from "../lib/production-import";
 import bcrypt from "bcryptjs";
 import { nanoid } from "nanoid";
 
@@ -921,6 +922,21 @@ router.delete("/comments/:id", adminMiddleware, async (req, res) => {
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
+});
+
+// ─── Neon Data Import Trigger ──────────────────────────────────────────────────
+// Protected by NEON_IMPORT_SECRET header. One-time use to populate production DB.
+router.post("/trigger-import", async (req: any, res: any) => {
+  const secret = process.env.NEON_IMPORT_SECRET;
+  if (!secret) return res.status(503).json({ error: "Import not configured (NEON_IMPORT_SECRET not set)" });
+  const provided = req.headers["x-import-secret"];
+  if (provided !== secret) return res.status(401).json({ error: "Invalid import secret" });
+
+  const force = req.query.force === "true";
+  console.log(`[import-trigger] Manual import triggered via HTTP (force=${force})`);
+
+  const result = await runProductionImport(force);
+  return res.json(result);
 });
 
 export default router;

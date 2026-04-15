@@ -27,40 +27,52 @@ const TABLES_IN_ORDER = [
   "order_messages",
 ];
 
-export async function runProductionImport() {
-  const sourceUrl = process.env.NEON_SOURCE_URL;
-  if (!sourceUrl) return;
+export interface ImportResult {
+  success: boolean;
+  skipped?: boolean;
+  reason?: string;
+  tables?: Record<string, { imported: number; total: number }>;
+  error?: string;
+}
 
-  const forceImport = process.env.NEON_FORCE_IMPORT === "true";
+export async function runProductionImport(forceOverride?: boolean): Promise<ImportResult> {
+  const sourceUrl = process.env.NEON_SOURCE_URL;
+  if (!sourceUrl) {
+    console.log("[import] NEON_SOURCE_URL not set — skipping.");
+    return { success: true, skipped: true, reason: "NEON_SOURCE_URL not set" };
+  }
+
+  const force = forceOverride ?? (process.env.NEON_FORCE_IMPORT === "true");
   const destClient = await pool.connect();
 
-  if (!forceImport) {
+  if (!force) {
     try {
       const check = await destClient.query(`SELECT COUNT(*) FROM users WHERE id != 'admin-001'`);
       if (parseInt(check.rows[0].count) > 0) {
-        console.log("[import] Production database already has data — skipping import. Set NEON_FORCE_IMPORT=true to override.");
+        console.log("[import] Database already has data — skipping. Set NEON_FORCE_IMPORT=true to override.");
         destClient.release();
-        return;
+        return { success: true, skipped: true, reason: "Database already has non-admin users" };
       }
-    } catch {
+    } catch (err: any) {
       destClient.release();
-      return;
+      return { success: false, error: `Check failed: ${err.message}` };
     }
   }
 
-  console.log(`[import] Starting production data import from source database (force=${forceImport})...`);
+  console.log(`[import] Starting import from Neon source database (force=${force})...`);
 
   const sourcePool = new Pool({ connectionString: sourceUrl });
   const sourceClient = await sourcePool.connect();
+  const tableResults: Record<string, { imported: number; total: number }> = {};
 
   try {
     await destClient.query("BEGIN");
     await destClient.query("SET session_replication_role = replica");
 
-    if (forceImport) {
+    if (force) {
       console.log("[import] Force mode: clearing all existing data...");
-      const reversedTables = [...TABLES_IN_ORDER].reverse();
-      for (const table of reversedTables) {
+      const reversed = [...TABLES_IN_ORDER].reverse();
+      for (const table of reversed) {
         try {
           await destClient.query(`TRUNCATE TABLE ${table} CASCADE`);
         } catch {}
@@ -79,7 +91,7 @@ export async function runProductionImport() {
       }
 
       if (rows.length === 0) {
-        console.log(`[import] ${table}: 0 rows (empty)`);
+        tableResults[table] = { imported: 0, total: 0 };
         continue;
       }
 
@@ -90,7 +102,10 @@ export async function runProductionImport() {
       const destCols = new Set(destColsResult.rows.map((r: any) => r.column_name));
       const sourceCols = Object.keys(rows[0]).filter((c) => destCols.has(c));
 
-      if (sourceCols.length === 0) continue;
+      if (sourceCols.length === 0) {
+        tableResults[table] = { imported: 0, total: rows.length };
+        continue;
+      }
 
       let inserted = 0;
       for (const row of rows) {
@@ -107,15 +122,18 @@ export async function runProductionImport() {
           console.warn(`[import] Row error in ${table}: ${err.message}`);
         }
       }
-      console.log(`[import] ${table}: ${inserted}/${rows.length} rows imported`);
+      tableResults[table] = { imported: inserted, total: rows.length };
+      console.log(`[import] ${table}: ${inserted}/${rows.length} rows`);
     }
 
     await destClient.query("SET session_replication_role = DEFAULT");
     await destClient.query("COMMIT");
-    console.log("[import] Production import complete. All data from source database transferred.");
-  } catch (err) {
+    console.log("[import] Import complete.");
+    return { success: true, tables: tableResults };
+  } catch (err: any) {
     await destClient.query("ROLLBACK");
-    console.error("[import] Import failed, rolled back:", err);
+    console.error("[import] Import failed:", err);
+    return { success: false, error: err.message };
   } finally {
     sourceClient.release();
     await sourcePool.end();
