@@ -53,7 +53,7 @@ export const deliveriesTable = pgTable("deliveries", {
   requesterId: text("requester_id").notNull().references(() => usersTable.id),
   deliveryAgentId: text("delivery_agent_id").references(() => usersTable.id),
 
-  pickupType: text("pickup_type").notNull(),
+  pickupType: text("pickup_type").notNull().default("gate"),
   pickupLocation: text("pickup_location").notNull(),
   dropLocation: text("drop_location").notNull(),
 

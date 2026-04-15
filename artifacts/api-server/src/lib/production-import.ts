@@ -31,7 +31,7 @@ export interface ImportResult {
   success: boolean;
   skipped?: boolean;
   reason?: string;
-  tables?: Record<string, { imported: number; total: number }>;
+  tables?: Record<string, { imported: number; total: number; errors: number }>;
   error?: string;
 }
 
@@ -49,13 +49,13 @@ export async function runProductionImport(forceOverride?: boolean): Promise<Impo
     try {
       const check = await destClient.query(`SELECT COUNT(*) FROM users WHERE id != 'admin-001'`);
       if (parseInt(check.rows[0].count) > 0) {
-        console.log("[import] Database already has data — skipping. Set NEON_FORCE_IMPORT=true to override.");
+        console.log("[import] Database already has data — skipping.");
         destClient.release();
         return { success: true, skipped: true, reason: "Database already has non-admin users" };
       }
     } catch (err: any) {
       destClient.release();
-      return { success: false, error: `Check failed: ${err.message}` };
+      return { success: false, error: `Pre-check failed: ${err.message}` };
     }
   }
 
@@ -63,7 +63,7 @@ export async function runProductionImport(forceOverride?: boolean): Promise<Impo
 
   const sourcePool = new Pool({ connectionString: sourceUrl });
   const sourceClient = await sourcePool.connect();
-  const tableResults: Record<string, { imported: number; total: number }> = {};
+  const tableResults: Record<string, { imported: number; total: number; errors: number }> = {};
 
   try {
     await destClient.query("BEGIN");
@@ -75,9 +75,11 @@ export async function runProductionImport(forceOverride?: boolean): Promise<Impo
       for (const table of reversed) {
         try {
           await destClient.query(`TRUNCATE TABLE ${table} CASCADE`);
-        } catch {}
+        } catch (e: any) {
+          console.warn(`[import] Could not truncate ${table}: ${e.message}`);
+        }
       }
-      console.log("[import] All tables cleared.");
+      console.log("[import] Tables cleared.");
     }
 
     for (const table of TABLES_IN_ORDER) {
@@ -91,7 +93,7 @@ export async function runProductionImport(forceOverride?: boolean): Promise<Impo
       }
 
       if (rows.length === 0) {
-        tableResults[table] = { imported: 0, total: 0 };
+        tableResults[table] = { imported: 0, total: 0, errors: 0 };
         continue;
       }
 
@@ -103,27 +105,37 @@ export async function runProductionImport(forceOverride?: boolean): Promise<Impo
       const sourceCols = Object.keys(rows[0]).filter((c) => destCols.has(c));
 
       if (sourceCols.length === 0) {
-        tableResults[table] = { imported: 0, total: rows.length };
+        tableResults[table] = { imported: 0, total: rows.length, errors: 0 };
         continue;
       }
 
       let inserted = 0;
+      let errors = 0;
+      let savepointCount = 0;
+
       for (const row of rows) {
         const vals = sourceCols.map((c) => row[c]);
         const placeholders = sourceCols.map((_, i) => `$${i + 1}`).join(", ");
         const colList = sourceCols.join(", ");
+        const sp = `sp_${savepointCount++}`;
         try {
+          await destClient.query(`SAVEPOINT ${sp}`);
           await destClient.query(
             `INSERT INTO ${table} (${colList}) VALUES (${placeholders}) ON CONFLICT DO NOTHING`,
             vals
           );
+          await destClient.query(`RELEASE SAVEPOINT ${sp}`);
           inserted++;
         } catch (err: any) {
-          console.warn(`[import] Row error in ${table}: ${err.message}`);
+          await destClient.query(`ROLLBACK TO SAVEPOINT ${sp}`);
+          errors++;
+          if (errors <= 3) {
+            console.warn(`[import] Row error in ${table}: ${err.message}`);
+          }
         }
       }
-      tableResults[table] = { imported: inserted, total: rows.length };
-      console.log(`[import] ${table}: ${inserted}/${rows.length} rows`);
+      tableResults[table] = { imported: inserted, total: rows.length, errors };
+      console.log(`[import] ${table}: ${inserted}/${rows.length} imported (${errors} errors)`);
     }
 
     await destClient.query("SET session_replication_role = DEFAULT");
@@ -131,7 +143,7 @@ export async function runProductionImport(forceOverride?: boolean): Promise<Impo
     console.log("[import] Import complete.");
     return { success: true, tables: tableResults };
   } catch (err: any) {
-    await destClient.query("ROLLBACK");
+    try { await destClient.query("ROLLBACK"); } catch {}
     console.error("[import] Import failed:", err);
     return { success: false, error: err.message };
   } finally {
