@@ -11,11 +11,6 @@ build:
     - run:
         name: Install mobile dependencies
         command: pnpm install --filter @workspace/mobile... --no-frozen-lockfile
-    - run:
-        name: Build mobile app config
-        command: |
-          cd /home/expo/workingdir/build/artifacts/mobile
-          node -e "const fs=require('fs'); const app=require('./app.json'); fs.writeFileSync('.expo-app-config.json', JSON.stringify(app.expo));"
     - eas/configure_eas_update
     - eas/run_gradle
     - eas/find_and_upload_build_artifacts
