@@ -13,7 +13,7 @@ build:
         command: pnpm install --no-frozen-lockfile
     - run:
         name: Expo Prebuild (Android)
-        command: EXPO_NO_GIT_STATUS=1 pnpm exec expo prebuild --platform android --clean
+        command: EXPO_NO_GIT_STATUS=1 pnpm exec expo prebuild --platform android --clean --no-install
     - run:
         name: Install dependencies (post-prebuild)
         command: pnpm install --no-frozen-lockfile
