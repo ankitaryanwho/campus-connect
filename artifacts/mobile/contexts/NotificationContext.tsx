@@ -49,7 +49,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       setExpoPushToken(token);
 
       try {
-        const API_BASE = process.env["EXPO_PUBLIC_API_URL"] || "https://workspace--davidaryan7256.replit.app/api";
+        const API_BASE = process.env["EXPO_PUBLIC_API_URL"] || "https://campus-connect-davidaryan7256.replit.app/api";
         await fetch(`${API_BASE}/notifications/push-token`, {
           method: "POST",
           headers: {
