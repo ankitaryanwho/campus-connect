@@ -14,7 +14,7 @@ build:
     - run:
         name: Expo Prebuild (Android)
         command: |
-          cd /home/expo/workingdir/build/artifacts/mobile
+          cd /home/expo/workingdir/build
           CI=1 npx expo prebuild --platform android --clean --no-install
     - run:
         name: Install dependencies (post-prebuild)
