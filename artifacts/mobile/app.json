@@ -68,7 +68,7 @@
       "url": "https://u.expo.dev/af315ba0-c6e1-4253-8e0f-3cad77bbf270"
     },
     "runtimeVersion": {
-      "policy": "appVersion"
+      "policy": "sdkVersion"
     },
     "experiments": {
       "typedRoutes": true,
