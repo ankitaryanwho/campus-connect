@@ -128,7 +128,7 @@ artifacts-monorepo/
 ## CampusConnect Features
 
 ### Mobile App (`artifacts/mobile`)
-- **Authentication**: Login / Register with JWT, demo account (priya@campus.edu / password123)
+- **Authentication**: Login / Register with JWT, demo account (priya@campus.edu / password123). Auth screens use "Warm Blobs" design: cream (#FAF8F4) background with purple blob decorations, white rounded card, pill tab switcher, cream inputs with purple icon circles, orange error box, purple CTA button.
 - **Social Feed**: Posts, likes, comments, create posts
 - **Services Marketplace**: Assignments, Certifications, Delivery, Tasks — full role-based logic
 - **Chat**: Direct messages (DMs) + Chatrooms (6 preset rooms), real-time polling

@@ -1,25 +1,28 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
   View, Text, TextInput, Pressable, StyleSheet,
-  ActivityIndicator, useColorScheme, Platform, Modal,
-  FlatList,
+  ActivityIndicator, Platform, Modal, FlatList,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useAuth } from "@/contexts/AuthContext";
-import Colors from "@/constants/colors";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 
 const API_BASE = process.env.EXPO_PUBLIC_API_URL || "/api";
+const PURPLE = "#5B4FE8";
+const CREAM = "#FAF8F4";
+const TEXT = "#1A1A2E";
+const BORDER = "#E8E4F0";
+const ICON_BG = "#EDE9FE";
 
 const PROGRAMS = ["BCA", "BTech", "MBA", "MTech", "BSc", "BCom", "BA", "Other"];
 
 const ALL_SERVICES = [
-  { id: "assignments", label: "Assignments", icon: "file-text", desc: "Help students with assignment work" },
-  { id: "certifications", label: "Certifications", icon: "award", desc: "Help with certification projects" },
-  { id: "deliveries", label: "Deliveries", icon: "truck", desc: "Campus delivery & pickup runs" },
-  { id: "tasks", label: "Tasks & Gigs", icon: "clipboard", desc: "Freelance tasks for students" },
+  { id: "assignments", label: "Assignments", icon: "file-text" as const, desc: "Help students with assignment work" },
+  { id: "certifications", label: "Certifications", icon: "award" as const, desc: "Help with certification projects" },
+  { id: "deliveries", label: "Deliveries", icon: "truck" as const, desc: "Campus delivery & pickup runs" },
+  { id: "tasks", label: "Tasks & Gigs", icon: "clipboard" as const, desc: "Freelance tasks for students" },
 ];
 
 const YEARS = [
@@ -44,8 +47,6 @@ interface College {
 export default function RegisterScreen() {
   const { register } = useAuth();
   const insets = useSafeAreaInsets();
-  const colorScheme = useColorScheme();
-  const C = Colors[colorScheme === "dark" ? "dark" : "light"];
   const isWeb = Platform.OS === "web";
 
   const [step, setStep] = useState<"form" | "otp">("form");
@@ -73,7 +74,6 @@ export default function RegisterScreen() {
   const [error, setError] = useState("");
   const [otpSent, setOtpSent] = useState(false);
   const [verificationToken, setVerificationToken] = useState("");
-
   const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
@@ -134,9 +134,7 @@ export default function RegisterScreen() {
     next[idx] = cleaned;
     setOtp(next);
     setError("");
-    if (cleaned && idx < 5) {
-      otpRefs.current[idx + 1]?.focus();
-    }
+    if (cleaned && idx < 5) otpRefs.current[idx + 1]?.focus();
   };
 
   const handleOtpKeyPress = (e: any, idx: number) => {
@@ -195,391 +193,425 @@ export default function RegisterScreen() {
     setError("");
   };
 
-  const S = styles(C);
-
   if (step === "otp") {
     return (
-      <KeyboardAwareScrollViewCompat
-        style={{ flex: 1, backgroundColor: C.background }}
-        contentContainerStyle={{
-          flexGrow: 1,
-          paddingTop: isWeb ? 67 : insets.top + 20,
-          paddingBottom: isWeb ? 34 : insets.bottom + 20,
-          paddingHorizontal: 24,
-        }}
-      >
-        <Pressable onPress={() => { setStep("form"); setOtp(["","","","","",""]); setError(""); }} style={{ marginBottom: 28 }}>
-          <Feather name="arrow-left" size={22} color={C.text} />
-        </Pressable>
+      <View style={s.screen}>
+        <View style={s.blob1} />
+        <View style={s.blob2} />
+        <View style={s.blob3} />
+        <View style={s.ring} />
 
-        <View style={{ alignItems: "center", marginBottom: 32 }}>
-          <View style={[S.otpIconWrap, { backgroundColor: C.primaryLight }]}>
-            <Feather name="mail" size={28} color={C.primary} />
-          </View>
-          <Text style={[S.title, { color: C.text, marginTop: 16 }]}>Verify your email</Text>
-          <Text style={[S.subtitle, { color: C.textSecondary }]}>
-            We sent a 6-digit code to{"\n"}
-            <Text style={{ color: C.primary, fontFamily: "Inter_600SemiBold" }}>{email.trim().toLowerCase()}</Text>
-          </Text>
-          <Text style={[{ color: C.textTertiary, fontSize: 12, marginTop: 8, fontFamily: "Inter_400Regular", textAlign: "center" }]}>
-            Also check your spam/junk folder if you don't see it
-          </Text>
-        </View>
-
-        <View style={S.otpRow}>
-          {otp.map((digit, idx) => (
-            <TextInput
-              key={idx}
-              ref={r => { otpRefs.current[idx] = r; }}
-              style={[S.otpBox, {
-                backgroundColor: C.backgroundSecondary,
-                borderColor: digit ? C.primary : C.border,
-                color: C.text,
-              }]}
-              value={digit}
-              onChangeText={v => handleOtpChange(v, idx)}
-              onKeyPress={e => handleOtpKeyPress(e, idx)}
-              keyboardType="number-pad"
-              maxLength={1}
-              textAlign="center"
-              fontFamily="Inter_700Bold"
-            />
-          ))}
-        </View>
-
-        {error ? (
-          <View style={[S.errorBox, { backgroundColor: C.errorLight }]}>
-            <Feather name="alert-circle" size={14} color={C.error} />
-            <Text style={[S.errorText, { color: C.error }]}>{error}</Text>
-          </View>
-        ) : null}
-
-        <Pressable
-          style={[S.primaryBtn, { backgroundColor: C.primary }, loading && { opacity: 0.7 }]}
-          onPress={handleVerifyOtp}
-          disabled={loading}
+        <KeyboardAwareScrollViewCompat
+          style={{ flex: 1 }}
+          contentContainerStyle={{
+            paddingTop: isWeb ? 60 : insets.top + 24,
+            paddingBottom: isWeb ? 40 : insets.bottom + 32,
+            paddingHorizontal: 16,
+          }}
         >
-          {loading ? <ActivityIndicator color="#fff" /> : (
-            <Text style={[S.primaryBtnText, { fontFamily: "Inter_600SemiBold" }]}>Verify & Create Account</Text>
-          )}
-        </Pressable>
+          <View style={s.card}>
+            <Pressable
+              onPress={() => { setStep("form"); setOtp(["","","","","",""]); setError(""); }}
+              style={{ marginBottom: 24 }}
+            >
+              <Feather name="arrow-left" size={22} color={TEXT} />
+            </Pressable>
 
-        <Pressable onPress={handleSendOtp} style={{ alignItems: "center", marginTop: 16 }} disabled={sendingOtp}>
-          <Text style={{ color: C.primary, fontFamily: "Inter_500Medium", fontSize: 14 }}>
-            {sendingOtp ? "Resending..." : "Didn't receive it? Resend OTP"}
-          </Text>
-        </Pressable>
-      </KeyboardAwareScrollViewCompat>
+            <View style={{ alignItems: "center", marginBottom: 28 }}>
+              <View style={s.otpIconWrap}>
+                <Feather name="mail" size={28} color={PURPLE} />
+              </View>
+              <Text style={s.otpTitle}>Verify your email</Text>
+              <Text style={s.otpSubtitle}>
+                We sent a 6-digit code to{"\n"}
+                <Text style={{ color: PURPLE, fontFamily: "Inter_600SemiBold" }}>
+                  {email.trim().toLowerCase()}
+                </Text>
+              </Text>
+              <Text style={s.otpHint}>
+                Also check your spam/junk folder if you don't see it
+              </Text>
+            </View>
+
+            <View style={s.otpRow}>
+              {otp.map((digit, idx) => (
+                <TextInput
+                  key={idx}
+                  ref={r => { otpRefs.current[idx] = r; }}
+                  style={[s.otpBox, { borderColor: digit ? PURPLE : BORDER }]}
+                  value={digit}
+                  onChangeText={v => handleOtpChange(v, idx)}
+                  onKeyPress={e => handleOtpKeyPress(e, idx)}
+                  keyboardType="number-pad"
+                  maxLength={1}
+                  textAlign="center"
+                />
+              ))}
+            </View>
+
+            {error ? (
+              <View style={s.errorBox}>
+                <Feather name="alert-circle" size={16} color="#C2410C" />
+                <Text style={s.errorText}>{error}</Text>
+              </View>
+            ) : null}
+
+            <Pressable
+              style={[s.primaryBtn, loading && { opacity: 0.7 }]}
+              onPress={handleVerifyOtp}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={s.primaryBtnText}>Verify & Create Account</Text>
+              )}
+            </Pressable>
+
+            <Pressable
+              onPress={handleSendOtp}
+              style={{ alignItems: "center", marginTop: 16 }}
+              disabled={sendingOtp}
+            >
+              <Text style={{ color: PURPLE, fontFamily: "Inter_500Medium", fontSize: 14 }}>
+                {sendingOtp ? "Resending..." : "Didn't receive it? Resend OTP"}
+              </Text>
+            </Pressable>
+          </View>
+        </KeyboardAwareScrollViewCompat>
+      </View>
     );
   }
 
   return (
     <>
-      <KeyboardAwareScrollViewCompat
-        style={[{ flex: 1, backgroundColor: C.background }]}
-        contentContainerStyle={{
-          flexGrow: 1,
-          paddingTop: isWeb ? 67 : insets.top + 20,
-          paddingBottom: isWeb ? 34 : insets.bottom + 20,
-          paddingHorizontal: 24,
-        }}
-      >
-        <View style={{ flexDirection: "row", marginBottom: 24 }}>
-          <Pressable onPress={() => router.back()} hitSlop={8}>
-            <Feather name="x" size={22} color={C.text} />
-          </Pressable>
-        </View>
+      <View style={s.screen}>
+        <View style={s.blob1} />
+        <View style={s.blob2} />
+        <View style={s.blob3} />
+        <View style={s.dot1} />
+        <View style={s.dot2} />
+        <View style={s.dot3} />
+        <View style={s.ring} />
 
-        <Text style={[S.title, { color: C.text }]}>Create Account</Text>
-        <Text style={[S.subtitle, { color: C.textSecondary }]}>Join your campus community</Text>
+        <KeyboardAwareScrollViewCompat
+          style={{ flex: 1 }}
+          contentContainerStyle={{
+            paddingTop: isWeb ? 60 : insets.top + 24,
+            paddingBottom: isWeb ? 40 : insets.bottom + 32,
+            paddingHorizontal: 16,
+          }}
+        >
+          <View style={s.card}>
+            <View style={s.cardHeader}>
+              <View style={s.logoBox}>
+                <Feather name="layers" size={28} color="#fff" />
+              </View>
+              <View style={s.titleRow}>
+                <Text style={s.appName}>CampusConnect</Text>
+                <Text style={s.version}>v2.0</Text>
+              </View>
 
-        <View style={[S.roleToggle, { backgroundColor: C.backgroundSecondary, borderColor: C.border }]}>
-          <Pressable
-            style={[S.roleBtn, role === "student" && { backgroundColor: C.primary }]}
-            onPress={() => { setRole("student"); setError(""); }}
-          >
-            <Feather name="book" size={14} color={role === "student" ? "#fff" : C.textSecondary} />
-            <Text style={[S.roleBtnText, { color: role === "student" ? "#fff" : C.textSecondary, fontFamily: "Inter_500Medium" }]}>Student</Text>
-          </Pressable>
-          <Pressable
-            style={[S.roleBtn, role === "provider" && { backgroundColor: C.primary }]}
-            onPress={() => { setRole("provider"); setError(""); }}
-          >
-            <Feather name="briefcase" size={14} color={role === "provider" ? "#fff" : C.textSecondary} />
-            <Text style={[S.roleBtnText, { color: role === "provider" ? "#fff" : C.textSecondary, fontFamily: "Inter_500Medium" }]}>Service Provider</Text>
-          </Pressable>
-        </View>
-
-        <View style={{ gap: 16 }}>
-          <View>
-            <Text style={[S.label, { color: C.textSecondary }]}>Full Name *</Text>
-            <View style={[S.inputWrapper, { backgroundColor: C.backgroundSecondary, borderColor: C.border }]}>
-              <Feather name="user" size={17} color={C.textTertiary} />
-              <TextInput
-                style={[S.input, { color: C.text, fontFamily: "Inter_400Regular" }]}
-                placeholder="Your full name"
-                placeholderTextColor={C.textTertiary}
-                value={name}
-                onChangeText={v => { setName(v); setError(""); }}
-                autoCapitalize="words"
-              />
+              <View style={s.tabRow}>
+                <Pressable
+                  style={s.tab}
+                  onPress={() => router.back()}
+                >
+                  <Text style={[s.tabText, s.tabTextInactive]}>Sign In</Text>
+                </Pressable>
+                <View style={[s.tab, s.tabActive]}>
+                  <Text style={[s.tabText, s.tabTextActive]}>Sign Up</Text>
+                </View>
+              </View>
             </View>
-          </View>
 
-          <View>
-            <Text style={[S.label, { color: C.textSecondary }]}>College *</Text>
-            <Pressable
-              style={[S.inputWrapper, { backgroundColor: C.backgroundSecondary, borderColor: selectedCollege ? C.primary : C.border }]}
-              onPress={() => setShowCollegePicker(true)}
-            >
-              <Feather name="map-pin" size={17} color={selectedCollege ? C.primary : C.textTertiary} />
-              <Text style={[S.input, { color: selectedCollege ? C.text : C.textTertiary, fontFamily: "Inter_400Regular" }]}>
-                {selectedCollege ? selectedCollege.name : "Select your college"}
-              </Text>
-              <Feather name="chevron-down" size={17} color={C.textTertiary} />
-            </Pressable>
-            {selectedCollege && (
-              <Text style={{ color: C.textTertiary, fontSize: 11, marginTop: 4, fontFamily: "Inter_400Regular" }}>
-                Domain: @{selectedCollege.domain}
-              </Text>
-            )}
-          </View>
-
-          <View>
-            <Text style={[S.label, { color: C.textSecondary }]}>College Email *</Text>
-            <View style={[S.inputWrapper, {
-              backgroundColor: C.backgroundSecondary,
-              borderColor: email && selectedCollege && !domainValid ? C.error : C.border,
-            }]}>
-              <Feather name="mail" size={17} color={C.textTertiary} />
-              <TextInput
-                style={[S.input, { color: C.text, fontFamily: "Inter_400Regular" }]}
-                placeholder={selectedCollege ? `you@${selectedCollege.domain}` : "your@college.edu"}
-                placeholderTextColor={C.textTertiary}
-                value={email}
-                onChangeText={v => { setEmail(v); setError(""); }}
-                keyboardType="email-address"
-                autoCapitalize="none"
-              />
-              {email.includes("@") && selectedCollege && (
-                <Feather
-                  name={domainValid ? "check-circle" : "x-circle"}
-                  size={16}
-                  color={domainValid ? "#22c55e" : C.error}
-                />
-              )}
-            </View>
-            {email && selectedCollege && !domainValid && (
-              <Text style={{ color: C.error, fontSize: 11, marginTop: 4, fontFamily: "Inter_400Regular" }}>
-                Must use your {selectedCollege.name} email (@{selectedCollege.domain})
-              </Text>
-            )}
-          </View>
-
-          <View>
-            <Text style={[S.label, { color: C.textSecondary }]}>Password *</Text>
-            <View style={[S.inputWrapper, { backgroundColor: C.backgroundSecondary, borderColor: C.border }]}>
-              <Feather name="lock" size={17} color={C.textTertiary} />
-              <TextInput
-                style={[S.input, { color: C.text, fontFamily: "Inter_400Regular" }]}
-                placeholder="Min. 6 characters"
-                placeholderTextColor={C.textTertiary}
-                value={password}
-                onChangeText={v => { setPassword(v); setError(""); }}
-                secureTextEntry={!showPassword}
-                autoCapitalize="none"
-              />
-              <Pressable onPress={() => setShowPassword(p => !p)} hitSlop={8}>
-                <Feather name={showPassword ? "eye-off" : "eye"} size={17} color={C.textTertiary} />
+            <Text style={s.sectionLabel}>I AM A...</Text>
+            <View style={s.roleRow}>
+              <Pressable
+                style={[s.roleCard, role === "student" && s.roleCardActive]}
+                onPress={() => { setRole("student"); setError(""); }}
+              >
+                <Text style={s.roleEmoji}>📚</Text>
+                <Text style={[s.roleTitle, role === "student" && { color: PURPLE }]}>Student</Text>
+                <Text style={s.roleSubtitle}>Looking for help</Text>
+              </Pressable>
+              <Pressable
+                style={[s.roleCard, role === "provider" && s.roleCardActive]}
+                onPress={() => { setRole("provider"); setError(""); }}
+              >
+                <Text style={s.roleEmoji}>💼</Text>
+                <Text style={[s.roleTitle, role === "provider" && { color: PURPLE }]}>Provider</Text>
+                <Text style={s.roleSubtitle}>Offering services</Text>
               </Pressable>
             </View>
-          </View>
 
-          <View>
-            <Text style={[S.label, { color: C.textSecondary }]}>Program</Text>
-            <View style={S.chipsRow}>
-              {PROGRAMS.map(p => (
-                <Pressable
-                  key={p}
-                  style={[S.chip, { borderColor: C.border, backgroundColor: program === p ? C.primary : C.backgroundSecondary }]}
-                  onPress={() => setProgram(p)}
-                >
-                  <Text style={[S.chipText, { color: program === p ? "#fff" : C.textSecondary, fontFamily: "Inter_500Medium" }]}>{p}</Text>
+            <View style={{ gap: 12, marginTop: 20 }}>
+              <View style={s.inputWrap}>
+                <View style={s.iconCircle}>
+                  <Feather name="user" size={16} color={PURPLE} />
+                </View>
+                <TextInput
+                  style={s.input}
+                  placeholder="Full Name"
+                  placeholderTextColor={TEXT + "55"}
+                  value={name}
+                  onChangeText={v => { setName(v); setError(""); }}
+                  autoCapitalize="words"
+                />
+              </View>
+
+              <Pressable
+                style={[s.inputWrap, selectedCollege && { borderColor: PURPLE, borderWidth: 1 }]}
+                onPress={() => setShowCollegePicker(true)}
+              >
+                <View style={s.iconCircle}>
+                  <Feather name="map-pin" size={16} color={PURPLE} />
+                </View>
+                <Text style={[s.input, { flex: 1, color: selectedCollege ? TEXT : TEXT + "55" }]}>
+                  {selectedCollege ? selectedCollege.name : "Select your college"}
+                </Text>
+                <Feather name="chevron-down" size={18} color={TEXT + "55"} />
+              </Pressable>
+              {selectedCollege && (
+                <Text style={s.hintText}>Domain: @{selectedCollege.domain}</Text>
+              )}
+
+              <View style={[
+                s.inputWrap,
+                email && selectedCollege && !domainValid && { borderColor: "#EF4444", borderWidth: 1 },
+              ]}>
+                <View style={s.iconCircle}>
+                  <Feather name="mail" size={16} color={PURPLE} />
+                </View>
+                <TextInput
+                  style={s.input}
+                  placeholder={selectedCollege ? `you@${selectedCollege.domain}` : "College Email"}
+                  placeholderTextColor={TEXT + "55"}
+                  value={email}
+                  onChangeText={v => { setEmail(v); setError(""); }}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                />
+                {email.includes("@") && selectedCollege && (
+                  <Feather
+                    name={domainValid ? "check-circle" : "x-circle"}
+                    size={16}
+                    color={domainValid ? "#22c55e" : "#EF4444"}
+                  />
+                )}
+              </View>
+              {email && selectedCollege && !domainValid && (
+                <Text style={[s.hintText, { color: "#EF4444" }]}>
+                  Must use your {selectedCollege.name} email (@{selectedCollege.domain})
+                </Text>
+              )}
+
+              <View style={s.inputWrap}>
+                <View style={s.iconCircle}>
+                  <Feather name="lock" size={16} color={PURPLE} />
+                </View>
+                <TextInput
+                  style={s.input}
+                  placeholder="Password (min. 6 chars)"
+                  placeholderTextColor={TEXT + "55"}
+                  value={password}
+                  onChangeText={v => { setPassword(v); setError(""); }}
+                  secureTextEntry={!showPassword}
+                  autoCapitalize="none"
+                />
+                <Pressable onPress={() => setShowPassword(p => !p)} hitSlop={8}>
+                  <Feather
+                    name={showPassword ? "eye-off" : "eye"}
+                    size={18}
+                    color={TEXT + "66"}
+                  />
                 </Pressable>
-              ))}
-            </View>
-          </View>
+              </View>
 
-          <View>
-            <Text style={[S.label, { color: C.textSecondary }]}>Academic Year *</Text>
-            <View style={S.chipsRow}>
-              {YEARS.map(y => (
-                <Pressable
-                  key={y.value}
-                  style={[S.chip, { borderColor: C.border, backgroundColor: year === y.value ? C.primary : C.backgroundSecondary }]}
-                  onPress={() => setYear(y.value)}
-                >
-                  <Text style={[S.chipText, { color: year === y.value ? "#fff" : C.textSecondary, fontFamily: "Inter_500Medium" }]}>{y.label}</Text>
-                </Pressable>
-              ))}
+              <View style={s.inputWrap}>
+                <View style={s.iconCircle}>
+                  <Feather name="phone" size={16} color={PURPLE} />
+                </View>
+                <TextInput
+                  style={s.input}
+                  placeholder="Phone Number (Optional)"
+                  placeholderTextColor={TEXT + "55"}
+                  value={phone}
+                  onChangeText={v => { setPhone(v); setError(""); }}
+                  keyboardType="phone-pad"
+                />
+              </View>
             </View>
-          </View>
 
-          <View>
-            <Text style={[S.label, { color: C.textSecondary }]}>Gender <Text style={{ color: C.textTertiary, fontFamily: "Inter_400Regular" }}>(optional)</Text></Text>
-            <View style={S.chipsRow}>
-              {GENDERS.map(g => (
-                <Pressable
-                  key={g.value}
-                  style={[S.chip, { borderColor: C.border, backgroundColor: gender === g.value ? C.primary : C.backgroundSecondary }]}
-                  onPress={() => setGender(prev => prev === g.value ? null : g.value)}
-                >
-                  <Text style={[S.chipText, { color: gender === g.value ? "#fff" : C.textSecondary, fontFamily: "Inter_500Medium" }]}>
-                    {g.emoji} {g.label}
-                  </Text>
-                </Pressable>
-              ))}
+            <View style={{ marginTop: 24 }}>
+              <Text style={s.sectionLabel}>Program</Text>
+              <View style={s.chipsWrap}>
+                {PROGRAMS.map(p => (
+                  <Pressable
+                    key={p}
+                    style={[s.chip, program === p && s.chipActive]}
+                    onPress={() => setProgram(p)}
+                  >
+                    <Text style={[s.chipText, program === p && s.chipTextActive]}>{p}</Text>
+                  </Pressable>
+                ))}
+              </View>
             </View>
-            <Text style={{ color: C.textTertiary, fontSize: 11, marginTop: 4, fontFamily: "Inter_400Regular" }}>
-              Shown as an emoji on anonymous posts to help others know who's posting
-            </Text>
-          </View>
 
-          <View>
-            <Text style={[S.label, { color: C.textSecondary }]}>Phone Number <Text style={{ color: C.textTertiary, fontFamily: "Inter_400Regular" }}>(optional)</Text></Text>
-            <View style={[S.inputWrapper, { backgroundColor: C.backgroundSecondary, borderColor: C.border }]}>
-              <Feather name="phone" size={17} color={C.textTertiary} />
-              <TextInput
-                style={[S.input, { color: C.text, fontFamily: "Inter_400Regular" }]}
-                placeholder="+91 XXXXX XXXXX"
-                placeholderTextColor={C.textTertiary}
-                value={phone}
-                onChangeText={v => { setPhone(v); setError(""); }}
-                keyboardType="phone-pad"
-              />
+            <View style={{ marginTop: 20 }}>
+              <Text style={s.sectionLabel}>Academic Year</Text>
+              <View style={s.chipsWrap}>
+                {YEARS.map(y => (
+                  <Pressable
+                    key={y.value}
+                    style={[s.chip, year === y.value && s.chipActive]}
+                    onPress={() => setYear(y.value)}
+                  >
+                    <Text style={[s.chipText, year === y.value && s.chipTextActive]}>{y.label}</Text>
+                  </Pressable>
+                ))}
+              </View>
             </View>
-            <Text style={{ color: C.textTertiary, fontSize: 11, marginTop: 4, fontFamily: "Inter_400Regular" }}>
-              Used for delivery coordination. Shared only when needed.
-            </Text>
-          </View>
 
-          {role === "provider" && (
-            <View>
-              <Text style={[S.label, { color: C.textSecondary }]}>Services You Offer *</Text>
-              <Text style={{ color: C.textTertiary, fontSize: 12, marginBottom: 10, fontFamily: "Inter_400Regular" }}>
-                Select all that apply — these will appear on your profile
+            <View style={{ marginTop: 20 }}>
+              <Text style={s.sectionLabel}>
+                Gender{" "}
+                <Text style={{ color: TEXT + "66", fontFamily: "Inter_400Regular", fontSize: 11 }}>
+                  (optional)
+                </Text>
               </Text>
-              {ALL_SERVICES.map(svc => {
-                const selected = selectedServices.includes(svc.id);
-                return (
+              <View style={s.chipsWrap}>
+                {GENDERS.map(g => (
                   <Pressable
-                    key={svc.id}
-                    style={[S.serviceCard, {
-                      backgroundColor: selected ? C.primaryLight : C.backgroundSecondary,
-                      borderColor: selected ? C.primary : C.border,
-                    }]}
-                    onPress={() => toggleService(svc.id)}
+                    key={g.value}
+                    style={[s.chip, gender === g.value && s.chipActive]}
+                    onPress={() => setGender(prev => prev === g.value ? null : g.value)}
                   >
-                    <View style={[S.serviceIconWrap, { backgroundColor: selected ? C.primary : C.border }]}>
-                      <Feather name={svc.icon as any} size={16} color={selected ? "#fff" : C.textSecondary} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[S.serviceName, { color: C.text, fontFamily: "Inter_600SemiBold" }]}>{svc.label}</Text>
-                      <Text style={[S.serviceDesc, { color: C.textSecondary, fontFamily: "Inter_400Regular" }]}>{svc.desc}</Text>
-                    </View>
-                    <View style={[S.serviceCheck, {
-                      backgroundColor: selected ? C.primary : "transparent",
-                      borderColor: selected ? C.primary : C.border,
-                    }]}>
-                      {selected && <Feather name="check" size={12} color="#fff" />}
-                    </View>
+                    <Text style={[s.chipText, gender === g.value && s.chipTextActive]}>
+                      {g.emoji} {g.label}
+                    </Text>
                   </Pressable>
-                );
-              })}
-            </View>
-          )}
-        </View>
-
-        {error ? (
-          <View style={[S.errorBox, { backgroundColor: C.errorLight, marginTop: 16 }]}>
-            <Feather name="alert-circle" size={14} color={C.error} />
-            <Text style={[S.errorText, { color: C.error }]}>{error}</Text>
-          </View>
-        ) : null}
-
-        <Pressable
-          style={[S.primaryBtn, { backgroundColor: C.primary, marginTop: 20 }, sendingOtp && { opacity: 0.7 }]}
-          onPress={handleSendOtp}
-          disabled={sendingOtp}
-        >
-          {sendingOtp ? <ActivityIndicator color="#fff" /> : (
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-              <Text style={[S.primaryBtnText, { fontFamily: "Inter_600SemiBold" }]}>Continue</Text>
-              <Feather name="arrow-right" size={18} color="#fff" />
-            </View>
-          )}
-        </Pressable>
-
-        <View style={S.footer}>
-          <Text style={[S.footerText, { color: C.textSecondary, fontFamily: "Inter_400Regular" }]}>Already have an account? </Text>
-          <Pressable onPress={() => router.back()}>
-            <Text style={[S.footerLink, { color: C.primary, fontFamily: "Inter_600SemiBold" }]}>Sign In</Text>
-          </Pressable>
-        </View>
-      </KeyboardAwareScrollViewCompat>
-
-      <Modal visible={showCollegePicker} animationType="slide" transparent>
-        <View style={[S.modalOverlay, { backgroundColor: "rgba(0,0,0,0.5)" }]}>
-          <View style={[S.modalSheet, { backgroundColor: C.surface }]}>
-            <View style={S.modalHandle} />
-            <Text style={[S.modalTitle, { color: C.text, fontFamily: "Inter_700Bold" }]}>Select College</Text>
-
-            <View style={[S.searchWrapper, { backgroundColor: C.backgroundSecondary, borderColor: C.border }]}>
-              <Feather name="search" size={16} color={C.textTertiary} />
-              <TextInput
-                style={[{ flex: 1, fontSize: 15, color: C.text, fontFamily: "Inter_400Regular" }]}
-                placeholder="Search colleges..."
-                placeholderTextColor={C.textTertiary}
-                value={collegeSearch}
-                onChangeText={setCollegeSearch}
-                autoFocus
-              />
-              {collegeSearch ? (
-                <Pressable onPress={() => setCollegeSearch("")} hitSlop={8}>
-                  <Feather name="x" size={16} color={C.textTertiary} />
-                </Pressable>
-              ) : null}
+                ))}
+              </View>
             </View>
 
-            <FlatList
-              data={filteredColleges}
-              keyExtractor={c => c.id}
-              style={{ maxHeight: 360 }}
-              renderItem={({ item }) => {
-                const sel = selectedCollege?.id === item.id;
-                return (
-                  <Pressable
-                    style={[S.collegeItem, { borderBottomColor: C.border, backgroundColor: sel ? C.primaryLight : "transparent" }]}
-                    onPress={() => { setSelectedCollege(item); setEmail(""); setShowCollegePicker(false); setCollegeSearch(""); setError(""); }}
-                  >
-                    <View style={{ flex: 1 }}>
-                      <Text style={[S.collegeName, { color: sel ? C.primary : C.text, fontFamily: "Inter_600SemiBold" }]}>{item.name}</Text>
-                      <Text style={[S.collegeDomain, { color: C.textTertiary, fontFamily: "Inter_400Regular" }]}>@{item.domain}</Text>
-                    </View>
-                    {sel && <Feather name="check-circle" size={18} color={C.primary} />}
-                  </Pressable>
-                );
-              }}
-              ListEmptyComponent={
-                <Text style={{ color: C.textSecondary, textAlign: "center", padding: 24, fontFamily: "Inter_400Regular" }}>No colleges found</Text>
-              }
-            />
+            {role === "provider" && (
+              <View style={s.servicesBox}>
+                <Text style={s.servicesLabel}>Services You Offer</Text>
+                <Text style={s.servicesHint}>Select all that apply</Text>
+                {ALL_SERVICES.map(svc => {
+                  const selected = selectedServices.includes(svc.id);
+                  return (
+                    <Pressable
+                      key={svc.id}
+                      style={[s.serviceRow, selected && s.serviceRowActive]}
+                      onPress={() => toggleService(svc.id)}
+                    >
+                      <View style={[s.serviceIcon, selected && { backgroundColor: PURPLE }]}>
+                        <Feather
+                          name={svc.icon}
+                          size={16}
+                          color={selected ? "#fff" : TEXT + "66"}
+                        />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[s.serviceName, selected && { color: TEXT }]}>{svc.label}</Text>
+                        <Text style={s.serviceDesc}>{svc.desc}</Text>
+                      </View>
+                      <View style={[s.serviceCheck, selected && s.serviceCheckActive]}>
+                        {selected && <Feather name="check" size={12} color="#fff" />}
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
+
+            {error ? (
+              <View style={[s.errorBox, { marginTop: 16 }]}>
+                <Feather name="alert-circle" size={16} color="#C2410C" />
+                <Text style={s.errorText}>{error}</Text>
+              </View>
+            ) : null}
 
             <Pressable
-              style={[S.modalCancelBtn, { borderColor: C.border }]}
+              style={[s.primaryBtn, { marginTop: 24 }, sendingOtp && { opacity: 0.7 }]}
+              onPress={handleSendOtp}
+              disabled={sendingOtp}
+            >
+              {sendingOtp ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <Text style={s.primaryBtnText}>Continue</Text>
+                  <Feather name="arrow-right" size={18} color="#fff" />
+                </View>
+              )}
+            </Pressable>
+          </View>
+
+          <View style={s.footer}>
+            <Text style={s.footerText}>Already have an account? </Text>
+            <Pressable onPress={() => router.back()}>
+              <Text style={s.footerLink}>Sign In →</Text>
+            </Pressable>
+          </View>
+        </KeyboardAwareScrollViewCompat>
+      </View>
+
+      <Modal visible={showCollegePicker} animationType="slide" transparent>
+        <View style={s.modalOverlay}>
+          <View style={s.modalSheet}>
+            <View style={s.modalHandle} />
+            <Text style={s.modalTitle}>Select College</Text>
+            <View style={s.modalSearch}>
+              <Feather name="search" size={16} color={TEXT + "66"} />
+              <TextInput
+                style={s.modalSearchInput}
+                placeholder="Search colleges..."
+                placeholderTextColor={TEXT + "55"}
+                value={collegeSearch}
+                onChangeText={setCollegeSearch}
+              />
+            </View>
+            <FlatList
+              data={filteredColleges}
+              keyExtractor={item => item.id}
+              renderItem={({ item }) => (
+                <Pressable
+                  style={[
+                    s.collegeItem,
+                    selectedCollege?.id === item.id && { backgroundColor: ICON_BG },
+                  ]}
+                  onPress={() => {
+                    setSelectedCollege(item);
+                    setEmail("");
+                    setCollegeSearch("");
+                    setShowCollegePicker(false);
+                    setError("");
+                  }}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.collegeName}>{item.name}</Text>
+                    <Text style={s.collegeDomain}>@{item.domain}</Text>
+                  </View>
+                  {selectedCollege?.id === item.id && (
+                    <Feather name="check-circle" size={18} color={PURPLE} />
+                  )}
+                </Pressable>
+              )}
+              style={{ maxHeight: 360 }}
+              ListEmptyComponent={
+                <Text style={{ textAlign: "center", color: TEXT + "66", padding: 24, fontFamily: "Inter_400Regular" }}>
+                  No colleges found
+                </Text>
+              }
+            />
+            <Pressable
+              style={s.modalClose}
               onPress={() => { setShowCollegePicker(false); setCollegeSearch(""); }}
             >
-              <Text style={{ color: C.textSecondary, fontFamily: "Inter_500Medium", fontSize: 15 }}>Cancel</Text>
+              <Text style={s.modalCloseText}>Close</Text>
             </Pressable>
           </View>
         </View>
@@ -588,42 +620,435 @@ export default function RegisterScreen() {
   );
 }
 
-function styles(C: any) {
-  return StyleSheet.create({
-    title: { fontSize: 28, marginBottom: 8, fontFamily: "Inter_700Bold" },
-    subtitle: { fontSize: 15, marginBottom: 28, fontFamily: "Inter_400Regular" },
-    roleToggle: { flexDirection: "row", borderRadius: 14, borderWidth: 1, padding: 4, marginBottom: 24, gap: 4 },
-    roleBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10, borderRadius: 10 },
-    roleBtnText: { fontSize: 14 },
-    label: { fontSize: 13, marginBottom: 8, letterSpacing: 0.3, fontFamily: "Inter_500Medium" },
-    inputWrapper: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 14, borderRadius: 14, borderWidth: 1 },
-    input: { flex: 1, fontSize: 16 },
-    chipsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-    chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
-    chipText: { fontSize: 13 },
-    errorBox: { flexDirection: "row", alignItems: "center", gap: 8, padding: 12, borderRadius: 10 },
-    errorText: { flex: 1, fontSize: 13, fontFamily: "Inter_400Regular" },
-    primaryBtn: { paddingVertical: 16, borderRadius: 14, alignItems: "center", marginBottom: 20, shadowColor: "#5B4FE8", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
-    primaryBtnText: { color: "#fff", fontSize: 16 },
-    footer: { flexDirection: "row", justifyContent: "center", paddingBottom: 20 },
-    footerText: { fontSize: 14 },
-    footerLink: { fontSize: 14 },
-    serviceCard: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: 14, borderWidth: 1, marginBottom: 8 },
-    serviceIconWrap: { width: 36, height: 36, borderRadius: 10, alignItems: "center", justifyContent: "center" },
-    serviceName: { fontSize: 14, marginBottom: 2 },
-    serviceDesc: { fontSize: 12 },
-    serviceCheck: { width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, alignItems: "center", justifyContent: "center" },
-    otpIconWrap: { width: 64, height: 64, borderRadius: 20, alignItems: "center", justifyContent: "center" },
-    otpRow: { flexDirection: "row", gap: 10, justifyContent: "center", marginBottom: 28 },
-    otpBox: { width: 46, height: 56, borderRadius: 14, borderWidth: 2, fontSize: 22, textAlign: "center" },
-    modalOverlay: { flex: 1, justifyContent: "flex-end" },
-    modalSheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 32 },
-    modalHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: "#ccc", alignSelf: "center", marginBottom: 16 },
-    modalTitle: { fontSize: 18, marginBottom: 16 },
-    searchWrapper: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 14, borderWidth: 1, marginBottom: 12 },
-    collegeItem: { flexDirection: "row", alignItems: "center", paddingVertical: 14, paddingHorizontal: 4, borderBottomWidth: 1 },
-    collegeName: { fontSize: 15, marginBottom: 2 },
-    collegeDomain: { fontSize: 12 },
-    modalCancelBtn: { marginTop: 12, paddingVertical: 14, borderRadius: 14, alignItems: "center", borderWidth: 1 },
-  });
-}
+const s = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: CREAM },
+
+  blob1: {
+    position: "absolute", width: 192, height: 192, borderRadius: 96,
+    backgroundColor: PURPLE, opacity: 0.10, top: -48, left: -48,
+  },
+  blob2: {
+    position: "absolute", width: 64, height: 64, borderRadius: 32,
+    backgroundColor: PURPLE, opacity: 0.15, top: 32, right: 16,
+  },
+  blob3: {
+    position: "absolute", width: 144, height: 144, borderRadius: 72,
+    backgroundColor: PURPLE, opacity: 0.08, bottom: 80, right: -32,
+  },
+  dot1: {
+    position: "absolute", width: 12, height: 12, borderRadius: 6,
+    backgroundColor: PURPLE, opacity: 0.20, top: 196, left: 24,
+  },
+  dot2: {
+    position: "absolute", width: 12, height: 12, borderRadius: 6,
+    backgroundColor: PURPLE, opacity: 0.20, top: 212, left: 40,
+  },
+  dot3: {
+    position: "absolute", width: 12, height: 12, borderRadius: 6,
+    backgroundColor: PURPLE, opacity: 0.20, top: 188, left: 52,
+  },
+  ring: {
+    position: "absolute", width: 80, height: 80, borderRadius: 40,
+    borderWidth: 4, borderColor: PURPLE, opacity: 0.15, top: 80, right: 64,
+  },
+
+  card: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
+    padding: 28,
+    shadowColor: PURPLE,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.10,
+    shadowRadius: 24,
+    elevation: 8,
+  },
+
+  cardHeader: { alignItems: "center", marginBottom: 24 },
+
+  logoBox: {
+    width: 56, height: 56,
+    backgroundColor: PURPLE,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: PURPLE,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: 4,
+    marginTop: 12,
+  },
+  appName: { fontSize: 20, fontFamily: "Inter_700Bold", color: TEXT },
+  version: { fontSize: 10, fontFamily: "Inter_600SemiBold", color: "#9CA3AF" },
+
+  tabRow: {
+    flexDirection: "row",
+    backgroundColor: CREAM,
+    borderRadius: 100,
+    padding: 4,
+    borderWidth: 1,
+    borderColor: BORDER,
+    marginTop: 20,
+  },
+  tab: {
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 100,
+  },
+  tabActive: {
+    backgroundColor: PURPLE,
+    shadowColor: PURPLE,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  tabText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  tabTextActive: { color: "#fff" },
+  tabTextInactive: { color: TEXT + "80" },
+
+  sectionLabel: {
+    fontSize: 11,
+    fontFamily: "Inter_700Bold",
+    color: TEXT,
+    letterSpacing: 0.8,
+    marginBottom: 10,
+  },
+
+  roleRow: { flexDirection: "row", gap: 12 },
+  roleCard: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: 16,
+    paddingHorizontal: 8,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: BORDER,
+    backgroundColor: CREAM,
+  },
+  roleCardActive: {
+    borderColor: PURPLE,
+    backgroundColor: "#F3F2FE",
+  },
+  roleEmoji: { fontSize: 28, marginBottom: 6 },
+  roleTitle: {
+    fontSize: 14,
+    fontFamily: "Inter_700Bold",
+    color: TEXT,
+    marginBottom: 2,
+  },
+  roleSubtitle: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+    color: TEXT + "66",
+    textAlign: "center",
+  },
+
+  inputWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: CREAM,
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  iconCircle: {
+    width: 36, height: 36,
+    borderRadius: 18,
+    backgroundColor: ICON_BG,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  input: {
+    flex: 1,
+    fontSize: 15,
+    color: TEXT,
+    fontFamily: "Inter_400Regular",
+  },
+  hintText: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+    color: TEXT + "66",
+    marginTop: -4,
+    marginLeft: 4,
+  },
+
+  chipsWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  chip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 100,
+    backgroundColor: CREAM,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  chipActive: {
+    backgroundColor: PURPLE,
+    borderColor: PURPLE,
+    shadowColor: PURPLE,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.20,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  chipText: {
+    fontSize: 13,
+    fontFamily: "Inter_600SemiBold",
+    color: TEXT + "80",
+  },
+  chipTextActive: { color: "#fff" },
+
+  servicesBox: {
+    marginTop: 24,
+    padding: 20,
+    backgroundColor: "#F3F2FE",
+    borderWidth: 1,
+    borderColor: PURPLE + "33",
+    borderRadius: 16,
+    gap: 8,
+  },
+  servicesLabel: {
+    fontSize: 11,
+    fontFamily: "Inter_700Bold",
+    color: PURPLE,
+    letterSpacing: 0.8,
+    marginBottom: 2,
+  },
+  servicesHint: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    color: TEXT + "66",
+    marginBottom: 8,
+  },
+  serviceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: CREAM,
+    borderWidth: 1,
+    borderColor: "transparent",
+  },
+  serviceRowActive: {
+    backgroundColor: "#fff",
+    borderColor: PURPLE + "44",
+    shadowColor: PURPLE,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  serviceIcon: {
+    width: 36, height: 36,
+    borderRadius: 10,
+    backgroundColor: BORDER,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  serviceName: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
+    color: TEXT + "99",
+    marginBottom: 2,
+  },
+  serviceDesc: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+    color: TEXT + "66",
+  },
+  serviceCheck: {
+    width: 22, height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: BORDER,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  serviceCheckActive: {
+    backgroundColor: PURPLE,
+    borderColor: PURPLE,
+  },
+
+  errorBox: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    backgroundColor: "#FFF7ED",
+    borderWidth: 1,
+    borderColor: "#FED7AA",
+    borderRadius: 12,
+    padding: 12,
+  },
+  errorText: {
+    flex: 1,
+    fontSize: 13,
+    color: "#C2410C",
+    fontFamily: "Inter_500Medium",
+  },
+
+  primaryBtn: {
+    backgroundColor: PURPLE,
+    borderRadius: 16,
+    paddingVertical: 16,
+    alignItems: "center",
+    shadowColor: PURPLE,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.30,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  primaryBtnText: {
+    color: "#fff",
+    fontSize: 16,
+    fontFamily: "Inter_600SemiBold",
+  },
+
+  footer: {
+    flexDirection: "row",
+    justifyContent: "center",
+    marginTop: 20,
+    marginBottom: 8,
+  },
+  footerText: {
+    fontSize: 14,
+    color: TEXT + "99",
+    fontFamily: "Inter_400Regular",
+  },
+  footerLink: {
+    fontSize: 14,
+    color: PURPLE,
+    fontFamily: "Inter_700Bold",
+  },
+
+  // OTP step
+  otpIconWrap: {
+    width: 64, height: 64,
+    borderRadius: 20,
+    backgroundColor: ICON_BG,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  otpTitle: {
+    fontSize: 22,
+    fontFamily: "Inter_700Bold",
+    color: TEXT,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  otpSubtitle: {
+    fontSize: 14,
+    fontFamily: "Inter_400Regular",
+    color: TEXT + "99",
+    textAlign: "center",
+    lineHeight: 22,
+  },
+  otpHint: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    color: TEXT + "66",
+    textAlign: "center",
+    marginTop: 8,
+  },
+  otpRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 8,
+    marginBottom: 20,
+  },
+  otpBox: {
+    flex: 1,
+    height: 52,
+    backgroundColor: CREAM,
+    borderRadius: 12,
+    borderWidth: 2,
+    fontSize: 22,
+    fontFamily: "Inter_700Bold",
+    color: TEXT,
+    textAlign: "center",
+  },
+
+  // College modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "flex-end",
+  },
+  modalSheet: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 12,
+    paddingHorizontal: 20,
+    paddingBottom: 32,
+  },
+  modalHandle: {
+    width: 40, height: 4,
+    borderRadius: 2,
+    backgroundColor: BORDER,
+    alignSelf: "center",
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontFamily: "Inter_700Bold",
+    color: TEXT,
+    marginBottom: 16,
+  },
+  modalSearch: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: CREAM,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 12,
+  },
+  modalSearchInput: {
+    flex: 1,
+    fontSize: 15,
+    color: TEXT,
+    fontFamily: "Inter_400Regular",
+  },
+  collegeItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    marginBottom: 4,
+    gap: 12,
+  },
+  collegeName: {
+    fontSize: 15,
+    fontFamily: "Inter_600SemiBold",
+    color: TEXT,
+    marginBottom: 2,
+  },
+  collegeDomain: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    color: TEXT + "66",
+  },
+  modalClose: {
+    marginTop: 12,
+    backgroundColor: CREAM,
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  modalCloseText: {
+    fontSize: 15,
+    fontFamily: "Inter_600SemiBold",
+    color: TEXT + "99",
+  },
+});
