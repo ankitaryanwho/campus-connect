@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import * as ImagePicker from "expo-image-picker";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 import {
   View, Text, ScrollView, Pressable, StyleSheet, Modal,
   useColorScheme, FlatList, ActivityIndicator, Platform,
@@ -2196,6 +2196,63 @@ export default function ServicesScreen() {
   //  2. `useEffect` below: actively pushes status/charge changes back into
   //     `selectedItem` state, so any other code reading `selectedItem` directly
   //     (or React Native batching skipping the memo recompute) still gets fresh data.
+  const canPost = (cat: string) => {
+    // Delivery and tasks: anyone can post
+    if (cat === "deliveries" || cat === "tasks") return true;
+    // Assignments, certifications, projects: providers only
+    return isProvider;
+  };
+
+  // ── Single combined query for all service categories ──────────────────────
+  const { data: allData, isLoading, refetch: refetchAll } = useQuery({
+    queryKey: ["services", "all"],
+    queryFn: async () => {
+      const allRes = await apiRequest("/services/all").catch(() => null);
+      if (allRes?.ok) return allRes.json();
+      const [a, c, d, t, p, b] = await Promise.all([
+        apiRequest("/services/assignments").then(r => r.json()).catch(() => ({ assignments: [] })),
+        apiRequest("/services/certifications").then(r => r.json()).catch(() => ({ certifications: [] })),
+        apiRequest("/services/deliveries").then(r => r.json()).catch(() => ({ deliveries: [] })),
+        apiRequest("/services/tasks").then(r => r.json()).catch(() => ({ tasks: [] })),
+        apiRequest("/services/projects").then(r => r.json()).catch(() => ({ projects: [] })),
+        apiRequest("/services/bookings").then(r => r.json()).catch(() => ({ bookings: [] })),
+      ]);
+      return {
+        assignments: a.assignments || [],
+        certifications: c.certifications || [],
+        deliveries: d.deliveries || [],
+        tasks: t.tasks || [],
+        projects: p.projects || [],
+        bookings: b.bookings || [],
+      };
+    },
+    // Background polling every 30 s is enough for passive freshness — fast
+    // updates after the user OR another party makes a change come from:
+    //   • optimistic cache updates inside actionMutation (instant)
+    //   • mutation onSuccess invalidate (instant for the actor)
+    //   • push-notification-driven invalidate in NotificationContext (instant for the recipient)
+    //   • screen-focus refetch below (instant when user reopens the tab)
+    // Polling every 5 s caused the server to spend most of its time serving
+    // these heavy mega-fetches, which slowed status-update responses to ~6-8 s.
+    staleTime: 30_000,
+    refetchInterval: 30_000,
+    retry: 1,
+  });
+
+  // Refetch immediately when the user navigates to / refocuses this tab so we
+  // don't have to wait for the next poll interval to see fresh data.
+  useFocusEffect(
+    useCallback(() => {
+      refetchAll();
+    }, [refetchAll])
+  );
+
+  // ── Live-sync the open modal's `selectedItem` with the latest cache ──────
+  // Two layers (belt-and-braces — neither alone caught every case in testing):
+  //  1. `liveSelectedItem` (useMemo): re-derives every render from the live
+  //     query cache so the modal always renders fresh data.
+  //  2. `useEffect` below: actively pushes status/charge changes back into
+  //     `selectedItem` state for any code reading it directly.
   const liveSelectedItem = useMemo(() => {
     if (!selectedItem || !allData) return selectedItem;
     const t = selectedItem._type as string | undefined;
@@ -2230,47 +2287,6 @@ export default function ServicesScreen() {
       ? { ...prev, ...fresh, _type: t, _isBooking: prev._isBooking, _isSynthetic: prev._isSynthetic, _hasDetail: prev._hasDetail }
       : prev));
   }, [allData, selectedItem]);
-  const canPost = (cat: string) => {
-    // Delivery and tasks: anyone can post
-    if (cat === "deliveries" || cat === "tasks") return true;
-    // Assignments, certifications, projects: providers only
-    return isProvider;
-  };
-
-  // ── Single combined query for all service categories ──────────────────────
-  const { data: allData, isLoading, refetch: refetchAll } = useQuery({
-    queryKey: ["services", "all"],
-    queryFn: async () => {
-      const allRes = await apiRequest("/services/all").catch(() => null);
-      if (allRes?.ok) return allRes.json();
-      const [a, c, d, t, p, b] = await Promise.all([
-        apiRequest("/services/assignments").then(r => r.json()).catch(() => ({ assignments: [] })),
-        apiRequest("/services/certifications").then(r => r.json()).catch(() => ({ certifications: [] })),
-        apiRequest("/services/deliveries").then(r => r.json()).catch(() => ({ deliveries: [] })),
-        apiRequest("/services/tasks").then(r => r.json()).catch(() => ({ tasks: [] })),
-        apiRequest("/services/projects").then(r => r.json()).catch(() => ({ projects: [] })),
-        apiRequest("/services/bookings").then(r => r.json()).catch(() => ({ bookings: [] })),
-      ]);
-      return {
-        assignments: a.assignments || [],
-        certifications: c.certifications || [],
-        deliveries: d.deliveries || [],
-        tasks: t.tasks || [],
-        projects: p.projects || [],
-        bookings: b.bookings || [],
-      };
-    },
-    staleTime: 60_000,
-    refetchInterval: 5_000,
-    retry: 1,
-  });
-
-  const assignData   = allData ? { assignments: allData.assignments }       : undefined;
-  const certData     = allData ? { certifications: allData.certifications } : undefined;
-  const delivData    = allData ? { deliveries: allData.deliveries }         : undefined;
-  const taskData     = allData ? { tasks: allData.tasks }                   : undefined;
-  const projData     = allData ? { projects: allData.projects }             : undefined;
-  const bookingsData = allData ? { bookings: allData.bookings }             : undefined;
 
   const rA = refetchAll;
   const rC = refetchAll;
@@ -2297,72 +2313,103 @@ export default function ServicesScreen() {
       if (!res.ok) return { active: [], completed: [] };
       return res.json();
     },
-    staleTime: 5_000,
-    refetchInterval: 5_000,
+    // Banner counts only — fine to refresh once a minute. Mutations and the
+    // tab-focus refetch above will keep the actual order list fresh.
+    staleTime: 60_000,
+    refetchInterval: 60_000,
   });
   const bannerActiveCount    = (myHistoryData?.active    || []).length;
   const bannerHistoryCount   = (myHistoryData?.completed || []).length;
 
-  // Tag each item with its _type so renderCard can dispatch correctly
-  const rawAssignments    = (assignData?.assignments    || []).map((i: any) => ({ ...i, _type: "assignments" }));
-  const rawCertifications = (certData?.certifications   || []).map((i: any) => ({ ...i, _type: "certifications" }));
-  const rawProjects       = (projData?.projects         || []).map((i: any) => ({ ...i, _type: "projects" }));
-  const deliveries        = (delivData?.deliveries       || []).map((i: any) => ({ ...i, _type: "deliveries" }));
-  const tasks             = (taskData?.tasks             || []).map((i: any) => ({ ...i, _type: "tasks" }));
-
   // ── Academic visibility filter ──────────────────────────────────────────────
   // Students: only see listings for their exact program AND year.
   // Providers: see all listings in their program with year ≤ their year (they can book those).
-  const filterAcademic = (items: any[]) => {
-    const uid = user?.id;
+  const ACADEMIC_CATS = ["assignments", "certifications", "projects"];
+  const uid = user?.id;
+  const userProgram = user?.program;
+  const userYear = user?.year;
+
+  // Tag each item with its _type so renderCard can dispatch correctly. Memoized
+  // because allData re-references identically across polls when nothing changed,
+  // so this avoids re-creating arrays + child re-renders on every poll tick.
+  const rawAssignments = useMemo(
+    () => (allData?.assignments || []).map((i: any) => ({ ...i, _type: "assignments" })),
+    [allData?.assignments]
+  );
+  const rawCertifications = useMemo(
+    () => (allData?.certifications || []).map((i: any) => ({ ...i, _type: "certifications" })),
+    [allData?.certifications]
+  );
+  const rawProjects = useMemo(
+    () => (allData?.projects || []).map((i: any) => ({ ...i, _type: "projects" })),
+    [allData?.projects]
+  );
+  const deliveries = useMemo(
+    () => (allData?.deliveries || []).map((i: any) => ({ ...i, _type: "deliveries" })),
+    [allData?.deliveries]
+  );
+  const tasks = useMemo(
+    () => (allData?.tasks || []).map((i: any) => ({ ...i, _type: "tasks" })),
+    [allData?.tasks]
+  );
+
+  const filterAcademic = useCallback((items: any[]) => {
     if (!uid) return items;
     if (isProvider) {
       return items.filter(i =>
-        (i.program === user?.program && (i.targetYear ?? i.target_year ?? 0) <= (user?.year ?? 4))
+        (i.program === userProgram && (i.targetYear ?? i.target_year ?? 0) <= (userYear ?? 4))
         || i.poster?.id === uid
-        || i.bookedById === uid  // Always include listings this user booked (legacy model)
+        || i.bookedById === uid
       );
     }
     return items.filter(i =>
-      (i.program === user?.program && (i.targetYear ?? i.target_year ?? 0) === user?.year)
-      || i.bookedById === uid  // Always include listings this user booked (legacy model)
+      (i.program === userProgram && (i.targetYear ?? i.target_year ?? 0) === userYear)
+      || i.bookedById === uid
     );
-  };
+  }, [uid, isProvider, userProgram, userYear]);
 
-  const assignments    = filterAcademic(rawAssignments);
-  const certifications = filterAcademic(rawCertifications);
-  const projects       = filterAcademic(rawProjects);
-  const allItems       = [...assignments, ...certifications, ...deliveries, ...tasks, ...projects];
+  const assignments    = useMemo(() => filterAcademic(rawAssignments),    [filterAcademic, rawAssignments]);
+  const certifications = useMemo(() => filterAcademic(rawCertifications), [filterAcademic, rawCertifications]);
+  const projects       = useMemo(() => filterAcademic(rawProjects),       [filterAcademic, rawProjects]);
+  const allItems       = useMemo(
+    () => [...assignments, ...certifications, ...deliveries, ...tasks, ...projects],
+    [assignments, certifications, deliveries, tasks, projects]
+  );
 
   // ── Booking records (multi-booking for academic types) ─────────────────────
   // Transform each booking into the same item shape CompactActiveCard expects
-  const ACADEMIC_CATS = ["assignments", "certifications", "projects"];
-  const myBookings: any[] = (bookingsData?.bookings || []).map((b: any) => ({
-    id: b.id,
-    _type: b.serviceType,
-    _isBooking: true,
-    _myPerspective: b._myPerspective,
-    status: b.status,
-    statusHistory: b.statusHistory,
-    createdAt: b.createdAt,
-    title: b.listing?.title,
-    price: b.price || b.listing?.price,         // booking price (at time of booking)
-    gstAmount: b.gstAmount,
-    totalPaid: b.totalPaid,
-    escrowStatus: b.escrowStatus,
-    subject: b.listing?.subject,
-    program: b.listing?.program,
-    deadline: b.listing?.deadline,
-    poster: b.listing?.poster,
-    bookedBy: b.student,
-    listingId: b.listingId,
-  }));
+  const myBookings: any[] = useMemo(
+    () => (allData?.bookings || []).map((b: any) => ({
+      id: b.id,
+      _type: b.serviceType,
+      _isBooking: true,
+      _myPerspective: b._myPerspective,
+      status: b.status,
+      statusHistory: b.statusHistory,
+      createdAt: b.createdAt,
+      title: b.listing?.title,
+      price: b.price || b.listing?.price,
+      gstAmount: b.gstAmount,
+      totalPaid: b.totalPaid,
+      escrowStatus: b.escrowStatus,
+      subject: b.listing?.subject,
+      program: b.listing?.program,
+      deadline: b.listing?.deadline,
+      poster: b.listing?.poster,
+      bookedBy: b.student,
+      listingId: b.listingId,
+    })),
+    [allData?.bookings]
+  );
 
   // Map listingId → booking for quick lookup (to show "Already Booked" on cards)
-  const myActiveBookingByListing = new Map<string, any>(
-    myBookings
-      .filter(b => !["delivered", "dismissed"].includes(b.status))
-      .map(b => [b.listingId, b])
+  const myActiveBookingByListing = useMemo(
+    () => new Map<string, any>(
+      myBookings
+        .filter(b => !["delivered", "dismissed"].includes(b.status))
+        .map(b => [b.listingId, b])
+    ),
+    [myBookings]
   );
 
   const getItemsForCat = (cat: string) => {

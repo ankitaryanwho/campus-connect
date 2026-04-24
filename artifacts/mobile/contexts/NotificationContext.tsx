@@ -4,6 +4,7 @@ import * as Device from "expo-device";
 import { AppState, Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "./AuthContext";
 
 const IS_NATIVE = Platform.OS !== "web";
@@ -43,6 +44,7 @@ const NotificationContext = createContext<NotificationContextType>({
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
   const { token: authToken, user } = useAuth();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [expoPushToken, setExpoPushToken] = useState<string | null>(null);
 
   const [unreadCount, setUnreadCount] = useState(0);
@@ -131,9 +133,32 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       }
     });
 
-    // Foreground notification listener
-    notificationListener.current = Notifications.addNotificationReceivedListener(() => {
+    // Foreground notification listener — bump unread badge AND invalidate any
+    // query that the push relates to so the recipient sees fresh data instantly
+    // (without having to wait for the 30 s background poll).
+    notificationListener.current = Notifications.addNotificationReceivedListener((notif) => {
       setUnreadCount((n) => n + 1);
+      try {
+        const data = (notif?.request?.content?.data ?? {}) as { screen?: string; tab?: string; itemId?: string };
+        // Any service-screen-bound push (delivery status, booking change, chat
+        // message, etc.) means the services-list and history caches are stale.
+        if (data.screen === "/(tabs)/services") {
+          queryClient.invalidateQueries({ queryKey: ["services", "all"] });
+          queryClient.invalidateQueries({ queryKey: ["my-history"] });
+          // If the push refers to a specific order, also invalidate its chat
+          // cache so the open mini-chat panel refreshes immediately.
+          if (data.itemId) {
+            queryClient.invalidateQueries({ queryKey: ["order-chat", data.itemId] });
+          }
+        }
+        // Wallet-related pushes invalidate wallet caches.
+        if (data.screen === "/(tabs)/wallet") {
+          queryClient.invalidateQueries({ queryKey: ["wallet"] });
+          queryClient.invalidateQueries({ queryKey: ["earnings"] });
+        }
+        // Notifications screen always wants a refresh.
+        queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      } catch {}
     });
 
     // Tap on notification listener (app foregrounded from notification)
