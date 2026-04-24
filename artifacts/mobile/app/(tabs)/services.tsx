@@ -2877,7 +2877,12 @@ export default function ServicesScreen() {
       </View>
 
       {/* ── Category chips ── */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={CS.chipsRow}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={CS.chipsScroll}
+        contentContainerStyle={CS.chipsRow}
+      >
         {CHIPS.map(chip => {
           const active = activeCat === chip.id;
           return (
@@ -3452,7 +3457,11 @@ const CS = StyleSheet.create({
   // lineHeight on both Text children, and disable includeFontPadding on
   // Android so Inter's extra ascent/descent doesn't push the text past the
   // clip boundary.
-  chipsRow: { paddingHorizontal: 14, paddingVertical: 11, gap: 8, alignItems: "center" },
+  // The ScrollView itself MUST have flexGrow:0 — without it, Android lets the
+  // horizontal ScrollView stretch to fill remaining vertical space when the
+  // active category has no listings, leaving a big blank gap above the chips.
+  chipsScroll: { flexGrow: 0, flexShrink: 0 },
+  chipsRow: { paddingHorizontal: 14, paddingVertical: 11, gap: 8 },
   chip: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 9, minHeight: 34, borderRadius: 20, borderWidth: 1.5 },
   chipEmoji: { fontSize: 13, lineHeight: 16, includeFontPadding: false, textAlignVertical: "center" },
   chipLabel: { fontSize: 12, lineHeight: 16, fontFamily: "Inter_600SemiBold", includeFontPadding: false, textAlignVertical: "center" },
