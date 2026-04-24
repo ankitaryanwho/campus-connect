@@ -280,8 +280,11 @@ export default function ProfileScreen() {
   // Top bar height = top safe inset + paddingTop offset (10) + button height (40) + paddingBottom (12)
   const topBarPadTop = isWeb ? 67 : insets.top + 10;
   const TOP_BAR_HEIGHT = topBarPadTop + 40 + 12;
-  // Cover gradient covers top bar + the centered identity block
-  const COVER_HEIGHT = TOP_BAR_HEIGHT + 240;
+  // Cover gradient covers top bar + the centered identity block.
+  // Required content inside cover (below TOP_BAR_HEIGHT + 12 padding):
+  //   badge chip ~38 (only when present) + avatar 120 + name 32 + email 20 + spacers 22 ≈ 194 + badge
+  // We add ~58px below to clear the floating buttons (which overlap by 28px).
+  const COVER_HEIGHT = TOP_BAR_HEIGHT + 12 + (badge ? 38 : 0) + 194 + 58;
 
   return (
     <View style={[styles.container, { backgroundColor: C.background }]}>

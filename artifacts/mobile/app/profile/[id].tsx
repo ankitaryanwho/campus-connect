@@ -1,8 +1,17 @@
 import React from "react";
 import {
-  View, Text, ScrollView, Pressable, StyleSheet,
-  useColorScheme, ActivityIndicator, Image, Alert, Platform,
+  View,
+  Text,
+  ScrollView,
+  Pressable,
+  StyleSheet,
+  useColorScheme,
+  ActivityIndicator,
+  Image,
+  Platform,
+  TouchableOpacity,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
@@ -10,8 +19,46 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Colors from "@/constants/colors";
 import { useAuth } from "@/contexts/AuthContext";
 
+// Keep these in sync with artifacts/mobile/app/(tabs)/profile.tsx
+const BADGE_META: Record<
+  string,
+  { label: string; icon: string; color: string }
+> = {
+  verified: { label: "Verified", icon: "check-circle", color: "#5B4FE8" },
+  top_contributor: { label: "Top Contributor", icon: "star", color: "#F59E0B" },
+  campus_leader: { label: "Campus Leader", icon: "award", color: "#8B5CF6" },
+  expert: { label: "Expert", icon: "shield", color: "#10B981" },
+  ambassador: { label: "Ambassador", icon: "user-check", color: "#3B82F6" },
+  staff: { label: "Staff", icon: "briefcase", color: "#EF4444" },
+};
+
+const SERVICE_META: Record<
+  string,
+  { label: string; icon: string; color: string }
+> = {
+  assignments: { label: "Assignments", icon: "file-text", color: "#5B4FE8" },
+  coaching: { label: "Coaching", icon: "users", color: "#10B981" },
+  deliveries: { label: "Deliveries", icon: "truck", color: "#F59E0B" },
+  tasks: { label: "Tasks", icon: "clipboard", color: "#EF4444" },
+};
+
 function getInitials(name: string) {
-  return name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
+  return name
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+}
+
+function formatDate(dateStr: string) {
+  const d = new Date(dateStr);
+  const now = new Date();
+  const diffDays = Math.floor((now.getTime() - d.getTime()) / 86400000);
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return d.toLocaleDateString("en", { day: "numeric", month: "short" });
 }
 
 export default function UserProfileScreen() {
@@ -75,134 +122,389 @@ export default function UserProfileScreen() {
   }
 
   const profile = profileQuery.data;
-  const posts = postsQuery.data?.posts || [];
-  const roleColors: Record<string, string> = { student: C.primary, provider: C.success, admin: C.error };
-
   if (!profile) return null;
+
+  const posts = postsQuery.data?.posts || [];
+  const badge = profile.verificationBadge
+    ? BADGE_META[profile.verificationBadge]
+    : null;
+
+  let svcs: string[] = [];
+  try {
+    svcs = JSON.parse(profile.services || "[]");
+  } catch {}
+
+  // Top bar height = top safe inset + paddingTop offset (10) + button height (40) + paddingBottom (12)
+  const topBarPadTop = isWeb ? 67 : insets.top + 10;
+  const TOP_BAR_HEIGHT = topBarPadTop + 40 + 12;
+  // Cover gradient covers top bar + the centered identity block.
+  // Required content: badge ~38 + avatar 120 + name ~36 + email ~22 + spacers ~24 ≈ 202 + badge
+  // Plus 80px clearance below so the floating buttons (-28 marginTop) leave the
+  // identity row visually clear even on Android with larger font scaling.
+  const COVER_HEIGHT = TOP_BAR_HEIGHT + 12 + (badge ? 38 : 0) + 202 + 80;
 
   return (
     <View style={[styles.container, { backgroundColor: C.background }]}>
-      <View style={[styles.header, { paddingTop: isWeb ? 67 : insets.top + 8, backgroundColor: C.background, borderBottomColor: C.border }]}>
-        <Pressable onPress={() => router.back()} hitSlop={8}>
-          <Feather name="arrow-left" size={22} color={C.text} />
+      {/* Floating top bar (overlays gradient) */}
+      <View style={[styles.topBar, { paddingTop: topBarPadTop }]}>
+        <Pressable
+          style={styles.glassBtn}
+          onPress={() => router.back()}
+          hitSlop={8}
+        >
+          <Feather name="arrow-left" size={20} color="#fff" />
         </Pressable>
-        <Text style={[styles.headerTitle, { color: C.text, fontFamily: "Inter_600SemiBold" }]}>{profile.name}</Text>
-        <Feather name="more-horizontal" size={22} color={C.text} />
+        <Text style={styles.topTitle}>Profile</Text>
+        <Pressable style={styles.glassBtn} hitSlop={8}>
+          <Feather name="more-horizontal" size={20} color="#fff" />
+        </Pressable>
       </View>
 
-      <ScrollView contentContainerStyle={{ paddingBottom: isWeb ? 34 : 100 }} showsVerticalScrollIndicator={false}>
-        {/* Banner */}
-        <View style={[styles.banner, { backgroundColor: (roleColors[profile.role] || C.primary) + "20" }]} />
+      <ScrollView
+        contentContainerStyle={{ paddingBottom: isWeb ? 60 : 80 }}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Indigo cover gradient */}
+        <LinearGradient
+          colors={["#5B4FE8", "#7B73F0"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[
+            styles.cover,
+            { height: COVER_HEIGHT, paddingTop: TOP_BAR_HEIGHT + 12 },
+          ]}
+        >
+          {/* Decorative circles */}
+          <View
+            style={[
+              styles.coverCircle,
+              {
+                top: -50,
+                right: -50,
+                width: 250,
+                height: 250,
+                borderRadius: 125,
+              },
+            ]}
+          />
+          <View
+            style={[
+              styles.coverCircle,
+              {
+                bottom: -80,
+                left: -40,
+                width: 180,
+                height: 180,
+                borderRadius: 90,
+              },
+            ]}
+          />
 
-        <View style={styles.profileSection}>
-          <View style={[styles.avatarContainer, { borderColor: C.background }]}>
-            {profile.avatar ? (
-              <Image source={{ uri: profile.avatar }} style={styles.avatar} />
-            ) : (
-              <View style={[styles.avatar, { backgroundColor: roleColors[profile.role] || C.primary, alignItems: "center", justifyContent: "center" }]}>
-                <Text style={[styles.avatarText, { fontFamily: "Inter_700Bold" }]}>{getInitials(profile.name)}</Text>
+          {/* Verification badge chip */}
+          {badge && (
+            <View style={styles.bannerBadgeWrap}>
+              <View style={styles.bannerBadge}>
+                <Feather name={badge.icon as any} size={12} color="#fff" />
+                <Text style={styles.bannerBadgeText}>{badge.label}</Text>
               </View>
-            )}
-          </View>
+            </View>
+          )}
 
-          <View style={styles.infoSection}>
-            <View style={styles.nameRow}>
-              <Text style={[styles.profileName, { color: C.text, fontFamily: "Inter_700Bold" }]}>{profile.name}</Text>
-              <View style={[styles.roleBadge, { backgroundColor: (roleColors[profile.role] || C.primary) + "20" }]}>
-                <Text style={[styles.roleText, { color: roleColors[profile.role] || C.primary, fontFamily: "Inter_600SemiBold" }]}>
-                  {profile.role}
-                </Text>
+          {/* Centered hero identity */}
+          <View style={styles.heroCenter}>
+            <View style={styles.avatarRing}>
+              <View
+                style={[styles.avatarInner, { backgroundColor: C.surface }]}
+              >
+                {profile.avatar ? (
+                  <Image
+                    source={{ uri: profile.avatar }}
+                    style={styles.avatar}
+                  />
+                ) : (
+                  <LinearGradient
+                    colors={["#5B4FE8", "#9F94F8"]}
+                    style={styles.avatar}
+                  >
+                    <Text style={styles.avatarText}>
+                      {getInitials(profile.name)}
+                    </Text>
+                  </LinearGradient>
+                )}
               </View>
             </View>
 
-            {profile.bio && (
-              <Text style={[styles.bio, { color: C.text, fontFamily: "Inter_400Regular" }]}>{profile.bio}</Text>
-            )}
+            {/* Name + verified */}
+            <View style={styles.nameRow}>
+              <Text style={styles.userName} numberOfLines={1}>
+                {profile.name}
+              </Text>
+              {profile.verified && (
+                <View style={styles.verifiedCircle}>
+                  <Feather name="check" size={14} color={C.primary} />
+                </View>
+              )}
+            </View>
 
+            {/* Email + dot + role pill */}
+            <View style={styles.emailRow}>
+              {profile.email && (
+                <>
+                  <Text style={styles.userEmail} numberOfLines={1}>
+                    {profile.email}
+                  </Text>
+                  <View style={styles.emailDot} />
+                </>
+              )}
+              <View style={styles.rolePill}>
+                <Text style={styles.rolePillText}>{profile.role}</Text>
+              </View>
+            </View>
+          </View>
+        </LinearGradient>
+
+        {/* Floating action buttons (overlap gradient bottom) */}
+        {!isMe ? (
+          <View style={styles.heroActions}>
+            <TouchableOpacity
+              style={[
+                styles.primaryActionBtn,
+                {
+                  backgroundColor: profile.isFollowing ? C.surface : C.primary,
+                  borderWidth: profile.isFollowing ? 1 : 0,
+                  borderColor: C.border,
+                },
+              ]}
+              onPress={() => followMutation.mutate()}
+              disabled={followMutation.isPending}
+              activeOpacity={0.85}
+            >
+              {followMutation.isPending ? (
+                <ActivityIndicator
+                  size="small"
+                  color={profile.isFollowing ? C.text : "#fff"}
+                />
+              ) : (
+                <>
+                  <Feather
+                    name={profile.isFollowing ? "user-check" : "user-plus"}
+                    size={16}
+                    color={profile.isFollowing ? C.text : "#fff"}
+                  />
+                  <Text
+                    style={[
+                      styles.primaryActionText,
+                      { color: profile.isFollowing ? C.text : "#fff" },
+                    ]}
+                  >
+                    {profile.isFollowing ? "Following" : "Follow"}
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.shareBtn, { backgroundColor: C.surface }]}
+              onPress={() => startChatMutation.mutate()}
+              disabled={startChatMutation.isPending}
+              activeOpacity={0.85}
+            >
+              {startChatMutation.isPending ? (
+                <ActivityIndicator size="small" color={C.text} />
+              ) : (
+                <Feather name="message-circle" size={20} color={C.text} />
+              )}
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.heroActions}>
+            <TouchableOpacity
+              style={[styles.primaryActionBtn, { backgroundColor: C.surface }]}
+              onPress={() => router.push("/(tabs)/profile" as any)}
+              activeOpacity={0.85}
+            >
+              <Feather name="edit-2" size={16} color={C.text} />
+              <Text style={[styles.primaryActionText, { color: C.text }]}>
+                Edit Profile
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.shareBtn, { backgroundColor: C.surface }]}
+              activeOpacity={0.85}
+            >
+              <Feather name="share-2" size={20} color={C.text} />
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Bio + Meta */}
+        <View style={styles.bioBlock}>
+          {profile.bio ? (
+            <Text style={[styles.bioText, { color: C.text }]}>
+              {profile.bio}
+            </Text>
+          ) : null}
+          {(profile.college || profile.program) && (
             <View style={styles.metaRow}>
               {profile.college && (
                 <View style={styles.metaItem}>
-                  <Feather name="map-pin" size={13} color={C.textTertiary} />
-                  <Text style={[styles.metaText, { color: C.textSecondary, fontFamily: "Inter_400Regular" }]}>{profile.college}</Text>
+                  <Feather name="map-pin" size={14} color={C.textTertiary} />
+                  <Text
+                    style={[styles.metaText, { color: C.textSecondary }]}
+                    numberOfLines={1}
+                  >
+                    {profile.college}
+                  </Text>
                 </View>
               )}
               {profile.program && (
                 <View style={styles.metaItem}>
-                  <Feather name="book" size={13} color={C.textTertiary} />
-                  <Text style={[styles.metaText, { color: C.textSecondary, fontFamily: "Inter_400Regular" }]}>{profile.program}</Text>
+                  <Feather name="book" size={14} color={C.textTertiary} />
+                  <Text
+                    style={[styles.metaText, { color: C.textSecondary }]}
+                    numberOfLines={1}
+                  >
+                    {profile.program}
+                  </Text>
                 </View>
               )}
             </View>
-
-            {!isMe && (
-              <View style={styles.actions}>
-                <Pressable
-                  style={[styles.followBtn, { backgroundColor: profile.isFollowing ? C.backgroundSecondary : C.primary, borderColor: profile.isFollowing ? C.border : "transparent" }]}
-                  onPress={() => followMutation.mutate()}
-                  disabled={followMutation.isPending}
-                >
-                  <Text style={[styles.followBtnText, { color: profile.isFollowing ? C.text : "#fff", fontFamily: "Inter_600SemiBold" }]}>
-                    {profile.isFollowing ? "Following" : "Follow"}
-                  </Text>
-                </Pressable>
-                <Pressable
-                  style={[styles.messageBtn, { borderColor: C.border, backgroundColor: C.surface }]}
-                  onPress={() => startChatMutation.mutate()}
-                  disabled={startChatMutation.isPending}
-                >
-                  <Feather name="message-circle" size={18} color={C.text} />
-                  <Text style={[styles.messageBtnText, { color: C.text, fontFamily: "Inter_500Medium" }]}>Message</Text>
-                </Pressable>
-              </View>
-            )}
-          </View>
+          )}
         </View>
 
-        {/* Stats */}
-        <View style={[styles.statsRow, { backgroundColor: C.surface, borderColor: C.border }]}>
+        {/* Combined stats pill */}
+        <View
+          style={[
+            styles.statsCard,
+            { backgroundColor: C.surface, borderColor: C.border },
+          ]}
+        >
           {[
-            { value: profile.postsCount, label: "Posts" },
-            { value: profile.followersCount, label: "Followers" },
-            { value: profile.followingCount, label: "Following" },
+            { value: profile.postsCount ?? 0, label: "Posts" },
+            { value: profile.followersCount ?? 0, label: "Followers" },
+            { value: profile.followingCount ?? 0, label: "Following" },
           ].map((stat, i) => (
             <React.Fragment key={stat.label}>
-              {i > 0 && <View style={[styles.divider, { backgroundColor: C.border }]} />}
+              {i > 0 && (
+                <View
+                  style={[styles.statsDivider, { backgroundColor: C.border }]}
+                />
+              )}
               <View style={styles.statBlock}>
-                <Text style={[styles.statValue, { color: C.text, fontFamily: "Inter_700Bold" }]}>{stat.value}</Text>
-                <Text style={[styles.statLabel, { color: C.textSecondary, fontFamily: "Inter_400Regular" }]}>{stat.label}</Text>
+                <Text style={[styles.statValue, { color: C.text }]}>
+                  {stat.value}
+                </Text>
+                <Text style={[styles.statLabel, { color: C.textSecondary }]}>
+                  {stat.label}
+                </Text>
               </View>
             </React.Fragment>
           ))}
         </View>
 
+        {/* Services Offered */}
+        {svcs.length > 0 && (
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: C.text }]}>
+              Services offered
+            </Text>
+            <View style={styles.svcRow}>
+              {svcs.map((svc) => {
+                const meta = SERVICE_META[svc] || {
+                  label: svc,
+                  icon: "star",
+                  color: C.primary,
+                };
+                return (
+                  <View
+                    key={svc}
+                    style={[
+                      styles.svcChip,
+                      { backgroundColor: C.surface, borderColor: C.border },
+                    ]}
+                  >
+                    <View
+                      style={[styles.svcDot, { backgroundColor: meta.color }]}
+                    />
+                    <Text style={[styles.svcLabel, { color: C.text }]}>
+                      {meta.label}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        )}
+
         {/* Posts */}
-        <View style={styles.postsSection}>
-          <Text style={[styles.sectionTitle, { color: C.text, fontFamily: "Inter_700Bold" }]}>Posts</Text>
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: C.text }]}>Posts</Text>
           {postsQuery.isLoading ? (
             <ActivityIndicator color={C.primary} style={{ marginTop: 20 }} />
           ) : posts.length === 0 ? (
-            <View style={styles.emptyPosts}>
-              <Text style={[styles.emptyText, { color: C.textSecondary, fontFamily: "Inter_400Regular" }]}>No posts yet</Text>
+            <View
+              style={[
+                styles.emptyCard,
+                { backgroundColor: C.surface, borderColor: C.border },
+              ]}
+            >
+              <Feather name="file-text" size={28} color={C.textTertiary} />
+              <Text style={[styles.emptyText, { color: C.textSecondary }]}>
+                No posts yet
+              </Text>
             </View>
           ) : (
-            posts.map(post => (
+            posts.map((post) => (
               <Pressable
                 key={post.id}
-                style={[styles.postItem, { backgroundColor: C.surface, borderColor: C.border }]}
+                style={[
+                  styles.postItem,
+                  { backgroundColor: C.surface, borderColor: C.border },
+                ]}
                 onPress={() => router.push(`/post/${post.id}`)}
               >
-                <Text style={[styles.postContent, { color: C.text, fontFamily: "Inter_400Regular" }]} numberOfLines={3}>
+                <Text
+                  style={[styles.postContent, { color: C.text }]}
+                  numberOfLines={3}
+                >
                   {post.content}
                 </Text>
                 <View style={styles.postMeta}>
                   <View style={styles.postMetaItem}>
                     <Feather name="heart" size={13} color={C.textTertiary} />
-                    <Text style={[styles.postMetaText, { color: C.textTertiary, fontFamily: "Inter_400Regular" }]}>{post.likesCount}</Text>
+                    <Text
+                      style={[
+                        styles.postMetaText,
+                        { color: C.textTertiary },
+                      ]}
+                    >
+                      {post.likesCount ?? 0}
+                    </Text>
                   </View>
                   <View style={styles.postMetaItem}>
-                    <Feather name="message-circle" size={13} color={C.textTertiary} />
-                    <Text style={[styles.postMetaText, { color: C.textTertiary, fontFamily: "Inter_400Regular" }]}>{post.commentsCount}</Text>
+                    <Feather
+                      name="message-circle"
+                      size={13}
+                      color={C.textTertiary}
+                    />
+                    <Text
+                      style={[
+                        styles.postMetaText,
+                        { color: C.textTertiary },
+                      ]}
+                    >
+                      {post.commentsCount ?? 0}
+                    </Text>
                   </View>
+                  {post.createdAt && (
+                    <Text
+                      style={[
+                        styles.postMetaText,
+                        { color: C.textTertiary, marginLeft: "auto" },
+                      ]}
+                    >
+                      {formatDate(post.createdAt)}
+                    </Text>
+                  )}
                 </View>
               </Pressable>
             ))
@@ -216,39 +518,288 @@ export default function UserProfileScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 0.5 },
-  headerTitle: { fontSize: 17 },
-  banner: { height: 90 },
-  profileSection: { paddingHorizontal: 16, marginTop: -30, marginBottom: 20 },
-  avatarContainer: { width: 84, height: 84, borderRadius: 42, borderWidth: 4, marginBottom: 12 },
-  avatar: { width: 76, height: 76, borderRadius: 38 },
-  avatarText: { color: "#fff", fontSize: 28 },
-  infoSection: { gap: 8 },
-  nameRow: { flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" },
-  profileName: { fontSize: 22 },
-  roleBadge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 20 },
-  roleText: { fontSize: 12 },
-  bio: { fontSize: 14, lineHeight: 20 },
-  metaRow: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
-  metaItem: { flexDirection: "row", alignItems: "center", gap: 4 },
-  metaText: { fontSize: 13 },
-  actions: { flexDirection: "row", gap: 10, marginTop: 4 },
-  followBtn: { flex: 1, paddingVertical: 10, borderRadius: 12, alignItems: "center", borderWidth: 1 },
-  followBtnText: { fontSize: 14 },
-  messageBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10, borderRadius: 12, borderWidth: 1 },
-  messageBtnText: { fontSize: 14 },
-  statsRow: { flexDirection: "row", marginHorizontal: 16, borderRadius: 16, borderWidth: 0.5, paddingVertical: 16, marginBottom: 24 },
+
+  // Top bar (absolute, over gradient)
+  topBar: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+  },
+  topTitle: {
+    fontSize: 16,
+    fontFamily: "Inter_600SemiBold",
+    color: "#fff",
+  },
+  glassBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.2)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
+  },
+
+  // Cover
+  cover: {
+    overflow: "hidden",
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
+    paddingHorizontal: 24,
+  },
+  coverCircle: {
+    position: "absolute",
+    backgroundColor: "rgba(255,255,255,0.08)",
+  },
+  bannerBadgeWrap: { alignItems: "center", marginBottom: 12 },
+  bannerBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
+  },
+  bannerBadgeText: {
+    color: "#fff",
+    fontSize: 11,
+    fontFamily: "Inter_600SemiBold",
+  },
+
+  // Hero center
+  heroCenter: { alignItems: "center" },
+  avatarRing: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.2)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.3)",
+    marginBottom: 16,
+  },
+  avatarInner: {
+    width: 104,
+    height: 104,
+    borderRadius: 52,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatar: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarText: {
+    color: "#fff",
+    fontSize: 32,
+    fontFamily: "Inter_700Bold",
+  },
+  nameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginBottom: 6,
+    width: "100%",
+    paddingHorizontal: 8,
+  },
+  userName: {
+    fontSize: 26,
+    fontFamily: "Inter_700Bold",
+    color: "#fff",
+    letterSpacing: -0.5,
+    flexShrink: 1,
+    textAlign: "center",
+  },
+  verifiedCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emailRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    maxWidth: "100%",
+  },
+  userEmail: {
+    fontSize: 14,
+    color: "rgba(255,255,255,0.85)",
+    fontFamily: "Inter_400Regular",
+    flexShrink: 1,
+  },
+  emailDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "rgba(255,255,255,0.5)",
+  },
+  rolePill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
+  },
+  rolePillText: {
+    fontSize: 11,
+    fontFamily: "Inter_600SemiBold",
+    color: "#fff",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+
+  // Floating buttons
+  heroActions: {
+    flexDirection: "row",
+    gap: 12,
+    paddingHorizontal: 20,
+    marginTop: -28,
+  },
+  primaryActionBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 28,
+    shadowColor: "#5B4FE8",
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
+  },
+  primaryActionText: {
+    fontSize: 15,
+    fontFamily: "Inter_600SemiBold",
+  },
+  shareBtn: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
+  },
+
+  // Bio + Meta
+  bioBlock: { paddingHorizontal: 24, marginTop: 20, alignItems: "center" },
+  bioText: {
+    fontSize: 15,
+    lineHeight: 22,
+    fontFamily: "Inter_400Regular",
+    textAlign: "center",
+    marginBottom: 12,
+  },
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    flexWrap: "wrap",
+    gap: 18,
+  },
+  metaItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    maxWidth: "48%",
+  },
+  metaText: {
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
+  },
+
+  // Stats
+  statsCard: {
+    flexDirection: "row",
+    marginHorizontal: 20,
+    marginTop: 24,
+    paddingVertical: 18,
+    borderRadius: 24,
+    borderWidth: 1,
+  },
+  statsDivider: { width: 1, marginVertical: 6 },
   statBlock: { flex: 1, alignItems: "center" },
-  statValue: { fontSize: 20 },
-  statLabel: { fontSize: 12, marginTop: 2 },
-  divider: { width: 0.5, marginVertical: 4 },
-  postsSection: { paddingHorizontal: 16 },
-  sectionTitle: { fontSize: 18, marginBottom: 14 },
-  postItem: { borderRadius: 14, borderWidth: 0.5, padding: 14, marginBottom: 10 },
-  postContent: { fontSize: 14, lineHeight: 20, marginBottom: 10 },
-  postMeta: { flexDirection: "row", gap: 12 },
+  statValue: {
+    fontSize: 22,
+    fontFamily: "Inter_700Bold",
+  },
+  statLabel: {
+    fontSize: 11,
+    fontFamily: "Inter_500Medium",
+    marginTop: 4,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+
+  // Sections
+  section: { paddingHorizontal: 20, marginTop: 28 },
+  sectionTitle: {
+    fontSize: 18,
+    fontFamily: "Inter_700Bold",
+    marginBottom: 14,
+    letterSpacing: -0.3,
+  },
+  svcRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  svcChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  svcDot: { width: 8, height: 8, borderRadius: 4 },
+  svcLabel: { fontSize: 13, fontFamily: "Inter_500Medium" },
+
+  // Posts
+  postItem: {
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 16,
+    marginBottom: 10,
+  },
+  postContent: {
+    fontSize: 14,
+    lineHeight: 20,
+    fontFamily: "Inter_400Regular",
+    marginBottom: 10,
+  },
+  postMeta: { flexDirection: "row", alignItems: "center", gap: 14 },
   postMetaItem: { flexDirection: "row", alignItems: "center", gap: 4 },
-  postMetaText: { fontSize: 12 },
-  emptyPosts: { alignItems: "center", paddingVertical: 40 },
-  emptyText: { fontSize: 14 },
+  postMetaText: { fontSize: 12, fontFamily: "Inter_400Regular" },
+
+  emptyCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 32,
+    alignItems: "center",
+    gap: 8,
+  },
+  emptyText: { fontSize: 13, fontFamily: "Inter_400Regular" },
 });
