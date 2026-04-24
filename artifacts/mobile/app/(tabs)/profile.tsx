@@ -65,25 +65,6 @@ const SERVICE_META: Record<
   tasks: { label: "Tasks", icon: "clipboard", color: "#EF4444" },
 };
 
-function StatCard({ value, label, icon, color, C }: any) {
-  return (
-    <View
-      style={[
-        styles.statCard,
-        { backgroundColor: C.surface, borderColor: C.border },
-      ]}
-    >
-      <View style={[styles.statIcon, { backgroundColor: color + "18" }]}>
-        <Feather name={icon} size={16} color={color} />
-      </View>
-      <Text style={[styles.statValue, { color: C.text }]}>{value ?? 0}</Text>
-      <Text style={[styles.statLabel, { color: C.textSecondary }]}>
-        {label}
-      </Text>
-    </View>
-  );
-}
-
 function EditField({
   label,
   value,
@@ -277,69 +258,56 @@ export default function ProfileScreen() {
 
   if (!user) return null;
 
+  const startEditing = () => {
+    setName(user.name);
+    setBio(user.bio || "");
+    setCollege(user.college || "");
+    setProgram(user.program || "");
+    setPhone(user.phone || "");
+    setEditing(true);
+  };
+
   const posts = postsQuery.data?.posts || [];
   const badge = user.verificationBadge
     ? BADGE_META[user.verificationBadge]
     : null;
-  const roleColors: Record<string, string> = {
-    student: C.primary,
-    provider: "#10B981",
-    admin: "#EF4444",
-    super_admin: "#8B5CF6",
-  };
-  const roleColor = roleColors[user.role] || C.primary;
 
   let svcs: string[] = [];
   try {
     svcs = JSON.parse(user.services || "[]");
   } catch {}
 
+  // Top bar height = top safe inset + paddingTop offset (10) + button height (40) + paddingBottom (12)
+  const topBarPadTop = isWeb ? 67 : insets.top + 10;
+  const TOP_BAR_HEIGHT = topBarPadTop + 40 + 12;
+  // Cover gradient covers top bar + the centered identity block
+  const COVER_HEIGHT = TOP_BAR_HEIGHT + 240;
+
   return (
     <View style={[styles.container, { backgroundColor: C.background }]}>
-      {/* Top bar */}
-      <View
-        style={[styles.topBar, { paddingTop: isWeb ? 67 : insets.top + 10 }]}
-      >
-        <Pressable
-          style={[
-            styles.topBtn,
-            { backgroundColor: C.backgroundSecondary, borderColor: C.border },
-          ]}
-          onPress={() => {
-            setName(user.name);
-            setBio(user.bio || "");
-            setCollege(user.college || "");
-            setProgram(user.program || "");
-            setPhone(user.phone || "");
-            setEditing(true);
-          }}
-        >
-          <Feather name="edit-2" size={16} color={C.text} />
+      {/* Floating top bar (overlays gradient) */}
+      <View style={[styles.topBar, { paddingTop: topBarPadTop }]}>
+        <Pressable style={styles.glassBtn} onPress={startEditing}>
+          <Feather name="edit-2" size={18} color="#fff" />
         </Pressable>
-        <Text style={[styles.topTitle, { color: C.text }]}>Profile</Text>
-        <View style={{ flexDirection: "row", gap: 8 }}>
+        <Text style={styles.topTitle}>Profile</Text>
+        <View style={{ flexDirection: "row", gap: 10 }}>
           <Pressable
-            style={[
-              styles.topBtn,
-              { backgroundColor: C.backgroundSecondary, borderColor: C.border },
-            ]}
+            style={styles.glassBtn}
             onPress={() => testPushMutation.mutate()}
             disabled={testPushMutation.isPending}
           >
             {testPushMutation.isPending ? (
-              <ActivityIndicator size="small" color={C.text} />
+              <ActivityIndicator size="small" color="#fff" />
             ) : (
-              <Feather name="bell" size={16} color={C.text} />
+              <Feather name="bell" size={18} color="#fff" />
             )}
           </Pressable>
           <Pressable
-            style={[
-              styles.topBtn,
-              { backgroundColor: C.errorLight, borderColor: C.error + "33" },
-            ]}
+            style={[styles.glassBtn, styles.glassBtnDanger]}
             onPress={handleLogout}
           >
-            <Feather name="log-out" size={16} color={C.error} />
+            <Feather name="log-out" size={18} color="#FFE4E6" />
           </Pressable>
         </View>
       </View>
@@ -348,53 +316,46 @@ export default function ProfileScreen() {
         contentContainerStyle={{ paddingBottom: isWeb ? 120 : 110 }}
         showsVerticalScrollIndicator={false}
       >
-        {/* Cover Banner */}
+        {/* Indigo cover gradient */}
         <LinearGradient
-          colors={["#292524", "#57534E", "#A8A29E"]}
+          colors={["#5B4FE8", "#7B73F0"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={styles.banner}
+          style={[
+            styles.cover,
+            { height: COVER_HEIGHT, paddingTop: TOP_BAR_HEIGHT + 12 },
+          ]}
         >
-          <View style={[styles.bannerCircle, { top: -40, right: -20 }]} />
+          {/* Decorative circles */}
           <View
             style={[
-              styles.bannerCircle,
-              {
-                bottom: -60,
-                left: -30,
-                width: 160,
-                height: 160,
-                borderRadius: 80,
-              },
+              styles.coverCircle,
+              { top: -50, right: -50, width: 250, height: 250, borderRadius: 125 },
             ]}
           />
+          <View
+            style={[
+              styles.coverCircle,
+              { bottom: -80, left: -40, width: 180, height: 180, borderRadius: 90 },
+            ]}
+          />
+
+          {/* Verification badge chip (above avatar, glass) */}
           {badge && (
-            <View
-              style={[
-                styles.bannerBadge,
-                { backgroundColor: "rgba(255,255,255,0.2)" },
-              ]}
-            >
-              <Feather name={badge.icon as any} size={12} color="#fff" />
-              <Text style={styles.bannerBadgeText}>{badge.label}</Text>
+            <View style={styles.bannerBadgeWrap}>
+              <View style={styles.bannerBadge}>
+                <Feather name={badge.icon as any} size={12} color="#fff" />
+                <Text style={styles.bannerBadgeText}>{badge.label}</Text>
+              </View>
             </View>
           )}
-        </LinearGradient>
 
-        {/* Avatar + Info */}
-        <View style={styles.profileHeader}>
-          <View style={styles.avatarRow}>
-            {/* Avatar */}
-            <Pressable style={styles.avatarWrap} onPress={pickAvatar}>
-              <LinearGradient
-                colors={["#5B4FE8", "#7B73F0"]}
-                style={styles.avatarRing}
-              >
+          {/* Centered hero identity */}
+          <View style={styles.heroCenter}>
+            <Pressable onPress={pickAvatar} style={styles.avatarPressable}>
+              <View style={styles.avatarRing}>
                 <View
-                  style={[
-                    styles.avatarInner,
-                    { backgroundColor: C.background },
-                  ]}
+                  style={[styles.avatarInner, { backgroundColor: C.surface }]}
                 >
                   {user.avatar ? (
                     <Image
@@ -412,145 +373,146 @@ export default function ProfileScreen() {
                     </LinearGradient>
                   )}
                 </View>
-              </LinearGradient>
-              <View style={[styles.cameraBtn, { backgroundColor: C.primary }]}>
-                <Feather name="camera" size={12} color="#fff" />
+              </View>
+              <View
+                style={[
+                  styles.cameraBtn,
+                  { backgroundColor: C.surface, borderColor: C.border },
+                ]}
+              >
+                <Feather name="camera" size={14} color={C.textSecondary} />
               </View>
             </Pressable>
 
-            {/* Quick actions */}
-            <View style={styles.profileActions}>
-              <TouchableOpacity
-                style={[
-                  styles.editProfileBtn,
-                  { borderColor: C.border, backgroundColor: C.surface },
-                ]}
-                onPress={() => {
-                  setName(user.name);
-                  setBio(user.bio || "");
-                  setCollege(user.college || "");
-                  setProgram(user.program || "");
-                  setPhone(user.phone || "");
-                  setEditing(true);
-                }}
-              >
-                <Text style={[styles.editProfileText, { color: C.text }]}>
-                  Edit Profile
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.shareBtn,
-                  { backgroundColor: C.backgroundSecondary },
-                ]}
-              >
-                <Feather name="share-2" size={16} color={C.text} />
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* Name + role */}
-          <View style={styles.nameBlock}>
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 8,
-                flexWrap: "wrap",
-              }}
-            >
-              <Text style={[styles.userName, { color: C.text }]}>
+            {/* Name + verified */}
+            <View style={styles.nameRow}>
+              <Text style={styles.userName} numberOfLines={1}>
                 {user.name}
               </Text>
               {user.verified && (
-                <LinearGradient
-                  colors={["#5B4FE8", "#7B73F0"]}
-                  style={styles.verifiedBadge}
-                >
-                  <Feather name="check" size={11} color="#fff" />
-                </LinearGradient>
+                <View style={styles.verifiedCircle}>
+                  <Feather name="check" size={14} color={C.primary} />
+                </View>
               )}
-              <View
-                style={[styles.rolePill, { backgroundColor: roleColor + "18" }]}
-              >
-                <View
-                  style={[styles.roleDot, { backgroundColor: roleColor }]}
-                />
-                <Text style={[styles.roleText, { color: roleColor }]}>
-                  {user.role}
-                </Text>
+            </View>
+
+            {/* Email + dot + role pill */}
+            <View style={styles.emailRow}>
+              <Text style={styles.userEmail} numberOfLines={1}>
+                {user.email}
+              </Text>
+              <View style={styles.emailDot} />
+              <View style={styles.rolePill}>
+                <Text style={styles.rolePillText}>{user.role}</Text>
               </View>
             </View>
-            <Text style={[styles.userEmail, { color: C.textSecondary }]}>
-              {user.email}
+          </View>
+        </LinearGradient>
+
+        {/* Floating Edit Profile + Share buttons (overlap gradient bottom) */}
+        <View style={styles.heroActions}>
+          <TouchableOpacity
+            style={[
+              styles.editProfileBtn,
+              { backgroundColor: C.surface },
+            ]}
+            onPress={startEditing}
+            activeOpacity={0.85}
+          >
+            <Feather name="edit-2" size={16} color={C.text} />
+            <Text style={[styles.editProfileText, { color: C.text }]}>
+              Edit Profile
             </Text>
-            {user.bio ? (
-              <Text style={[styles.userBio, { color: C.text }]}>
-                {user.bio}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.shareBtn, { backgroundColor: C.surface }]}
+            activeOpacity={0.85}
+          >
+            <Feather name="share-2" size={20} color={C.text} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Bio + Meta */}
+        <View style={styles.bioBlock}>
+          {user.bio ? (
+            <Text style={[styles.bioText, { color: C.text }]}>{user.bio}</Text>
+          ) : (
+            <Pressable onPress={startEditing}>
+              <Text style={[styles.bioAdd, { color: C.primary }]}>
+                + Add a bio to tell your story
               </Text>
-            ) : (
-              <Pressable onPress={() => { setName(user.name); setBio(user.bio || ""); setCollege(user.college || ""); setProgram(user.program || ""); setPhone(user.phone || ""); setEditing(true); }}>
-                <Text style={[styles.addBio, { color: C.primary }]}>
-                  + Add a bio to tell your story
-                </Text>
-              </Pressable>
-            )}
-            {/* College / Program */}
+            </Pressable>
+          )}
+          {(user.college || user.program) && (
             <View style={styles.metaRow}>
               {user.college && (
-                <View style={styles.metaChip}>
-                  <Feather name="map-pin" size={12} color={C.textTertiary} />
+                <View style={styles.metaItem}>
+                  <Feather name="map-pin" size={14} color={C.textTertiary} />
                   <Text
-                    style={[styles.metaChipText, { color: C.textSecondary }]}
+                    style={[styles.metaText, { color: C.textSecondary }]}
+                    numberOfLines={1}
                   >
                     {user.college}
                   </Text>
                 </View>
               )}
               {user.program && (
-                <View style={styles.metaChip}>
-                  <Feather name="book-open" size={12} color={C.textTertiary} />
+                <View style={styles.metaItem}>
+                  <Feather name="book-open" size={14} color={C.textTertiary} />
                   <Text
-                    style={[styles.metaChipText, { color: C.textSecondary }]}
+                    style={[styles.metaText, { color: C.textSecondary }]}
+                    numberOfLines={1}
                   >
                     {user.program}
                   </Text>
                 </View>
               )}
             </View>
+          )}
+        </View>
+
+        {/* Combined stats pill */}
+        <View style={styles.statsBlock}>
+          <View
+            style={[
+              styles.statsPill,
+              { backgroundColor: C.surface, borderColor: C.border },
+            ]}
+          >
+            {[
+              { label: "POSTS", value: user.postsCount ?? 0 },
+              { label: "FOLLOWERS", value: user.followersCount ?? 0 },
+              { label: "FOLLOWING", value: user.followingCount ?? 0 },
+            ].map((s, i, arr) => (
+              <React.Fragment key={s.label}>
+                <View style={styles.statCol}>
+                  <Text style={[styles.statValue, { color: C.text }]}>
+                    {s.value}
+                  </Text>
+                  <Text
+                    style={[styles.statLabel, { color: C.textTertiary }]}
+                  >
+                    {s.label}
+                  </Text>
+                </View>
+                {i < arr.length - 1 && (
+                  <View
+                    style={[
+                      styles.statDivider,
+                      { backgroundColor: C.border },
+                    ]}
+                  />
+                )}
+              </React.Fragment>
+            ))}
           </View>
         </View>
 
-        {/* Stats */}
-        <View style={styles.statsRow}>
-          <StatCard
-            value={user.postsCount}
-            label="Posts"
-            icon="file-text"
-            color="#5B4FE8"
-            C={C}
-          />
-          <StatCard
-            value={user.followersCount}
-            label="Followers"
-            icon="users"
-            color="#10B981"
-            C={C}
-          />
-          <StatCard
-            value={user.followingCount}
-            label="Following"
-            icon="user-plus"
-            color="#F59E0B"
-            C={C}
-          />
-        </View>
-
-        {/* Services offered (provider) */}
+        {/* Services Offered */}
         {svcs.length > 0 && (
           <View style={styles.section}>
-            <Text style={[styles.sectionLabel, { color: C.textTertiary }]}>
-              SERVICES OFFERED
+            <Text style={[styles.sectionTitle, { color: C.text }]}>
+              Services Offered
             </Text>
             <View style={styles.servicesRow}>
               {svcs.map((svc) => {
@@ -563,19 +525,17 @@ export default function ProfileScreen() {
                   <View
                     key={svc}
                     style={[
-                      styles.svcChip,
+                      styles.svcPill,
                       {
-                        backgroundColor: meta.color + "15",
-                        borderColor: meta.color + "30",
+                        backgroundColor: C.surface,
+                        borderColor: C.border,
                       },
                     ]}
                   >
-                    <Feather
-                      name={meta.icon as any}
-                      size={13}
-                      color={meta.color}
+                    <View
+                      style={[styles.svcDot, { backgroundColor: meta.color }]}
                     />
-                    <Text style={[styles.svcChipText, { color: meta.color }]}>
+                    <Text style={[styles.svcPillText, { color: C.text }]}>
                       {meta.label}
                     </Text>
                   </View>
@@ -585,11 +545,13 @@ export default function ProfileScreen() {
           </View>
         )}
 
-        {/* Earnings Card (provider only) */}
+        {/* Earnings (provider only) */}
         {user.role === "provider" && (
           <View style={styles.section}>
-            <Text style={[styles.sectionLabel, { color: C.textTertiary }]}>
-              EARNINGS
+            <Text
+              style={[styles.sectionTitle, { color: C.text, marginBottom: 12 }]}
+            >
+              Earnings
             </Text>
             <LinearGradient
               colors={["#0F0C29", "#302B63", "#24243E"]}
@@ -634,10 +596,18 @@ export default function ProfileScreen() {
               <View style={styles.allTimeBlock}>
                 <Text style={styles.allTimeLabel}>All Time Earnings</Text>
                 {earningsQuery.isLoading ? (
-                  <ActivityIndicator color="#fff" style={{ marginVertical: 4, alignSelf: "flex-start" }} />
+                  <ActivityIndicator
+                    color="#fff"
+                    style={{ marginVertical: 4, alignSelf: "flex-start" }}
+                  />
                 ) : (
                   <Text style={styles.allTimeAmount}>
-                    ₹{formatAmount(earningsQuery.data?.allTime ?? earningsQuery.data?.total ?? 0)}
+                    ₹
+                    {formatAmount(
+                      earningsQuery.data?.allTime ??
+                        earningsQuery.data?.total ??
+                        0,
+                    )}
                   </Text>
                 )}
               </View>
@@ -688,9 +658,9 @@ export default function ProfileScreen() {
 
         {/* Posts section */}
         <View style={styles.section}>
-          <View style={styles.postsSectionHeader}>
-            <Text style={[styles.sectionLabel, { color: C.textTertiary }]}>
-              MY POSTS
+          <View style={styles.postsHeader}>
+            <Text style={[styles.sectionTitle, { color: C.text }]}>
+              My Posts
             </Text>
             {posts.length > 0 && (
               <View
@@ -898,175 +868,289 @@ export default function ProfileScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+
+  // Floating top bar over gradient
   topBar: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
     paddingBottom: 12,
   },
-  topTitle: { fontSize: 18, fontFamily: "Inter_700Bold" },
-  topBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+  topTitle: { fontSize: 16, fontFamily: "Inter_600SemiBold", color: "#fff" },
+  glassBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 0.5,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
   },
-  banner: { height: 130, overflow: "hidden" },
-  bannerCircle: {
+  glassBtnDanger: {
+    backgroundColor: "rgba(239,68,68,0.25)",
+    borderColor: "rgba(255,255,255,0.1)",
+  },
+
+  // Cover gradient
+  cover: {
+    overflow: "hidden",
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
+    paddingHorizontal: 24,
+  },
+  coverCircle: {
     position: "absolute",
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    backgroundColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "rgba(255,255,255,0.08)",
+  },
+  bannerBadgeWrap: {
+    alignItems: "center",
+    marginBottom: 12,
   },
   bannerBadge: {
-    position: "absolute",
-    top: 16,
-    right: 16,
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
   },
   bannerBadgeText: {
     color: "#fff",
     fontSize: 11,
     fontFamily: "Inter_600SemiBold",
   },
-  profileHeader: { paddingHorizontal: 16, marginTop: -36, paddingBottom: 8 },
-  avatarRow: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    justifyContent: "space-between",
-    marginBottom: 14,
-  },
-  avatarWrap: { position: "relative" },
+
+  // Hero center
+  heroCenter: { alignItems: "center" },
+  avatarPressable: { position: "relative", marginBottom: 16 },
   avatarRing: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.2)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.3)",
   },
   avatarInner: {
-    width: 82,
-    height: 82,
-    borderRadius: 41,
+    width: 104,
+    height: 104,
+    borderRadius: 52,
     alignItems: "center",
     justifyContent: "center",
   },
   avatar: {
-    width: 78,
-    height: 78,
-    borderRadius: 39,
+    width: 96,
+    height: 96,
+    borderRadius: 48,
     alignItems: "center",
     justifyContent: "center",
   },
-  avatarText: { color: "#fff", fontSize: 28, fontFamily: "Inter_700Bold" },
+  avatarText: { color: "#fff", fontSize: 32, fontFamily: "Inter_700Bold" },
   cameraBtn: {
     position: "absolute",
-    bottom: 2,
-    right: 0,
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+    bottom: 4,
+    right: 4,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 2,
-    borderColor: "#fff",
+    borderWidth: 1,
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
   },
-  profileActions: {
+  nameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginBottom: 6,
+    width: "100%",
+    paddingHorizontal: 8,
+  },
+  userName: {
+    fontSize: 26,
+    fontFamily: "Inter_700Bold",
+    color: "#fff",
+    letterSpacing: -0.5,
+    flexShrink: 1,
+    textAlign: "center",
+  },
+  verifiedCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emailRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    paddingBottom: 4,
+    maxWidth: "100%",
   },
-  editProfileBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
+  userEmail: {
+    fontSize: 14,
+    color: "rgba(255,255,255,0.85)",
+    fontFamily: "Inter_400Regular",
+    flexShrink: 1,
   },
-  editProfileText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
-  shareBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  nameBlock: { gap: 5 },
-  userName: { fontSize: 22, fontFamily: "Inter_700Bold" },
-  verifiedBadge: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    alignItems: "center",
-    justifyContent: "center",
+  emailDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "rgba(255,255,255,0.5)",
   },
   rolePill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
     paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 20,
-  },
-  roleDot: { width: 6, height: 6, borderRadius: 3 },
-  roleText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
-  userEmail: { fontSize: 13, fontFamily: "Inter_400Regular" },
-  userBio: { fontSize: 14, lineHeight: 20, fontFamily: "Inter_400Regular" },
-  addBio: { fontSize: 14, fontFamily: "Inter_500Medium" },
-  metaRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 4 },
-  metaChip: { flexDirection: "row", alignItems: "center", gap: 4 },
-  metaChipText: { fontSize: 12, fontFamily: "Inter_400Regular" },
-  statsRow: {
-    flexDirection: "row",
-    paddingHorizontal: 16,
-    gap: 10,
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  statCard: {
-    flex: 1,
-    borderRadius: 16,
-    borderWidth: 0.5,
-    padding: 14,
-    alignItems: "center",
-    gap: 6,
-  },
-  statIcon: {
-    width: 36,
-    height: 36,
+    paddingVertical: 4,
     borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.2)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
   },
-  statValue: { fontSize: 20, fontFamily: "Inter_700Bold" },
-  statLabel: { fontSize: 11, fontFamily: "Inter_400Regular" },
-  section: { paddingHorizontal: 16, marginTop: 16 },
-  sectionLabel: {
+  rolePillText: {
     fontSize: 11,
     fontFamily: "Inter_600SemiBold",
-    letterSpacing: 1,
-    marginBottom: 10,
+    color: "#fff",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
-  servicesRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  svcChip: {
+
+  // Floating buttons (overlap gradient bottom)
+  heroActions: {
+    flexDirection: "row",
+    gap: 12,
+    paddingHorizontal: 24,
+    marginTop: -28,
+    marginBottom: 24,
+  },
+  editProfileBtn: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 24,
+    shadowColor: "#5B4FE8",
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 5,
+  },
+  editProfileText: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  shareBtn: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#5B4FE8",
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 5,
+  },
+
+  // Bio + meta block
+  bioBlock: { paddingHorizontal: 24, marginBottom: 20, alignItems: "center" },
+  bioText: {
+    fontSize: 15,
+    lineHeight: 22,
+    fontFamily: "Inter_400Regular",
+    textAlign: "center",
+    marginBottom: 12,
+  },
+  bioAdd: {
+    fontSize: 14,
+    fontFamily: "Inter_500Medium",
+    marginBottom: 12,
+    textAlign: "center",
+  },
+  metaRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: 16,
+  },
+  metaItem: { flexDirection: "row", alignItems: "center", gap: 6 },
+  metaText: {
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
+    maxWidth: 140,
+  },
+
+  // Combined stats pill
+  statsBlock: { paddingHorizontal: 24, marginBottom: 24 },
+  statsPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 24,
+    padding: 18,
+    borderWidth: 1,
+    shadowColor: "#000",
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
+  },
+  statCol: {
+    flex: 1,
+    alignItems: "center",
+    gap: 4,
+  },
+  statValue: { fontSize: 22, fontFamily: "Inter_700Bold", letterSpacing: -0.5 },
+  statLabel: {
+    fontSize: 11,
+    fontFamily: "Inter_500Medium",
+    letterSpacing: 0.6,
+  },
+  statDivider: { width: 1, height: 32, alignSelf: "center" },
+
+  // Sections
+  section: { paddingHorizontal: 24, marginBottom: 24 },
+  sectionTitle: {
+    fontSize: 16,
+    fontFamily: "Inter_700Bold",
+    marginBottom: 12,
+  },
+
+  // Services
+  servicesRow: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  svcPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     borderRadius: 20,
     borderWidth: 1,
+    shadowColor: "#000",
+    shadowOpacity: 0.02,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
   },
-  svcChipText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  svcDot: { width: 8, height: 8, borderRadius: 4 },
+  svcPillText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+
   // Earnings Card
   earningsCard: { borderRadius: 24, padding: 20, overflow: "hidden" },
   earningsCircle: {
@@ -1156,11 +1240,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: "Inter_600SemiBold",
   },
+
   // Posts
-  postsSectionHeader: {
+  postsHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    marginBottom: 12,
   },
   postCount: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 20 },
   postCountText: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
@@ -1181,13 +1267,13 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_600SemiBold",
   },
   postCard: {
-    borderRadius: 16,
+    borderRadius: 20,
     borderWidth: 0.5,
-    marginBottom: 10,
+    marginBottom: 12,
     overflow: "hidden",
   },
   postThumb: { width: "100%", height: 140 },
-  postCardBody: { padding: 14 },
+  postCardBody: { padding: 16 },
   postCardText: {
     fontSize: 14,
     lineHeight: 20,
@@ -1202,6 +1288,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: "Inter_400Regular",
   },
+
   // Edit Modal
   modalOverlay: {
     flex: 1,
