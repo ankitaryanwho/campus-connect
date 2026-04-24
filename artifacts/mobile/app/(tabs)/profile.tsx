@@ -24,6 +24,9 @@ import Colors from "@/constants/colors";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
 import { useNotifications } from "@/contexts/NotificationContext";
+import { PostActionsMenu } from "@/components/PostActionsMenu";
+import { AuthorBadge } from "@/components/AuthorBadge";
+import { resolveBadge } from "@/constants/badges";
 
 const isWeb = Platform.OS === "web";
 const { width: SW } = Dimensions.get("window");
@@ -107,7 +110,8 @@ function EditField({
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
-  const C = Colors[colorScheme === "dark" ? "dark" : "light"];
+  const isDark = colorScheme === "dark";
+  const C = Colors[isDark ? "dark" : "light"];
   const { user, apiRequest, updateUser, logout } = useAuth();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
@@ -256,6 +260,10 @@ export default function ProfileScreen() {
     }
   };
 
+  // Track which own-post has its 3-dot action menu open.
+  // Declared before the early return so hook order stays stable.
+  const [openMenuPostId, setOpenMenuPostId] = useState<string | null>(null);
+
   if (!user) return null;
 
   const startEditing = () => {
@@ -271,6 +279,7 @@ export default function ProfileScreen() {
   const badge = user.verificationBadge
     ? BADGE_META[user.verificationBadge]
     : null;
+  const openedPost = posts.find((p: any) => p.id === openMenuPostId);
 
   let svcs: string[] = [];
   try {
@@ -392,11 +401,7 @@ export default function ProfileScreen() {
               <Text style={styles.userName} numberOfLines={1}>
                 {user.name}
               </Text>
-              {user.verified && (
-                <View style={styles.verifiedCircle}>
-                  <Feather name="check" size={14} color={C.primary} />
-                </View>
-              )}
+              <AuthorBadge badge={resolveBadge(user)} size={16} />
             </View>
 
             {/* Email + dot + role pill */}
@@ -717,6 +722,7 @@ export default function ProfileScreen() {
                 style={[
                   styles.postCard,
                   { backgroundColor: C.surface, borderColor: C.border },
+                  post.hidden && { opacity: 0.78 },
                 ]}
                 onPress={() => router.push(`/post/${post.id}`)}
                 activeOpacity={0.8}
@@ -728,7 +734,35 @@ export default function ProfileScreen() {
                     resizeMode="cover"
                   />
                 )}
+                {/* 3-dot menu — owner-only on own profile, so always shown */}
+                <TouchableOpacity
+                  style={styles.postCardMore}
+                  onPress={(e: any) => { e?.stopPropagation?.(); setOpenMenuPostId(post.id); }}
+                  hitSlop={10}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.postCardMoreInner}>
+                    <Feather name="more-vertical" size={16} color={C.text} />
+                  </View>
+                </TouchableOpacity>
                 <View style={styles.postCardBody}>
+                  {/* Status pills (Hidden / Edited) */}
+                  {(post.hidden || post.editedAt) && (
+                    <View style={{ flexDirection: "row", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
+                      {post.hidden && (
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: "#FEF3C7", paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 }}>
+                          <Feather name="eye-off" size={9} color="#B45309" />
+                          <Text style={{ fontSize: 9, color: "#B45309", fontFamily: "Inter_600SemiBold" }}>HIDDEN</Text>
+                        </View>
+                      )}
+                      {post.editedAt && (
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: "#EEF2FF", paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 }}>
+                          <Feather name="edit-2" size={9} color="#5B4FE8" />
+                          <Text style={{ fontSize: 9, color: "#5B4FE8", fontFamily: "Inter_600SemiBold" }}>EDITED</Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
                   <Text
                     style={[styles.postCardText, { color: C.text }]}
                     numberOfLines={2}
@@ -769,6 +803,15 @@ export default function ProfileScreen() {
           )}
         </View>
       </ScrollView>
+
+      {openedPost && (
+        <PostActionsMenu
+          post={{ id: openedPost.id, content: openedPost.content, hidden: openedPost.hidden }}
+          visible={!!openMenuPostId}
+          onClose={() => setOpenMenuPostId(null)}
+          isDark={isDark}
+        />
+      )}
 
       {/* Edit Profile Modal */}
       <Modal
@@ -1253,6 +1296,25 @@ const styles = StyleSheet.create({
   },
   postCount: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 20 },
   postCountText: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
+  postCardMore: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    zIndex: 2,
+  },
+  postCardMoreInner: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "rgba(255,255,255,0.95)",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 2,
+  },
   emptyPosts: { borderRadius: 20, borderWidth: 0.5, overflow: "hidden" },
   emptyPostsInner: { alignItems: "center", paddingVertical: 48, gap: 12 },
   emptyPostsText: { fontSize: 16, fontFamily: "Inter_600SemiBold" },

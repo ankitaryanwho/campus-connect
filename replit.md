@@ -74,6 +74,25 @@ Fully privacy-first anonymous posting with threaded comments, reply system, and 
 - `app/(tabs)/index.tsx`: PostCard + PostMiniCard handle anonymous display
 - `app/post/[id].tsx`: Full rewrite — anonymous headers, threaded replies, anonymous chat button, profile-block toast
 
+## Post Management & Verification Badges
+
+**3-dot menu on user's own posts** (Edit / Hide / Delete) appears in feed, profile tab, public profile (when viewing own), and post detail.
+
+**Backend** (`artifacts/api-server/src/routes/posts.ts`):
+- `PATCH /api/posts/:id` — owner-only edit. Sets `editedAt` timestamp; rejects content >500 chars.
+- `POST /api/posts/:id/hide` / `/unhide` — owner-only visibility toggle.
+- `DELETE /api/posts/:id` — owner-only. Cascade-deletes likes/comments, decrements `users.postsCount`.
+- `visibilityFilter()` helper hides posts from non-owners in feed (`GET /posts`) and user posts list (`GET /users/:userId/posts`).
+- Hidden-post access is enforced on `GET /posts/:id`, `GET/POST /posts/:id/comments`, and `POST /posts/:id/like` — non-owners get 404.
+- Schema: `posts.hidden` (boolean, default false), `posts.editedAt` (timestamp, nullable).
+
+**Mobile UI** (Expo):
+- `components/PostActionsMenu.tsx` — bottom-sheet menu with Edit modal, Hide/Unhide toggle (Unhide replaces Hide when post is hidden), and confirm-on-Delete (uses `window.confirm` on web, native `Alert.alert` otherwise).
+- `components/AuthorBadge.tsx` + `constants/badges.ts` — shared `BADGE_META` map and `resolveBadge()` helper. Renders a small icon next to the author's name everywhere (feed, comments, post detail, profile, public profile).
+- Posts display `EDITED` and `HIDDEN` pills above the content when applicable. Hidden posts are still visible to the owner with the HIDDEN pill.
+
+**API base for mobile**: `EXPO_PUBLIC_API_URL` env var, falling back to the deployed Replit app URL (`https://campus-connect-davidaryan7256.replit.app/api`). Backend changes therefore require redeploying the API server before OTA updates of the mobile bundle will exercise them.
+
 ## Stack
 
 - **Monorepo tool**: pnpm workspaces

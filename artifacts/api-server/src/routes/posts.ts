@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { postsTable, usersTable, likesTable, commentsTable, notificationsTable } from "@workspace/db/schema";
-import { eq, desc, lt, and, sql } from "drizzle-orm";
+import { eq, desc, lt, and, or, ne, sql } from "drizzle-orm";
 import { authMiddleware } from "../lib/auth";
 import { generateId } from "../lib/id";
 
@@ -51,18 +51,25 @@ async function formatPost(post: any, requestingUserId: string) {
   };
 }
 
+// Visibility filter: hidden posts are visible only to their owner.
+function visibilityFilter(userId: string) {
+  return or(eq(postsTable.hidden, false), eq(postsTable.authorId, userId));
+}
+
 router.get("/", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
     const limit = parseInt(req.query.limit as string) || 20;
     const cursor = req.query.cursor as string;
 
-    let query = db.select().from(postsTable).orderBy(desc(postsTable.createdAt)).limit(limit + 1);
+    let query = db.select().from(postsTable)
+      .where(visibilityFilter(userId))
+      .orderBy(desc(postsTable.createdAt)).limit(limit + 1);
     if (cursor) {
       const cursorPost = await db.select().from(postsTable).where(eq(postsTable.id, cursor)).limit(1);
       if (cursorPost.length) {
         query = db.select().from(postsTable)
-          .where(lt(postsTable.createdAt, cursorPost[0].createdAt))
+          .where(and(lt(postsTable.createdAt, cursorPost[0].createdAt), visibilityFilter(userId)))
           .orderBy(desc(postsTable.createdAt)).limit(limit + 1);
       }
     }
@@ -125,10 +132,80 @@ router.get("/:postId", authMiddleware, async (req, res) => {
       res.status(404).json({ error: "NotFound", message: "Post not found" });
       return;
     }
+    if (posts[0].hidden && posts[0].authorId !== userId) {
+      res.status(404).json({ error: "NotFound", message: "Post not found" });
+      return;
+    }
     const formatted = await formatPost(posts[0], userId);
     res.json(formatted);
   } catch (err) {
     res.status(500).json({ error: "ServerError", message: "Failed to get post" });
+  }
+});
+
+// Edit post content (owner only). Sets editedAt = now.
+router.patch("/:postId", authMiddleware, async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const { postId } = req.params;
+    const { content } = req.body;
+    if (!content || !content.trim()) {
+      res.status(400).json({ error: "ValidationError", message: "Content is required" });
+      return;
+    }
+    if (content.trim().length > 500) {
+      res.status(400).json({ error: "ValidationError", message: "Post cannot exceed 500 characters" });
+      return;
+    }
+    const posts = await db.select().from(postsTable).where(eq(postsTable.id, postId)).limit(1);
+    if (!posts.length || posts[0].authorId !== userId) {
+      res.status(403).json({ error: "Forbidden", message: "Cannot edit this post" });
+      return;
+    }
+    await db.update(postsTable)
+      .set({ content: content.trim(), editedAt: new Date() })
+      .where(eq(postsTable.id, postId));
+    const updated = await db.select().from(postsTable).where(eq(postsTable.id, postId)).limit(1);
+    const formatted = await formatPost(updated[0], userId);
+    res.json(formatted);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "ServerError", message: "Failed to edit post" });
+  }
+});
+
+// Hide / unhide a post (owner only). Hidden posts are visible only to the owner.
+router.post("/:postId/hide", authMiddleware, async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const { postId } = req.params;
+    const posts = await db.select().from(postsTable).where(eq(postsTable.id, postId)).limit(1);
+    if (!posts.length || posts[0].authorId !== userId) {
+      res.status(403).json({ error: "Forbidden", message: "Cannot hide this post" });
+      return;
+    }
+    await db.update(postsTable).set({ hidden: true }).where(eq(postsTable.id, postId));
+    res.json({ success: true, hidden: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "ServerError", message: "Failed to hide post" });
+  }
+});
+
+router.post("/:postId/unhide", authMiddleware, async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const { postId } = req.params;
+    const posts = await db.select().from(postsTable).where(eq(postsTable.id, postId)).limit(1);
+    if (!posts.length || posts[0].authorId !== userId) {
+      res.status(403).json({ error: "Forbidden", message: "Cannot unhide this post" });
+      return;
+    }
+    await db.update(postsTable).set({ hidden: false }).where(eq(postsTable.id, postId));
+    res.json({ success: true, hidden: false });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "ServerError", message: "Failed to unhide post" });
   }
 });
 
@@ -141,10 +218,14 @@ router.delete("/:postId", authMiddleware, async (req, res) => {
       res.status(403).json({ error: "Forbidden", message: "Cannot delete this post" });
       return;
     }
+    // Cascade-delete dependent rows so the FK on likes/comments doesn't block deletion.
+    await db.delete(likesTable).where(eq(likesTable.postId, postId));
+    await db.delete(commentsTable).where(eq(commentsTable.postId, postId));
     await db.delete(postsTable).where(eq(postsTable.id, postId));
     await db.update(usersTable).set({ postsCount: sql`${usersTable.postsCount} - 1` }).where(eq(usersTable.id, userId));
     res.json({ success: true, message: "Post deleted" });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "ServerError", message: "Failed to delete post" });
   }
 });
@@ -153,6 +234,11 @@ router.post("/:postId/like", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
     const { postId } = req.params;
+    const targetRows = await db.select().from(postsTable).where(eq(postsTable.id, postId)).limit(1);
+    if (!targetRows.length || (targetRows[0].hidden && targetRows[0].authorId !== userId)) {
+      res.status(404).json({ error: "NotFound", message: "Post not found" });
+      return;
+    }
     const existing = await db.select().from(likesTable)
       .where(and(eq(likesTable.postId, postId), eq(likesTable.userId, userId))).limit(1);
 
@@ -192,6 +278,10 @@ router.get("/:postId/comments", authMiddleware, async (req, res) => {
 
     const postRows = await db.select().from(postsTable).where(eq(postsTable.id, postId)).limit(1);
     const post = postRows[0];
+    if (!post || (post.hidden && post.authorId !== userId)) {
+      res.status(404).json({ error: "NotFound", message: "Post not found" });
+      return;
+    }
 
     const allComments = await db.select().from(commentsTable)
       .where(eq(commentsTable.postId, postId))
@@ -237,7 +327,7 @@ router.post("/:postId/comments", authMiddleware, async (req, res) => {
     }
 
     const postRows = await db.select().from(postsTable).where(eq(postsTable.id, postId)).limit(1);
-    if (!postRows.length) {
+    if (!postRows.length || (postRows[0].hidden && postRows[0].authorId !== userId)) {
       res.status(404).json({ error: "NotFound", message: "Post not found" });
       return;
     }

@@ -69,14 +69,23 @@ router.get("/:userId/posts", authMiddleware, async (req, res) => {
     const { userId } = req.params;
     const isOwnProfile = requestingUserId === userId;
 
+    // For other users' profiles, hide anonymous posts AND hidden posts.
     const whereClause = isOwnProfile
       ? eq(postsTable.authorId, userId)
-      : and(eq(postsTable.authorId, userId), eq(postsTable.isAnonymous, false));
+      : and(
+          eq(postsTable.authorId, userId),
+          eq(postsTable.isAnonymous, false),
+          eq(postsTable.hidden, false),
+        );
 
     const posts = await db.select().from(postsTable)
       .where(whereClause)
       .orderBy(desc(postsTable.createdAt));
-    const formatted = posts.map(p => ({ ...p, mediaUrls: JSON.parse(p.mediaUrls || "[]") }));
+    const formatted = posts.map(p => ({
+      ...p,
+      mediaUrls: JSON.parse(p.mediaUrls || "[]"),
+      isOwnPost: isOwnProfile,
+    }));
     res.json({ posts: formatted });
   } catch (err) {
     res.status(500).json({ error: "ServerError", message: "Failed to get user posts" });

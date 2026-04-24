@@ -13,6 +13,8 @@ import * as ExpoHaptics from "expo-haptics";
 import Colors from "@/constants/colors";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
+import { AuthorBadge } from "@/components/AuthorBadge";
+import { PostActionsMenu } from "@/components/PostActionsMenu";
 
 const isWeb = Platform.OS === "web";
 
@@ -22,9 +24,11 @@ interface Post {
   id: string;
   content: string;
   mediaUrls: string[];
-  author: { id: string; name: string; avatar?: string; college?: string; program?: string; year?: number; verified?: boolean; isAnonymous?: boolean };
+  author: { id: string; name: string; avatar?: string; college?: string; program?: string; year?: number; verified?: boolean; verificationBadge?: string | null; isAnonymous?: boolean };
   isAnonymous: boolean;
   isOwnPost?: boolean;
+  hidden?: boolean;
+  editedAt?: string | null;
   likesCount: number;
   commentsCount: number;
   isLiked: boolean;
@@ -151,7 +155,10 @@ function PostMiniCard({ post, accent }: { post: Post; accent: string }) {
           <GradientAvatar name={post.author.name} avatar={post.author.avatar} size={26} />
         )}
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={styles.miniCardAuthor} numberOfLines={1}>{displayName}</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+            <Text style={styles.miniCardAuthor} numberOfLines={1}>{displayName}</Text>
+            {!post.isAnonymous && <AuthorBadge author={post.author} size={11} />}
+          </View>
           <Text style={styles.miniCardBadge} numberOfLines={1}>{displayBadge}</Text>
         </View>
       </View>
@@ -215,6 +222,7 @@ function PostCard({ post, C, onLike, onComment, isDark }: any) {
   const [liked, setLiked] = useState(post.isLiked);
   const [likes, setLikes] = useState(post.likesCount);
   const [saved, setSaved] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const heartScale = useRef(new Animated.Value(1)).current;
   const tapRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const taps = useRef(0);
@@ -286,21 +294,24 @@ function PostCard({ post, C, onLike, onComment, isDark }: any) {
           )}
         </Pressable>
         <View style={styles.postHeaderInfo}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
             <Text style={[styles.authorName, { color: isDark ? C.text : WARM.text }]}>{displayName}</Text>
             {post.isAnonymous && (
               <View style={{ backgroundColor: "#F3F4F6", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
                 <Text style={{ fontSize: 9, color: "#6B7280", fontFamily: "Inter_600SemiBold" }}>ANON</Text>
               </View>
             )}
-            {!post.isAnonymous && post.author.verified && (
-              <LinearGradient colors={["#5B4FE8", "#7B73F0"]} style={styles.verifiedBadge}>
-                <Feather name="check" size={9} color="#fff" />
-              </LinearGradient>
+            {!post.isAnonymous && <AuthorBadge author={post.author} size={15} />}
+            {post.hidden && post.isOwnPost && (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: "#FEF3C7", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                <Feather name="eye-off" size={9} color="#B45309" />
+                <Text style={{ fontSize: 9, color: "#B45309", fontFamily: "Inter_600SemiBold" }}>HIDDEN</Text>
+              </View>
             )}
           </View>
           <Text style={[styles.postMeta, { color: isDark ? C.textTertiary : WARM.textTertiary }]}>
             {displayMeta} · {timeAgo(post.createdAt)}
+            {post.editedAt ? " · edited" : ""}
           </Text>
         </View>
         {/* Category pill */}
@@ -309,12 +320,32 @@ function PostCard({ post, C, onLike, onComment, isDark }: any) {
             {post.isAnonymous ? "🙈" : cat.emoji}
           </Text>
         </View>
+        {/* Owner-only 3-dot menu */}
+        {post.isOwnPost && (
+          <TouchableOpacity
+            onPress={(e: any) => { e?.stopPropagation?.(); setMenuOpen(true); }}
+            style={styles.moreBtn}
+            hitSlop={8}
+            activeOpacity={0.7}
+          >
+            <Feather name="more-vertical" size={18} color={isDark ? C.textSecondary : WARM.textSecondary} />
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Content */}
       {post.content ? (
         <Text style={[styles.postContent, { color: isDark ? C.text : WARM.text }]}>{post.content}</Text>
       ) : null}
+
+      {post.isOwnPost && (
+        <PostActionsMenu
+          post={{ id: post.id, content: post.content, hidden: post.hidden }}
+          visible={menuOpen}
+          onClose={() => setMenuOpen(false)}
+          isDark={isDark}
+        />
+      )}
 
       {/* Media */}
       {post.mediaUrls?.length > 0 && (
@@ -727,6 +758,7 @@ const styles = StyleSheet.create({
   postMeta: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 2 },
   catPill: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10 },
   catPillText: { fontSize: 14 },
+  moreBtn: { padding: 4, marginLeft: 2 },
   postContent: { fontSize: 14, lineHeight: 21, fontFamily: "Inter_400Regular", paddingHorizontal: 14, paddingBottom: 12 },
   mediaContainer: { marginBottom: 12 },
   mediaSingle: { width: "100%", height: 260 },

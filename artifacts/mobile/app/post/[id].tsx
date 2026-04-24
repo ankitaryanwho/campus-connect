@@ -12,6 +12,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Colors from "@/constants/colors";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
+import { AuthorBadge } from "@/components/AuthorBadge";
+import { PostActionsMenu } from "@/components/PostActionsMenu";
 
 const isWeb = Platform.OS === "web";
 
@@ -70,6 +72,7 @@ export default function PostDetailScreen() {
   const { showToast } = useToast();
   const [comment, setComment] = useState("");
   const [replyTo, setReplyTo] = useState<{ id: string; authorName: string } | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const inputRef = useRef<TextInput>(null);
 
   const postQuery = useQuery({
@@ -213,6 +216,7 @@ export default function PostDetailScreen() {
             <View style={[styles.commentBubble, { backgroundColor: C.backgroundSecondary }]}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 3 }}>
                 <Text style={[styles.commentAuthor, { color: C.text, fontFamily: "Inter_600SemiBold" }]}>{commentDisplayName}</Text>
+                {!item.author?.isAnonymous && <AuthorBadge author={item.author} size={12} />}
                 {item.author?.isAnonymous && (
                   <View style={{ backgroundColor: "#E5E7EB", paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4 }}>
                     <Text style={{ fontSize: 8, color: "#6B7280", fontFamily: "Inter_600SemiBold" }}>ANON</Text>
@@ -244,6 +248,7 @@ export default function PostDetailScreen() {
                     <View style={[styles.commentBubble, { backgroundColor: C.backgroundSecondary }]}>
                       <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 2 }}>
                         <Text style={[styles.replyAuthor, { color: C.text, fontFamily: "Inter_600SemiBold" }]}>{replyDisplayName}</Text>
+                        {!reply.author?.isAnonymous && <AuthorBadge author={reply.author} size={11} />}
                         {reply.author?.isAnonymous && (
                           <View style={{ backgroundColor: "#E5E7EB", paddingHorizontal: 4, paddingVertical: 1, borderRadius: 3 }}>
                             <Text style={{ fontSize: 8, color: "#6B7280", fontFamily: "Inter_600SemiBold" }}>ANON</Text>
@@ -277,8 +282,26 @@ export default function PostDetailScreen() {
             <Text style={{ fontSize: 11, color: "#6B7280", fontFamily: "Inter_600SemiBold" }}>Anonymous</Text>
           </View>
         )}
-        {!isPostAnonymous && <Feather name="more-horizontal" size={22} color={C.text} />}
+        {!isPostAnonymous && post?.isOwnPost ? (
+          <Pressable onPress={() => setMenuOpen(true)} hitSlop={8}>
+            <Feather name="more-horizontal" size={22} color={C.text} />
+          </Pressable>
+        ) : (
+          !isPostAnonymous && <View style={{ width: 22 }} />
+        )}
       </View>
+
+      {post?.isOwnPost && (
+        <PostActionsMenu
+          post={{ id: post.id, content: post.content, hidden: post.hidden }}
+          visible={menuOpen}
+          onClose={() => setMenuOpen(false)}
+          onChanged={(kind) => {
+            if (kind === "delete") router.back();
+          }}
+          isDark={colorScheme === "dark"}
+        />
+      )}
 
       <FlatList
         data={comments}
@@ -297,18 +320,26 @@ export default function PostDetailScreen() {
                   <Avatar user={post.author} size={46} C={C} />
                 </TouchableOpacity>
                 <View style={styles.postHeaderInfo}>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                     <Text style={[styles.authorName, { color: C.text, fontFamily: "Inter_600SemiBold" }]}>
                       {isPostAnonymous ? "Profile Hidden" : post.author?.name}
                     </Text>
+                    {!isPostAnonymous && <AuthorBadge author={post.author} size={16} />}
                     {isPostAnonymous && (
                       <View style={{ backgroundColor: "#E5E7EB", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
                         <Text style={{ fontSize: 9, color: "#6B7280", fontFamily: "Inter_600SemiBold" }}>ANON</Text>
                       </View>
                     )}
+                    {post.hidden && post.isOwnPost && (
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: "#FEF3C7", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                        <Feather name="eye-off" size={9} color="#B45309" />
+                        <Text style={{ fontSize: 9, color: "#B45309", fontFamily: "Inter_600SemiBold" }}>HIDDEN</Text>
+                      </View>
+                    )}
                   </View>
                   <Text style={[styles.postDate, { color: C.textTertiary, fontFamily: "Inter_400Regular" }]}>
                     {isPostAnonymous ? anonMeta : (post.author?.program || post.author?.college)} · {timeAgo(post.createdAt)}
+                    {post.editedAt ? " · edited" : ""}
                   </Text>
                 </View>
                 {/* Start anon chat button — shown to non-owners on anonymous posts */}

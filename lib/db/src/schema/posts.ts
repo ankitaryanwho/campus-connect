@@ -12,6 +12,8 @@ export const postsTable = pgTable("posts", {
   category: text("category").notNull().default("social"),
   likesCount: integer("likes_count").notNull().default(0),
   commentsCount: integer("comments_count").notNull().default(0),
+  hidden: boolean("hidden").notNull().default(false),
+  editedAt: timestamp("edited_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

@@ -18,19 +18,9 @@ import { Feather } from "@expo/vector-icons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Colors from "@/constants/colors";
 import { useAuth } from "@/contexts/AuthContext";
-
-// Keep these in sync with artifacts/mobile/app/(tabs)/profile.tsx
-const BADGE_META: Record<
-  string,
-  { label: string; icon: string; color: string }
-> = {
-  verified: { label: "Verified", icon: "check-circle", color: "#5B4FE8" },
-  top_contributor: { label: "Top Contributor", icon: "star", color: "#F59E0B" },
-  campus_leader: { label: "Campus Leader", icon: "award", color: "#8B5CF6" },
-  expert: { label: "Expert", icon: "shield", color: "#10B981" },
-  ambassador: { label: "Ambassador", icon: "user-check", color: "#3B82F6" },
-  staff: { label: "Staff", icon: "briefcase", color: "#EF4444" },
-};
+import { BADGE_META } from "@/constants/badges";
+import { AuthorBadge } from "@/components/AuthorBadge";
+import { PostActionsMenu } from "@/components/PostActionsMenu";
 
 const SERVICE_META: Record<
   string,
@@ -65,11 +55,13 @@ export default function UserProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
-  const C = Colors[colorScheme === "dark" ? "dark" : "light"];
+  const isDark = colorScheme === "dark";
+  const C = Colors[isDark ? "dark" : "light"];
   const { apiRequest, user: currentUser } = useAuth();
   const queryClient = useQueryClient();
   const isWeb = Platform.OS === "web";
   const isMe = currentUser?.id === id;
+  const [openMenuPostId, setOpenMenuPostId] = React.useState<string | null>(null);
 
   const profileQuery = useQuery({
     queryKey: ["profile", id],
@@ -234,14 +226,14 @@ export default function UserProfileScreen() {
               </View>
             </View>
 
-            {/* Name + verified */}
+            {/* Name + verification badge */}
             <View style={styles.nameRow}>
               <Text style={styles.userName} numberOfLines={1}>
                 {profile.name}
               </Text>
-              {profile.verified && (
+              {(profile.verified || profile.verificationBadge) && (
                 <View style={styles.verifiedCircle}>
-                  <Feather name="check" size={14} color={C.primary} />
+                  <AuthorBadge author={profile} size={20} />
                 </View>
               )}
             </View>
@@ -462,6 +454,32 @@ export default function UserProfileScreen() {
                 ]}
                 onPress={() => router.push(`/post/${post.id}`)}
               >
+                {isMe && (
+                  <Pressable
+                    onPress={(e: any) => {
+                      e?.stopPropagation?.();
+                      setOpenMenuPostId(post.id);
+                    }}
+                    hitSlop={8}
+                    style={{ position: "absolute", top: 8, right: 8, padding: 6, zIndex: 5 }}
+                  >
+                    <Feather name="more-horizontal" size={18} color={C.textSecondary} />
+                  </Pressable>
+                )}
+                <View style={{ flexDirection: "row", gap: 6, marginHorizontal: 14, marginTop: 12, flexWrap: "wrap" }}>
+                  {post.editedAt && (
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#EEF2FF", paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 }}>
+                      <Feather name="edit-2" size={9} color="#5B4FE8" />
+                      <Text style={{ fontSize: 9, color: "#5B4FE8", fontFamily: "Inter_600SemiBold" }}>EDITED</Text>
+                    </View>
+                  )}
+                  {post.hidden && (
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#FEF3C7", paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 }}>
+                      <Feather name="eye-off" size={9} color="#92400E" />
+                      <Text style={{ fontSize: 9, color: "#92400E", fontFamily: "Inter_600SemiBold" }}>HIDDEN</Text>
+                    </View>
+                  )}
+                </View>
                 {post.content ? (
                   <Text
                     style={[styles.postContent, { color: C.text }]}
@@ -544,6 +562,16 @@ export default function UserProfileScreen() {
           )}
         </View>
       </ScrollView>
+      <PostActionsMenu
+        post={posts.find((p: any) => p.id === openMenuPostId) || null}
+        visible={!!openMenuPostId}
+        onClose={() => setOpenMenuPostId(null)}
+        onChanged={() => {
+          queryClient.invalidateQueries({ queryKey: ["userPosts", id] });
+          queryClient.invalidateQueries({ queryKey: ["posts"] });
+        }}
+        isDark={isDark}
+      />
     </View>
   );
 }
