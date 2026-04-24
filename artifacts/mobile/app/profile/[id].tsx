@@ -462,12 +462,45 @@ export default function UserProfileScreen() {
                 ]}
                 onPress={() => router.push(`/post/${post.id}`)}
               >
-                <Text
-                  style={[styles.postContent, { color: C.text }]}
-                  numberOfLines={3}
-                >
-                  {post.content}
-                </Text>
+                {post.content ? (
+                  <Text
+                    style={[styles.postContent, { color: C.text }]}
+                    numberOfLines={3}
+                  >
+                    {post.content}
+                  </Text>
+                ) : null}
+
+                {Array.isArray(post.mediaUrls) && post.mediaUrls.length > 0 && (
+                  <View style={styles.mediaContainer}>
+                    {post.mediaUrls.length === 1 ? (
+                      <Image
+                        source={{ uri: post.mediaUrls[0] }}
+                        style={styles.mediaSingle}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <View style={styles.mediaGrid}>
+                        {post.mediaUrls
+                          .slice(0, 4)
+                          .map((uri: string, i: number) => (
+                            <Image
+                              key={i}
+                              source={{ uri }}
+                              style={[
+                                styles.mediaGridItem,
+                                post.mediaUrls.length === 2
+                                  ? { width: "49.5%", height: 160 }
+                                  : { width: "49.5%", height: 110 },
+                              ]}
+                              resizeMode="cover"
+                            />
+                          ))}
+                      </View>
+                    )}
+                  </View>
+                )}
+
                 <View style={styles.postMeta}>
                   <View style={styles.postMetaItem}>
                     <Feather name="heart" size={13} color={C.textTertiary} />
@@ -783,6 +816,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: 16,
     marginBottom: 10,
+    overflow: "hidden",
   },
   postContent: {
     fontSize: 14,
@@ -790,6 +824,14 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     marginBottom: 10,
   },
+  mediaContainer: {
+    marginBottom: 12,
+    borderRadius: 12,
+    overflow: "hidden",
+  },
+  mediaSingle: { width: "100%", height: 220 },
+  mediaGrid: { flexDirection: "row", flexWrap: "wrap", gap: 2 },
+  mediaGridItem: { borderRadius: 2 },
   postMeta: { flexDirection: "row", alignItems: "center", gap: 14 },
   postMetaItem: { flexDirection: "row", alignItems: "center", gap: 4 },
   postMetaText: { fontSize: 12, fontFamily: "Inter_400Regular" },
