@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
@@ -2184,6 +2184,25 @@ export default function ServicesScreen() {
 
   const isProvider = user?.role === "provider";
   const userServices: string[] = user?.services ? JSON.parse(user.services) : [];
+
+  // Keep the open Order Details modal in sync with the latest cache. Without
+  // this, `selectedItem` is a snapshot taken at the moment the modal opened —
+  // so after a status update, the modal still shows the OLD status & button
+  // until the user closes and reopens it. Re-derive from the live query data
+  // on every cache update by id+type, preserving synthetic flags (_type,
+  // _isBooking, _isSynthetic, _hasDetail).
+  const liveSelectedItem = useMemo(() => {
+    if (!selectedItem || !allData) return selectedItem;
+    const t = selectedItem._type as string | undefined;
+    if (!t) return selectedItem;
+    const collectionKey = selectedItem._isBooking ? "bookings" : t;
+    const collection: any[] = (allData as any)[collectionKey] ?? [];
+    const fresh = collection.find((x: any) => x.id === selectedItem.id);
+    if (!fresh) return selectedItem;
+    // Merge: live data wins, but preserve client-only fields (_type, etc.)
+    // and any extra detail fetched separately (_hasDetail/images).
+    return { ...selectedItem, ...fresh, _type: t, _isBooking: selectedItem._isBooking, _isSynthetic: selectedItem._isSynthetic, _hasDetail: selectedItem._hasDetail };
+  }, [selectedItem, allData]);
   const canPost = (cat: string) => {
     // Delivery and tasks: anyone can post
     if (cat === "deliveries" || cat === "tasks") return true;
@@ -3005,15 +3024,15 @@ export default function ServicesScreen() {
       })()}
 
       {/* ── Detail Modal (Track Order tap) ── */}
-      {selectedItem && (
+      {liveSelectedItem && (
         <DetailModal
-          item={selectedItem}
+          item={liveSelectedItem}
           C={C}
           user={user}
           onClose={() => setSelectedItem(null)}
-          isPending={actionMutation.isPending && (pendingId === selectedItem?.id || pendingId === selectedItem?.listingId)}
-          myBooking={selectedItem._isBooking ? undefined : myActiveBookingByListing.get(selectedItem.id)}
-          onAction={(id: string, action: string) => actionMutation.mutate({ id, action, tab: selectedItem._isSynthetic ? selectedItem._type : selectedItem._isBooking ? "bookings" : selectedItem._type })}
+          isPending={actionMutation.isPending && (pendingId === liveSelectedItem?.id || pendingId === liveSelectedItem?.listingId)}
+          myBooking={liveSelectedItem._isBooking ? undefined : myActiveBookingByListing.get(liveSelectedItem.id)}
+          onAction={(id: string, action: string) => actionMutation.mutate({ id, action, tab: liveSelectedItem._isSynthetic ? liveSelectedItem._type : liveSelectedItem._isBooking ? "bookings" : liveSelectedItem._type })}
           onRate={(id: string, data: any) => rateMutation.mutate({ id, data })}
         />
       )}
