@@ -1,11 +1,13 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 import * as Notifications from "expo-notifications";
 import * as Device from "expo-device";
-import { Platform } from "react-native";
+import { AppState, Platform } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { useAuth } from "./AuthContext";
 
 const IS_NATIVE = Platform.OS !== "web";
+const PUSH_TOKEN_STORAGE_KEY = "@push_token";
 
 // Only set the notification handler on native — not supported on web
 if (IS_NATIVE) {
@@ -41,26 +43,62 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const responseListener = useRef<Notifications.EventSubscription | null>(null);
 
   // ── Register push token (native only) ─────────────────────────────────────
+  // Re-runs whenever the logged-in user changes so the device's FCM token is
+  // always re-bound to the *current* account. Critical when two accounts share
+  // a phone (e.g. tester + provider) — without this the token stays mapped to
+  // whichever user logged in first.
   useEffect(() => {
-    if (!IS_NATIVE || !user || !authToken) return;
+    if (!IS_NATIVE || !user?.id || !authToken) return;
 
-    registerForPushNotificationsAsync().then(async (token) => {
-      if (!token) return;
+    // Cancellation guard: a stale async registerToken() from a previous user
+    // must not POST after the user has changed (which would re-bind the device
+    // token to the wrong account and silently swap who gets notifications).
+    let isActive = true;
+    const userIdAtMount = user.id;
+    const authTokenAtMount = authToken;
+
+    const registerToken = async () => {
+      const token = await registerForPushNotificationsAsync();
+      if (!isActive) return;
+      if (!token) {
+        console.warn("[push] No token returned (permission denied or simulator)");
+        return;
+      }
       setExpoPushToken(token);
+      try {
+        await AsyncStorage.setItem(PUSH_TOKEN_STORAGE_KEY, token);
+      } catch {}
+      if (!isActive) return;
 
       try {
         const API_BASE = process.env["EXPO_PUBLIC_API_URL"] || "https://campus-connect-davidaryan7256.replit.app/api";
-        await fetch(`${API_BASE}/notifications/push-token`, {
+        const res = await fetch(`${API_BASE}/notifications/push-token`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${authToken}`,
+            Authorization: `Bearer ${authTokenAtMount}`,
           },
           body: JSON.stringify({ token, platform: Platform.OS }),
         });
-        console.log("[push] Token registered with server");
+        if (!isActive) return;
+        if (res.ok) {
+          console.log(`[push] Token registered with server for user ${userIdAtMount}`);
+        } else {
+          console.warn(`[push] Server rejected token registration (${res.status})`);
+        }
       } catch (e) {
         console.warn("[push] Failed to register token with server", e);
+      }
+    };
+
+    registerToken();
+
+    // Re-register whenever the app comes back to the foreground. Cheap and
+    // self-healing: catches cases where the token was rotated by the OS, or
+    // the device was used by another account in between.
+    const appStateSub = AppState.addEventListener("change", (next) => {
+      if (next === "active" && isActive) {
+        registerToken();
       }
     });
 
@@ -75,11 +113,12 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     });
 
     return () => {
+      appStateSub.remove();
       notificationListener.current?.remove();
       responseListener.current?.remove();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, authToken]);
+  }, [user?.id, authToken]);
 
   // ── Handle taps when app was killed / backgrounded (native only) ───────────
   useEffect(() => {

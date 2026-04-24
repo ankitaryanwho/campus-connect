@@ -112,12 +112,19 @@ router.post("/push-token", authMiddleware, async (req, res) => {
 });
 
 // ─── Remove push token (logout) ───────────────────────────────────────────────
-
+//
+// Critical: scope the delete to (token AND user_id). Without this, a delayed
+// logout request from account A could arrive AFTER account B has already
+// re-bound the same token via the upsert in POST /push-token, and wipe out
+// B's mapping — silently breaking push for B until next foreground re-register.
 router.delete("/push-token", authMiddleware, async (req, res) => {
   try {
+    const userId = (req as any).userId;
     const { token } = req.body;
-    if (token) {
-      await db.execute(`DELETE FROM push_tokens WHERE token = '${token.replace(/'/g, "''")}'`);
+    if (token && userId) {
+      await db.execute(
+        `DELETE FROM push_tokens WHERE token = '${String(token).replace(/'/g, "''")}' AND user_id = '${String(userId).replace(/'/g, "''")}'`
+      );
     }
     res.json({ success: true });
   } catch (err) {

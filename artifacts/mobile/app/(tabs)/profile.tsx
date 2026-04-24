@@ -182,6 +182,39 @@ export default function ProfileScreen() {
     router.replace("/(auth)/login");
   };
 
+  const testPushMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("/notifications/test", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Test failed");
+      return data as {
+        userId: string;
+        firebaseConfigured: boolean;
+        tokenCount: number;
+        results: Array<{ ok?: boolean; type: string; errorCode?: string; errorMessage?: string }>;
+      };
+    },
+    onSuccess: (data) => {
+      if (!data.firebaseConfigured) {
+        showToast("Push not configured on server", "error");
+        return;
+      }
+      if (data.tokenCount === 0) {
+        showToast("No device registered for this account. Reopen the app and grant notifications.", "error");
+        return;
+      }
+      const fcmResults = data.results.filter((r) => r.type === "fcm");
+      const okCount = fcmResults.filter((r) => r.ok).length;
+      if (okCount > 0) {
+        showToast(`Test sent to ${okCount} device(s) — check your notifications!`, "success");
+      } else {
+        const firstErr = fcmResults.find((r) => !r.ok);
+        showToast(`Push failed: ${firstErr?.errorCode || firstErr?.errorMessage || "unknown"}`, "error");
+      }
+    },
+    onError: (err: any) => showToast(err.message || "Test failed", "error"),
+  });
+
   const pickAvatar = async () => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -255,15 +288,31 @@ export default function ProfileScreen() {
           <Feather name="edit-2" size={16} color={C.text} />
         </Pressable>
         <Text style={[styles.topTitle, { color: C.text }]}>Profile</Text>
-        <Pressable
-          style={[
-            styles.topBtn,
-            { backgroundColor: C.errorLight, borderColor: C.error + "33" },
-          ]}
-          onPress={handleLogout}
-        >
-          <Feather name="log-out" size={16} color={C.error} />
-        </Pressable>
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <Pressable
+            style={[
+              styles.topBtn,
+              { backgroundColor: C.backgroundSecondary, borderColor: C.border },
+            ]}
+            onPress={() => testPushMutation.mutate()}
+            disabled={testPushMutation.isPending}
+          >
+            {testPushMutation.isPending ? (
+              <ActivityIndicator size="small" color={C.text} />
+            ) : (
+              <Feather name="bell" size={16} color={C.text} />
+            )}
+          </Pressable>
+          <Pressable
+            style={[
+              styles.topBtn,
+              { backgroundColor: C.errorLight, borderColor: C.error + "33" },
+            ]}
+            onPress={handleLogout}
+          >
+            <Feather name="log-out" size={16} color={C.error} />
+          </Pressable>
+        </View>
       </View>
 
       <ScrollView

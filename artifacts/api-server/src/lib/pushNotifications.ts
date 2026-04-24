@@ -77,6 +77,11 @@ export async function notifyUser(userId: string, payload: NotifyPayload) {
     const tokens = await getPushTokens(userId);
     if (tokens.length) {
       await sendPushNotifications(tokens, payload.title, payload.body, payload.data ?? {});
+    } else {
+      // No push tokens registered for this user — in-app notification was still saved,
+      // but no banner will appear on their device. Common causes: never opened the app,
+      // denied notification permission, or another account stole the device's token.
+      console.warn(`[notify] No push tokens for user ${userId} (type=${payload.type}) — in-app only`);
     }
   } catch (err) {
     console.error("[notify] Error notifying user:", err);

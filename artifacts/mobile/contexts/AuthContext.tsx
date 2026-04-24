@@ -130,11 +130,30 @@ const [AuthProvider, useAuth] = createContextHook<AuthState>(() => {
   }, []);
 
   const logout = useCallback(async () => {
+    // Best-effort: tell the server to drop this device's push token BEFORE we
+    // clear the auth token. This prevents stale tokens from staying mapped to
+    // a logged-out user, which causes "I don't get notifications anymore" bugs
+    // when another account logs in on the same device.
+    try {
+      const currentToken = token || (await AsyncStorage.getItem("@auth_token"));
+      const pushToken = await AsyncStorage.getItem("@push_token");
+      if (currentToken && pushToken) {
+        await fetch(`${API_BASE}/notifications/push-token`, {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${currentToken}`,
+          },
+          body: JSON.stringify({ token: pushToken }),
+        }).catch(() => {});
+      }
+    } catch {}
     setToken(null);
     setUser(null);
     await AsyncStorage.removeItem("@auth_token");
     await AsyncStorage.removeItem("@auth_user");
-  }, []);
+    await AsyncStorage.removeItem("@push_token");
+  }, [token]);
 
   const updateUser = useCallback((updatedUser: User) => {
     setUser(updatedUser);
