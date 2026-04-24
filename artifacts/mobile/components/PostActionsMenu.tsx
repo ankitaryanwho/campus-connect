@@ -24,7 +24,7 @@ type Post = {
 };
 
 interface Props {
-  post: Post;
+  post: Post | null;
   visible: boolean;
   onClose: () => void;
   /** Called after a successful action so parents can refresh local state if needed. */
@@ -35,6 +35,7 @@ interface Props {
 // Bottom-sheet menu shown from a post's 3-dot button.
 // Renders Edit / Hide-or-Unhide / Delete actions for the owner.
 // Internally manages an Edit modal so each call site doesn't repeat that boilerplate.
+// Accepts post=null so call sites can always render this component without guards.
 export function PostActionsMenu({ post, visible, onClose, onChanged, isDark = false }: Props) {
   const C = Colors[isDark ? "dark" : "light"];
   const { apiRequest } = useAuth();
@@ -42,21 +43,23 @@ export function PostActionsMenu({ post, visible, onClose, onChanged, isDark = fa
   const queryClient = useQueryClient();
 
   const [editing, setEditing] = useState(false);
-  const [editText, setEditText] = useState(post.content);
+  // Draft text starts empty; the effect below syncs it when the menu opens.
+  const [editText, setEditText] = useState("");
 
-  // When the menu opens for a fresh post, reset the draft to the latest content.
+  // When the menu opens, seed the draft from the current post content.
   React.useEffect(() => {
-    if (visible) setEditText(post.content);
-  }, [visible, post.content]);
+    if (visible && post) setEditText(post.content);
+  }, [visible, post?.content]);
 
-  const invalidateAll = () => {
+  const invalidateAll = (postId: string) => {
     queryClient.invalidateQueries({ queryKey: ["posts"] });
-    queryClient.invalidateQueries({ queryKey: ["post", post.id] });
+    queryClient.invalidateQueries({ queryKey: ["post", postId] });
     queryClient.invalidateQueries({ queryKey: ["userPosts"] });
   };
 
   const editMutation = useMutation({
     mutationFn: async () => {
+      if (!post) throw new Error("No post selected");
       const trimmed = editText.trim();
       if (!trimmed) throw new Error("Post cannot be empty");
       const res = await apiRequest(`/posts/${post.id}`, {
@@ -71,7 +74,7 @@ export function PostActionsMenu({ post, visible, onClose, onChanged, isDark = fa
       showToast("Post updated", "success");
       setEditing(false);
       onClose();
-      invalidateAll();
+      if (post) invalidateAll(post.id);
       onChanged?.("edit");
     },
     onError: (err: any) => showToast(err.message || "Could not edit post", "error"),
@@ -79,6 +82,7 @@ export function PostActionsMenu({ post, visible, onClose, onChanged, isDark = fa
 
   const hideMutation = useMutation({
     mutationFn: async (action: "hide" | "unhide") => {
+      if (!post) throw new Error("No post selected");
       const res = await apiRequest(`/posts/${post.id}/${action}`, { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || `Failed to ${action}`);
@@ -87,7 +91,7 @@ export function PostActionsMenu({ post, visible, onClose, onChanged, isDark = fa
     onSuccess: ({ action }) => {
       showToast(action === "hide" ? "Post hidden from others" : "Post is public again", "success");
       onClose();
-      invalidateAll();
+      if (post) invalidateAll(post.id);
       onChanged?.(action);
     },
     onError: (err: any) => showToast(err.message || "Could not update post", "error"),
@@ -95,6 +99,7 @@ export function PostActionsMenu({ post, visible, onClose, onChanged, isDark = fa
 
   const deleteMutation = useMutation({
     mutationFn: async () => {
+      if (!post) throw new Error("No post selected");
       const res = await apiRequest(`/posts/${post.id}`, { method: "DELETE" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to delete");
@@ -103,14 +108,16 @@ export function PostActionsMenu({ post, visible, onClose, onChanged, isDark = fa
     onSuccess: () => {
       showToast("Post deleted", "success");
       onClose();
-      invalidateAll();
+      if (post) invalidateAll(post.id);
       onChanged?.("delete");
     },
     onError: (err: any) => showToast(err.message || "Could not delete post", "error"),
   });
 
+  // All hooks are above this line — safe to bail out here if there's nothing to show.
+  if (!post || !visible) return null;
+
   const confirmDelete = () => {
-    // Web's window.confirm is reliable in expo-web; native uses Alert.
     if (Platform.OS === "web") {
       // eslint-disable-next-line no-alert
       const ok = typeof window !== "undefined" && window.confirm(
