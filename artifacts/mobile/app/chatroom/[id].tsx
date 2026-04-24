@@ -1,8 +1,9 @@
 import React, { useState, useRef } from "react";
 import {
   View, Text, FlatList, TextInput, Pressable, StyleSheet,
-  useColorScheme, ActivityIndicator, Image, Platform, KeyboardAvoidingView,
+  useColorScheme, ActivityIndicator, Image, Platform,
 } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";

@@ -1,8 +1,9 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef } from "react";
 import {
   View, Text, FlatList, TextInput, Pressable, StyleSheet,
-  useColorScheme, ActivityIndicator, Image, Platform, KeyboardAvoidingView, Keyboard,
+  useColorScheme, ActivityIndicator, Image, Platform,
 } from "react-native";
+import { KeyboardAvoidingView, useKeyboardState } from "react-native-keyboard-controller";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
@@ -77,14 +78,8 @@ export default function ChatDetailScreen() {
   const { apiRequest, user } = useAuth();
   const queryClient = useQueryClient();
   const [text, setText] = useState("");
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const keyboardVisible = useKeyboardState((s) => s.isVisible);
   const inputRef = useRef<TextInput>(null);
-
-  useEffect(() => {
-    const show = Keyboard.addListener("keyboardDidShow", () => setKeyboardVisible(true));
-    const hide = Keyboard.addListener("keyboardDidHide", () => setKeyboardVisible(false));
-    return () => { show.remove(); hide.remove(); };
-  }, []);
 
   const convQuery = useQuery({
     queryKey: ["conversation", id],
