@@ -1336,24 +1336,31 @@ router.get("/my-earnings", authMiddleware, async (req, res) => {
       ))
       .orderBy(desc(transactionsTable.createdAt));
 
-    const now = new Date();
-    const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
-    const yesterdayStart = new Date(todayStart); yesterdayStart.setDate(yesterdayStart.getDate() - 1);
-    // Week starts on Monday (00:00)
-    const weekStart = new Date(todayStart);
-    const dayOfWeek = weekStart.getDay(); // 0 = Sunday, 1 = Monday, ...
-    const offsetToMonday = (dayOfWeek + 6) % 7;
-    weekStart.setDate(weekStart.getDate() - offsetToMonday);
+    // Compute day/week boundaries in IST (UTC+5:30) — the app's primary user audience is in India.
+    // The server runs in UTC, so we must shift before bucketing to avoid "today" leaking ±5.5 hours.
+    const IST_OFFSET_MS = (5 * 60 + 30) * 60 * 1000;
+    const nowMs = Date.now();
+    // "now" expressed as if IST were UTC, so getUTC* methods return IST calendar parts.
+    const istNow = new Date(nowMs + IST_OFFSET_MS);
+    const istY = istNow.getUTCFullYear();
+    const istM = istNow.getUTCMonth();
+    const istD = istNow.getUTCDate();
+    const istDayOfWeek = istNow.getUTCDay(); // 0 = Sunday, 1 = Monday, ...
+    const offsetToMonday = (istDayOfWeek + 6) % 7;
+    // Convert IST midnight back to a real UTC instant for comparison against UTC-stored createdAt.
+    const todayStartMs = Date.UTC(istY, istM, istD) - IST_OFFSET_MS;
+    const yesterdayStartMs = todayStartMs - 24 * 60 * 60 * 1000;
+    const weekStartMs = todayStartMs - offsetToMonday * 24 * 60 * 60 * 1000;
 
     let today = 0, yesterday = 0, thisWeek = 0, allTime = 0;
     for (const t of txns) {
       const amt = parseFloat((t.amount as unknown as string) || "0");
-      const created = t.createdAt ? new Date(t.createdAt) : null;
+      const createdMs = t.createdAt ? new Date(t.createdAt).getTime() : NaN;
       allTime += amt;
-      if (!created) continue;
-      if (created >= todayStart) today += amt;
-      else if (created >= yesterdayStart) yesterday += amt;
-      if (created >= weekStart) thisWeek += amt;
+      if (!Number.isFinite(createdMs)) continue;
+      if (createdMs >= todayStartMs) today += amt;
+      else if (createdMs >= yesterdayStartMs) yesterday += amt;
+      if (createdMs >= weekStartMs) thisWeek += amt;
     }
 
     res.json({
