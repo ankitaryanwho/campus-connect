@@ -15,12 +15,19 @@ function getApp(): admin.app.App {
   return firebaseApp;
 }
 
+export interface FcmSendResult {
+  ok: boolean;
+  shouldDeleteToken: boolean;
+  errorCode?: string;
+  errorMessage?: string;
+}
+
 export async function sendFcmNotification(
   token: string,
   title: string,
   body: string,
   data: Record<string, string> = {}
-): Promise<boolean> {
+): Promise<FcmSendResult> {
   try {
     const app = getApp();
     const messageId = await admin.messaging(app).send({
@@ -33,9 +40,16 @@ export async function sendFcmNotification(
       },
     });
     console.log(`[fcm] Sent OK: ${messageId}`);
-    return true;
+    return { ok: true, shouldDeleteToken: false };
   } catch (err: any) {
-    console.error(`[fcm] Send failed for token ${token.substring(0, 20)}...:`, err?.message ?? err);
-    return false;
+    const code: string = err?.errorInfo?.code ?? err?.code ?? "";
+    const message: string = err?.message ?? String(err);
+    // Delete tokens that are permanently invalid (token-specific errors only;
+    // do NOT include "invalid-argument" — that can fire on payload bugs too)
+    const deletable =
+      code === "messaging/registration-token-not-registered" ||
+      code === "messaging/invalid-registration-token";
+    console.error(`[fcm] Send failed for token ${token.substring(0, 20)}... (code=${code}): ${message}`);
+    return { ok: false, shouldDeleteToken: deletable, errorCode: code, errorMessage: message };
   }
 }

@@ -26,27 +26,14 @@ async function getPushTokens(userId: string): Promise<string[]> {
   }
 }
 
-// ─── Send via Expo Push API (for ExponentPushToken format) ───────────────────
+// ─── Delete a stale/invalid token from DB ─────────────────────────────────────
 
-async function sendViaExpoPush(tokens: string[], title: string, body: string, data: Record<string, string> = {}) {
-  const messages = tokens.map(to => ({ to, title, body, data, sound: "default", priority: "high" }));
+async function deleteToken(token: string) {
   try {
-    const response = await fetch("https://exp.host/--/api/v2/push/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify(messages),
-    });
-    const result = await response.json() as any;
-    const items = Array.isArray(result?.data) ? result.data : [result?.data].filter(Boolean);
-    items.forEach((item: any, i: number) => {
-      if (item?.status === "error") {
-        console.error(`[push/expo] Token ${tokens[i]?.substring(0, 30)} failed: ${item.message}`);
-      } else {
-        console.log(`[push/expo] Sent to ${tokens[i]?.substring(0, 30)}: ${item?.status}`);
-      }
-    });
-  } catch (err) {
-    console.error("[push/expo] Failed:", err);
+    await db.execute(`DELETE FROM push_tokens WHERE token = '${token.replace(/'/g, "''")}'`);
+    console.log(`[push] Removed stale token: ${token.substring(0, 30)}...`);
+  } catch (e) {
+    console.error("[push] Failed to delete stale token:", e);
   }
 }
 
@@ -55,14 +42,22 @@ async function sendViaExpoPush(tokens: string[], title: string, body: string, da
 async function sendPushNotifications(tokens: string[], title: string, body: string, data: Record<string, string> = {}) {
   if (!tokens.length) return;
 
+  // App now uses native FCM tokens via getDevicePushTokenAsync().
+  // Old ExponentPushToken[...] entries are stale legacy tokens — delete them.
   const expoTokens = tokens.filter(t => t.startsWith("ExponentPushToken["));
   const fcmTokens = tokens.filter(t => !t.startsWith("ExponentPushToken["));
 
   if (expoTokens.length > 0) {
-    await sendViaExpoPush(expoTokens, title, body, data);
+    await Promise.all(expoTokens.map(t => deleteToken(t)));
   }
+
   if (fcmTokens.length > 0) {
-    await Promise.all(fcmTokens.map(t => sendFcmNotification(t, title, body, data)));
+    await Promise.all(fcmTokens.map(async (t) => {
+      const result = await sendFcmNotification(t, title, body, data);
+      if (result.shouldDeleteToken) {
+        await deleteToken(t);
+      }
+    }));
   }
 }
 
