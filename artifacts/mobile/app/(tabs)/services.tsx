@@ -2484,8 +2484,12 @@ export default function ServicesScreen() {
       return json;
     },
     onMutate: async ({ id, action, tab }: { id: string; action: string; tab: string; body?: any }) => {
-      const isOptimistic = tab === "deliveries" && OPTIMISTIC_DELIVERY_ACTIONS.has(action);
-      if (!isOptimistic) setPendingId(id);
+      // Always mark this item as pending so the action button is disabled while
+      // the request is in-flight. Without this, optimistic actions (accept,
+      // progress, confirm, cancel, etc.) leave the button tappable, and because
+      // the server call takes ~2-3 seconds the agent can double/triple-tap and
+      // accidentally advance the order multiple status steps.
+      setPendingId(id);
       if (tab !== "deliveries") return {};
       await queryClient.cancelQueries({ queryKey: ["services", "all"] });
       const prevDeliveries = queryClient.getQueryData(["services", "all"]);
