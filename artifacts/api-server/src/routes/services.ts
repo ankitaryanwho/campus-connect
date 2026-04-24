@@ -851,22 +851,90 @@ router.post("/deliveries/:id/confirm", authMiddleware, async (req, res) => {
     if (rows[0].chargeStatus !== "paid") {
       res.status(400).json({ error: "PaymentRequired", message: "Please pay the delivery charge before marking the order as received." }); return;
     }
+
+    // Verify the student actually paid via wallet — defense-in-depth in case chargeStatus was flipped without an actual debit.
+    // Without this, a malicious or buggy /confirm-payment call could let the agent receive payout without the student being debited.
+    const studentDebit = await db.select({ id: transactionsTable.id }).from(transactionsTable)
+      .where(and(
+        eq(transactionsTable.orderId, id),
+        eq(transactionsTable.orderType, "delivery"),
+        eq(transactionsTable.type, "debit"),
+      ))
+      .limit(1);
+    if (!studentDebit.length) {
+      res.status(400).json({ error: "PaymentMissing", message: "No record of your delivery charge payment. Please pay the delivery charge first." }); return;
+    }
+
+    // Idempotent atomic transition: only the call that flips status from "completed" → "delivered" wins.
+    // Concurrent calls will see 0 rows and exit without crediting twice.
     const history = appendHistory(rows[0].statusHistory, "delivered");
-    const updated = await db.update(deliveriesTable).set({ status: "delivered", statusHistory: history }).where(eq(deliveriesTable.id, id)).returning();
+    const updated = await db.update(deliveriesTable)
+      .set({ status: "delivered", statusHistory: history })
+      .where(and(
+        eq(deliveriesTable.id, id),
+        eq(deliveriesTable.status, "completed"),
+        eq(deliveriesTable.chargeStatus, "paid"),
+      ))
+      .returning();
+
+    if (!updated.length) {
+      // Someone else already confirmed (race), or status changed underneath us.
+      const fresh = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
+      if (fresh.length && fresh[0].status === "delivered") {
+        const [requester, agent] = await Promise.all([safeUser(userId), fresh[0].deliveryAgentId ? safeUser(fresh[0].deliveryAgentId) : Promise.resolve(null)]);
+        res.json({ ...fresh[0], requester, deliveryAgent: agent, agentPayout: 0, alreadyConfirmed: true });
+        return;
+      }
+      res.status(409).json({ error: "Conflict", message: "Delivery state changed. Please refresh and retry." }); return;
+    }
+
+    // Idempotent payout release: skip if a payout txn already exists in the AGENT'S wallet for this delivery.
+    // We scope by agent wallet because /pay-delivery-charge also writes a credit row for the same orderId
+    // to the ADMIN wallet (platform fee + GST); without the wallet filter we'd skip every legitimate payout.
+    let agentPayout = 0;
+    if (updated[0].deliveryAgentId) {
+      const agentWallet = await getOrCreateWallet(updated[0].deliveryAgentId);
+      const existingPayout = await db.select({ id: transactionsTable.id }).from(transactionsTable)
+        .where(and(
+          eq(transactionsTable.walletId, agentWallet.id),
+          eq(transactionsTable.orderId, id),
+          eq(transactionsTable.orderType, "delivery"),
+          eq(transactionsTable.type, "credit"),
+        ))
+        .limit(1);
+      if (!existingPayout.length) {
+        const fee = parseFloat((updated[0].deliveryFee as unknown as string) || "30");
+        agentPayout = parseFloat((fee * (1 - PLATFORM_FEE_PCT)).toFixed(2));
+        if (agentPayout > 0) {
+          try {
+            await creditWallet(updated[0].deliveryAgentId, agentPayout, `Delivery payout released: order #${id}`, id, "delivery");
+          } catch (creditErr) {
+            // Credit failed after status flip. Log loudly so we can recover manually; do not silently swallow.
+            console.error("[deliveries/confirm] PAYOUT FAILED after status flip — manual recovery needed", { deliveryId: id, agentId: updated[0].deliveryAgentId, agentPayout, err: (creditErr as any)?.message });
+          }
+        }
+      }
+    }
+
     const [requester, agent] = await Promise.all([safeUser(userId), updated[0].deliveryAgentId ? safeUser(updated[0].deliveryAgentId) : Promise.resolve(null)]);
-    res.json({ ...updated[0], requester, deliveryAgent: agent });
+    res.json({ ...updated[0], requester, deliveryAgent: agent, agentPayout });
     deleteOrderMessages(id).catch(() => {});
     try {
       if (updated[0].deliveryAgentId) {
         await notifyUser(updated[0].deliveryAgentId, {
           type: "delivery_confirmed",
-          title: "✅ Delivery Confirmed!",
-          body: `${requester?.name ?? "The student"} has confirmed receipt of the delivery.`,
-          data: { screen: "/(tabs)/services", tab: "deliveries", itemId: id },
+          title: "✅ Delivery Confirmed — Payout Released!",
+          body: agentPayout > 0
+            ? `${requester?.name ?? "The student"} confirmed receipt. ₹${agentPayout.toFixed(2)} has been credited to your wallet!`
+            : `${requester?.name ?? "The student"} has confirmed receipt of the delivery.`,
+          data: { screen: "/(tabs)/wallet", itemId: id },
         });
       }
     } catch {}
-  } catch (err) { res.status(500).json({ error: "ServerError", message: "Failed to confirm delivery" }); }
+  } catch (err) {
+    console.error("[deliveries/confirm] ERROR:", (err as any)?.message);
+    res.status(500).json({ error: "ServerError", message: "Failed to confirm delivery" });
+  }
 });
 
 router.post("/deliveries/:id/reject", authMiddleware, async (req, res) => {
@@ -1121,13 +1189,11 @@ router.post("/deliveries/:id/pay-delivery-charge", authMiddleware, async (req, r
     if (parseFloat(wallet.balance) < totalCharge) {
       res.status(400).json({ error: "InsufficientBalance", message: `Insufficient wallet balance. Required: ₹${totalCharge.toFixed(2)}, Available: ₹${parseFloat(wallet.balance).toFixed(2)}` }); return;
     }
-    // Student pays fee + GST; agent gets 80% of base fee; admin gets 20% of base fee + full GST
+    // Student pays fee + GST; agent gets 80% of base fee (HELD until student confirms receipt); admin gets 20% of base fee + full GST immediately
     const agentPayout = parseFloat((fee * (1 - PLATFORM_FEE_PCT)).toFixed(2));
     const platformRevenue = parseFloat((fee * PLATFORM_FEE_PCT + gst).toFixed(2));
     await debitWallet(userId, totalCharge, `Delivery fee + GST: order #${id}`, id, "delivery");
-    if (rows[0].deliveryAgentId) {
-      await creditWallet(rows[0].deliveryAgentId, agentPayout, `Delivery fee received: order #${id}`, id, "delivery");
-    }
+    // Agent payout is HELD by the platform here. It is released to the agent's wallet only when the student marks the order as received (see /deliveries/:id/confirm).
     await creditWallet(ADMIN_USER_ID, platformRevenue, `Platform fee + GST: delivery #${id}`, id, "delivery");
     await db.update(deliveriesTable).set({ chargeStatus: "paid" }).where(eq(deliveriesTable.id, id));
     const updated = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
@@ -1136,9 +1202,9 @@ router.post("/deliveries/:id/pay-delivery-charge", authMiddleware, async (req, r
       if (rows[0].deliveryAgentId) {
         await notifyUser(rows[0].deliveryAgentId, {
           type: "delivery_charge_paid",
-          title: "💰 Delivery Fee Received!",
-          body: `₹${agentPayout.toFixed(2)} has been credited to your wallet for delivery #${id}.`,
-          data: { screen: "/(tabs)/wallet" },
+          title: "💳 Delivery Fee Paid!",
+          body: `Student paid ₹${totalCharge.toFixed(2)} for delivery #${id}. Your ₹${agentPayout.toFixed(2)} payout will be credited once the student confirms receipt.`,
+          data: { screen: "/(tabs)/services", tab: "deliveries", itemId: id },
         });
       }
     } catch {}
@@ -1244,33 +1310,72 @@ router.post("/tasks/:taskId/apply", authMiddleware, async (req, res) => {
 
 // ─── Provider Earnings ────────────────────────────────────────────────────────
 
+// Returns the provider's earnings, using the wallet transactions table as the single source of truth.
+// Counts every wallet credit tied to an order (orderType IS NOT NULL) — this includes deliveries,
+// assignment/certification/project bookings, and any future service that credits the wallet via creditWallet().
+// Excludes wallet top-ups, peer transfers (orderType IS NULL).
 router.get("/my-earnings", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
 
-    // Gather completed assignments as provider
-    const completedAssignments = await db.select().from(assignmentsTable)
-      .where(and(eq(assignmentsTable.bookedById, userId), eq(assignmentsTable.status, "delivered")));
+    const wallets = await db.select().from(walletsTable).where(eq(walletsTable.userId, userId)).limit(1);
+    if (!wallets.length) {
+      res.json({ today: 0, yesterday: 0, thisWeek: 0, allTime: 0, total: 0, orders: 0, history: [] });
+      return;
+    }
+    const walletId = wallets[0].id;
 
-    // Gather completed deliveries as provider
-    const completedDeliveries = await db.select().from(deliveriesTable)
-      .where(and(eq(deliveriesTable.deliveryAgentId, userId), eq(deliveriesTable.status, "delivered")));
+    // Earnings = wallet credits tied to a service order (orderType IS NOT NULL),
+    // excluding refunds (where description starts with "Refund:") since those are money returning to the user as a buyer, not earned.
+    const txns = await db.select().from(transactionsTable)
+      .where(and(
+        eq(transactionsTable.walletId, walletId),
+        eq(transactionsTable.type, "credit"),
+        sql`${transactionsTable.orderType} IS NOT NULL`,
+        sql`${transactionsTable.description} NOT ILIKE 'Refund:%'`,
+      ))
+      .orderBy(desc(transactionsTable.createdAt));
 
-    const allOrders = [
-      ...completedAssignments.map(a => ({ amount: a.price, createdAt: a.createdAt, type: "assignment" })),
-      ...completedDeliveries.map(d => ({ amount: d.deliveryFee || "0", createdAt: d.createdAt, type: "delivery" })),
-    ];
+    const now = new Date();
+    const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
+    const yesterdayStart = new Date(todayStart); yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+    // Week starts on Monday (00:00)
+    const weekStart = new Date(todayStart);
+    const dayOfWeek = weekStart.getDay(); // 0 = Sunday, 1 = Monday, ...
+    const offsetToMonday = (dayOfWeek + 6) % 7;
+    weekStart.setDate(weekStart.getDate() - offsetToMonday);
 
-    const total = allOrders.reduce((sum, o) => sum + parseFloat(o.amount || "0"), 0);
-    const today = allOrders
-      .filter(o => o.createdAt && new Date(o.createdAt) >= todayStart)
-      .reduce((sum, o) => sum + parseFloat(o.amount || "0"), 0);
+    let today = 0, yesterday = 0, thisWeek = 0, allTime = 0;
+    for (const t of txns) {
+      const amt = parseFloat((t.amount as unknown as string) || "0");
+      const created = t.createdAt ? new Date(t.createdAt) : null;
+      allTime += amt;
+      if (!created) continue;
+      if (created >= todayStart) today += amt;
+      else if (created >= yesterdayStart) yesterday += amt;
+      if (created >= weekStart) thisWeek += amt;
+    }
 
-    res.json({ total, today, orders: allOrders.length });
+    res.json({
+      today: parseFloat(today.toFixed(2)),
+      yesterday: parseFloat(yesterday.toFixed(2)),
+      thisWeek: parseFloat(thisWeek.toFixed(2)),
+      allTime: parseFloat(allTime.toFixed(2)),
+      // back-compat with older mobile clients that read `total`
+      total: parseFloat(allTime.toFixed(2)),
+      orders: txns.length,
+      history: txns.map(t => ({
+        id: t.id,
+        amount: t.amount,
+        description: t.description,
+        orderId: t.orderId,
+        orderType: t.orderType,
+        createdAt: t.createdAt,
+      })),
+    });
   } catch (err) {
-    console.error(err);
-    res.json({ total: 0, today: 0, orders: 0 });
+    console.error("[my-earnings] ERROR:", err);
+    res.json({ today: 0, yesterday: 0, thisWeek: 0, allTime: 0, total: 0, orders: 0, history: [] });
   }
 });
 

@@ -150,7 +150,7 @@ export default function ProfileScreen() {
     queryKey: ["earnings"],
     queryFn: async () => {
       const res = await apiRequest("/services/my-earnings");
-      if (!res.ok) return { today: 0, total: 0, orders: 0 };
+      if (!res.ok) return { today: 0, yesterday: 0, thisWeek: 0, allTime: 0, total: 0, orders: 0, history: [] };
       return res.json();
     },
     enabled: user?.role === "provider",
@@ -534,12 +534,12 @@ export default function ProfileScreen() {
               />
 
               <View style={styles.earningsHeader}>
-                <View>
+                <View style={{ flex: 1 }}>
                   <Text style={styles.earningsLabel}>Today's Earnings</Text>
                   {earningsQuery.isLoading ? (
                     <ActivityIndicator
                       color="#fff"
-                      style={{ marginVertical: 6 }}
+                      style={{ marginVertical: 6, alignSelf: "flex-start" }}
                     />
                   ) : (
                     <Text style={styles.earningsAmount}>
@@ -550,6 +550,18 @@ export default function ProfileScreen() {
                 <View style={styles.earningsTrendIcon}>
                   <Feather name="trending-up" size={20} color="#34D399" />
                 </View>
+              </View>
+
+              {/* All Time Earnings — secondary headline */}
+              <View style={styles.allTimeBlock}>
+                <Text style={styles.allTimeLabel}>All Time Earnings</Text>
+                {earningsQuery.isLoading ? (
+                  <ActivityIndicator color="#fff" style={{ marginVertical: 4, alignSelf: "flex-start" }} />
+                ) : (
+                  <Text style={styles.allTimeAmount}>
+                    ₹{formatAmount(earningsQuery.data?.allTime ?? earningsQuery.data?.total ?? 0)}
+                  </Text>
+                )}
               </View>
 
               {/* Mini bar chart */}
@@ -567,9 +579,9 @@ export default function ProfileScreen() {
               <View style={styles.earningsFooter}>
                 <View>
                   <Text style={styles.earningsStat}>
-                    ₹{formatAmount(earningsQuery.data?.total || 0)}
+                    ₹{formatAmount(earningsQuery.data?.thisWeek || 0)}
                   </Text>
-                  <Text style={styles.earningsStatLabel}>Total Earned</Text>
+                  <Text style={styles.earningsStatLabel}>This Week</Text>
                 </View>
                 <View style={styles.earningsFooterDivider} />
                 <View>
@@ -581,6 +593,7 @@ export default function ProfileScreen() {
                 <TouchableOpacity
                   style={styles.exploreBtn}
                   activeOpacity={0.85}
+                  onPress={() => router.push("/earnings")}
                 >
                   <LinearGradient
                     colors={["#34D399", "#059669"]}
@@ -1010,6 +1023,25 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(52,211,153,0.2)",
     alignItems: "center",
     justifyContent: "center",
+  },
+  allTimeBlock: {
+    marginTop: 6,
+    marginBottom: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.12)",
+  },
+  allTimeLabel: {
+    color: "rgba(255,255,255,0.65)",
+    fontSize: 12,
+    fontFamily: "Inter_500Medium",
+    marginBottom: 4,
+  },
+  allTimeAmount: {
+    color: "#34D399",
+    fontSize: 24,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: -0.5,
   },
   miniChart: {
     flexDirection: "row",
