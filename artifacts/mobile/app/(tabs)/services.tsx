@@ -2188,9 +2188,14 @@ export default function ServicesScreen() {
   // Keep the open Order Details modal in sync with the latest cache. Without
   // this, `selectedItem` is a snapshot taken at the moment the modal opened —
   // so after a status update, the modal still shows the OLD status & button
-  // until the user closes and reopens it. Re-derive from the live query data
-  // on every cache update by id+type, preserving synthetic flags (_type,
-  // _isBooking, _isSynthetic, _hasDetail).
+  // until the user closes and reopens it.
+  //
+  // Two-layer defense:
+  //  1. `liveSelectedItem` (useMemo): re-derives every render from the live
+  //     query cache so the modal always renders fresh data even if state is stale.
+  //  2. `useEffect` below: actively pushes status/charge changes back into
+  //     `selectedItem` state, so any other code reading `selectedItem` directly
+  //     (or React Native batching skipping the memo recompute) still gets fresh data.
   const liveSelectedItem = useMemo(() => {
     if (!selectedItem || !allData) return selectedItem;
     const t = selectedItem._type as string | undefined;
@@ -2199,10 +2204,32 @@ export default function ServicesScreen() {
     const collection: any[] = (allData as any)[collectionKey] ?? [];
     const fresh = collection.find((x: any) => x.id === selectedItem.id);
     if (!fresh) return selectedItem;
-    // Merge: live data wins, but preserve client-only fields (_type, etc.)
-    // and any extra detail fetched separately (_hasDetail/images).
     return { ...selectedItem, ...fresh, _type: t, _isBooking: selectedItem._isBooking, _isSynthetic: selectedItem._isSynthetic, _hasDetail: selectedItem._hasDetail };
   }, [selectedItem, allData]);
+
+  useEffect(() => {
+    if (!selectedItem || !allData) return;
+    const t = selectedItem._type as string | undefined;
+    if (!t) return;
+    const collectionKey = selectedItem._isBooking ? "bookings" : t;
+    const collection: any[] = (allData as any)[collectionKey] ?? [];
+    const fresh = collection.find((x: any) => x.id === selectedItem.id);
+    if (!fresh) return;
+    // Only push an update if a meaningful field actually changed — otherwise
+    // we'd loop forever (setSelectedItem -> re-run effect -> setSelectedItem ...).
+    const changed =
+      fresh.status !== selectedItem.status ||
+      fresh.statusHistory !== selectedItem.statusHistory ||
+      fresh.chargeStatus !== selectedItem.chargeStatus ||
+      fresh.selfieTimestamp !== selectedItem.selfieTimestamp ||
+      fresh.locationPhotoTimestamp !== selectedItem.locationPhotoTimestamp ||
+      fresh.paymentScreenshotUrl !== selectedItem.paymentScreenshotUrl ||
+      fresh.qrImageUrl !== selectedItem.qrImageUrl;
+    if (!changed) return;
+    setSelectedItem((prev: any) => (prev?.id === fresh.id
+      ? { ...prev, ...fresh, _type: t, _isBooking: prev._isBooking, _isSynthetic: prev._isSynthetic, _hasDetail: prev._hasDetail }
+      : prev));
+  }, [allData, selectedItem]);
   const canPost = (cat: string) => {
     // Delivery and tasks: anyone can post
     if (cat === "deliveries" || cat === "tasks") return true;
