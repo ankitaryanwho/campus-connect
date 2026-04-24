@@ -35,18 +35,20 @@ const OUTLET_LOCATIONS = ["Southern Stories", "Hotspot", "Snapeats", "Kathi Junc
 const ALL_PICKUP_LOCATIONS = [...OUTLET_LOCATIONS, ...GATE_LOCATIONS];
 const COURIER_COMPANIES = ["EKart Logistics", "BlueDart", "Amazon Shipping", "ShadowFax", "Express News", "SafeXpress"];
 const DELIVERY_CHARGE = 30;
+const GST_RATE = 0.18;
 
 const isGate = (loc: string) => loc.startsWith("Gate No");
 
-type CardId = "item" | "pickup" | "dropoff" | "payment";
-const STEPS: CardId[] = ["item", "pickup", "dropoff", "payment"];
+// Step order: pickup → item → dropoff → subtotal
+type CardId = "pickup" | "item" | "dropoff" | "subtotal";
+const STEPS: CardId[] = ["pickup", "item", "dropoff", "subtotal"];
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function AccordionCard({
-  id, active, done, label, summary, onToggle, children,
+  active, done, label, summary, onToggle, children,
 }: {
-  id: CardId; active: boolean; done: boolean; label: string;
+  active: boolean; done: boolean; label: string;
   summary: string; onToggle: () => void; children: React.ReactNode;
 }) {
   return (
@@ -178,7 +180,10 @@ export default function RequestDeliveryScreen() {
   const { showToast } = useToast();
   const queryClient = useQueryClient();
 
+  // Active card — clicking the header of a DIFFERENT card opens it;
+  // clicking the header of the CURRENT card does nothing (no collapse).
   const [activeCard, setActiveCard] = useState<CardId>("pickup");
+
   const [pickupLocation, setPickupLocation] = useState("");
   const [locationSearch, setLocationSearch] = useState("");
   const [dropLocation, setDropLocation] = useState("");
@@ -203,8 +208,10 @@ export default function RequestDeliveryScreen() {
   const isGatePickup = pickupLocation ? isGate(pickupLocation) : false;
   const isOutletPickup = pickupLocation ? !isGate(pickupLocation) : false;
   const cartItems = Object.values(cart) as any[];
-  const subtotal = cartItems.reduce((s, i) => s + parseFloat(i.price) * i.qty, 0);
-  const total = isOutletPickup ? subtotal + DELIVERY_CHARGE : DELIVERY_CHARGE;
+  const itemsTotal = cartItems.reduce((s, i) => s + parseFloat(i.price) * i.qty, 0);
+  const gstAmount = Math.round(DELIVERY_CHARGE * GST_RATE);
+  // Bottom bar total = item price + delivery charge (no GST per requirement)
+  const bottomTotal = isOutletPickup ? itemsTotal + DELIVERY_CHARGE : DELIVERY_CHARGE;
 
   const outletMenu = isOutletPickup
     ? allItems.filter((i) => i.outletName === pickupLocation && i.available)
@@ -215,14 +222,14 @@ export default function RequestDeliveryScreen() {
   );
 
   const done: Record<CardId, boolean> = {
+    pickup: !!pickupLocation,
     item: isGatePickup
       ? !!(websiteName && courierCompany && orderCustomerName && orderId && orderMobile)
       : isOutletPickup
       ? cartItems.length > 0
       : false,
-    pickup: !!pickupLocation,
     dropoff: !!dropLocation.trim(),
-    payment: false,
+    subtotal: false,
   };
 
   const isValid =
@@ -254,7 +261,7 @@ export default function RequestDeliveryScreen() {
           price: parseFloat(i.price),
           qty: i.qty,
         }));
-        payload.subtotal = subtotal;
+        payload.subtotal = itemsTotal;
       }
       const res = await apiRequest("/services/deliveries", {
         method: "POST",
@@ -272,16 +279,14 @@ export default function RequestDeliveryScreen() {
     onError: (err: any) => showToast(err.message || "Failed to post delivery", "error"),
   });
 
-  const toggleCard = (card: CardId) =>
-    setActiveCard((prev) => (prev === card ? "pickup" : card));
+  // Tapping the header of the ACTIVE card does nothing (no collapse).
+  // Tapping any other card header opens it.
+  const openCard = (card: CardId) => {
+    if (card === activeCard) return;
+    setActiveCard(card);
+  };
 
   const stepIndex = STEPS.indexOf(activeCard);
-
-  const itemSummary = isGatePickup
-    ? websiteName || "Gate package details"
-    : cartItems.length > 0
-    ? `${cartItems.length} item${cartItems.length > 1 ? "s" : ""} selected`
-    : "Add items from menu";
 
   const resetPickup = () => {
     setCart({});
@@ -291,6 +296,12 @@ export default function RequestDeliveryScreen() {
     setOrderId("");
     setOrderMobile("");
   };
+
+  const itemSummary = isGatePickup
+    ? websiteName || "Gate package details"
+    : cartItems.length > 0
+    ? `${cartItems.length} item${cartItems.length > 1 ? "s" : ""} · ₹${itemsTotal.toFixed(0)}`
+    : "Add items from menu";
 
   return (
     <KeyboardAvoidingView
@@ -337,19 +348,78 @@ export default function RequestDeliveryScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Card 1 — Item Details */}
+          {/* ── Step 1: Pickup Location ── */}
           <AccordionCard
-            id="item"
+            active={activeCard === "pickup"}
+            done={done.pickup}
+            label="Pickup Location"
+            summary={pickupLocation || "Select location"}
+            onToggle={() => openCard("pickup")}
+          >
+            <View style={styles.searchRow}>
+              <Feather name="search" size={15} color={C.muted} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search locations..."
+                placeholderTextColor={C.muted}
+                value={locationSearch}
+                onChangeText={setLocationSearch}
+              />
+            </View>
+            {filteredLocs.map((loc, i) => {
+              const gate = isGate(loc);
+              const sel = pickupLocation === loc;
+              return (
+                <View key={loc}>
+                  <Pressable
+                    style={[styles.locRow, sel && styles.locRowSel]}
+                    onPress={() => {
+                      setPickupLocation(loc);
+                      resetPickup();
+                    }}
+                  >
+                    <View style={[styles.locIcon, { backgroundColor: gate ? "#FEF3C7" : "#EDE9FE" }]}>
+                      <Feather
+                        name={gate ? "package" : "coffee"}
+                        size={17}
+                        color={gate ? "#F59E0B" : C.primary}
+                      />
+                    </View>
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                      <Text style={[styles.locName, sel && { color: C.primary }]}>{loc}</Text>
+                      <Text style={styles.locSub}>
+                        {gate ? "Parcel / courier pickup" : "Food & outlet delivery"}
+                      </Text>
+                    </View>
+                    {sel ? (
+                      <View style={styles.radioFilled}>
+                        <View style={styles.radioDot} />
+                      </View>
+                    ) : (
+                      <View style={styles.radioEmpty} />
+                    )}
+                  </Pressable>
+                  {i < filteredLocs.length - 1 && <View style={styles.divider} />}
+                </View>
+              );
+            })}
+            <View style={styles.cantFindWrap}>
+              <Pressable>
+                <Text style={styles.cantFind}>Can't find your spot?</Text>
+              </Pressable>
+            </View>
+          </AccordionCard>
+
+          {/* ── Step 2: Item Details ── */}
+          <AccordionCard
             active={activeCard === "item"}
             done={done.item}
             label="Item Details"
             summary={itemSummary}
-            onToggle={() => toggleCard("item")}
+            onToggle={() => openCard("item")}
           >
             {!pickupLocation ? (
-              <Text style={styles.hint}>
-                Choose a pickup location first to see available options.
-              </Text>
+              <Text style={styles.hint}>Choose a pickup location first to see available options.</Text>
             ) : isGatePickup ? (
               <>
                 <View style={styles.infoBox}>
@@ -397,119 +467,32 @@ export default function RequestDeliveryScreen() {
             ) : outletMenu.length === 0 ? (
               <Text style={styles.hint}>No menu items available for this outlet right now.</Text>
             ) : (
-              <>
-                {outletMenu.map((item: any) => (
-                  <CartRow
-                    key={item.id}
-                    item={item}
-                    qty={cart[item.id]?.qty || 0}
-                    onQtyChange={(q: number) => {
-                      if (q === 0) {
-                        const next = { ...cart };
-                        delete next[item.id];
-                        setCart(next);
-                      } else {
-                        setCart((prev) => ({ ...prev, [item.id]: { ...item, qty: q } }));
-                      }
-                    }}
-                  />
-                ))}
-                {cartItems.length > 0 && (
-                  <View style={styles.subtotalBox}>
-                    <View style={styles.subtotalRow}>
-                      <Text style={styles.subtotalLabel}>Items subtotal</Text>
-                      <Text style={styles.subtotalValue}>₹{subtotal.toFixed(0)}</Text>
-                    </View>
-                    <View style={styles.subtotalRow}>
-                      <Text style={styles.subtotalLabel}>Delivery charge</Text>
-                      <Text style={styles.subtotalValue}>₹{DELIVERY_CHARGE}</Text>
-                    </View>
-                    <View style={[styles.subtotalRow, styles.totalRow]}>
-                      <Text style={styles.totalLabel}>Total</Text>
-                      <Text style={[styles.totalValue, { color: C.primary }]}>₹{total.toFixed(0)}</Text>
-                    </View>
-                  </View>
-                )}
-              </>
+              outletMenu.map((item: any) => (
+                <CartRow
+                  key={item.id}
+                  item={item}
+                  qty={cart[item.id]?.qty || 0}
+                  onQtyChange={(q: number) => {
+                    if (q === 0) {
+                      const next = { ...cart };
+                      delete next[item.id];
+                      setCart(next);
+                    } else {
+                      setCart((prev) => ({ ...prev, [item.id]: { ...item, qty: q } }));
+                    }
+                  }}
+                />
+              ))
             )}
           </AccordionCard>
 
-          {/* Card 2 — Pickup Location */}
+          {/* ── Step 3: Drop-off ── */}
           <AccordionCard
-            id="pickup"
-            active={activeCard === "pickup"}
-            done={done.pickup}
-            label="Pickup Location"
-            summary={pickupLocation || "Select location"}
-            onToggle={() => toggleCard("pickup")}
-          >
-            <View style={styles.searchRow}>
-              <Feather name="search" size={15} color={C.muted} />
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Search locations..."
-                placeholderTextColor={C.muted}
-                value={locationSearch}
-                onChangeText={setLocationSearch}
-              />
-            </View>
-            {filteredLocs.map((loc, i) => {
-              const gate = isGate(loc);
-              const sel = pickupLocation === loc;
-              return (
-                <View key={loc}>
-                  <Pressable
-                    style={[styles.locRow, sel && styles.locRowSel]}
-                    onPress={() => {
-                      setPickupLocation(loc);
-                      resetPickup();
-                    }}
-                  >
-                    <View
-                      style={[
-                        styles.locIcon,
-                        { backgroundColor: gate ? "#FEF3C7" : "#EDE9FE" },
-                      ]}
-                    >
-                      <Feather
-                        name={gate ? "package" : "coffee"}
-                        size={17}
-                        color={gate ? "#F59E0B" : C.primary}
-                      />
-                    </View>
-                    <View style={{ flex: 1, marginLeft: 12 }}>
-                      <Text style={[styles.locName, sel && { color: C.primary }]}>{loc}</Text>
-                      <Text style={styles.locSub}>
-                        {gate ? "Parcel / courier pickup" : "Food & outlet delivery"}
-                      </Text>
-                    </View>
-                    {sel ? (
-                      <View style={styles.radioFilled}>
-                        <View style={styles.radioDot} />
-                      </View>
-                    ) : (
-                      <View style={styles.radioEmpty} />
-                    )}
-                  </Pressable>
-                  {i < filteredLocs.length - 1 && <View style={styles.divider} />}
-                </View>
-              );
-            })}
-            <View style={styles.cantFindWrap}>
-              <Pressable>
-                <Text style={styles.cantFind}>Can't find your spot?</Text>
-              </Pressable>
-            </View>
-          </AccordionCard>
-
-          {/* Card 3 — Drop-off */}
-          <AccordionCard
-            id="dropoff"
             active={activeCard === "dropoff"}
             done={done.dropoff}
-            label="Drop-off"
+            label="Drop-off Location"
             summary={dropLocation || "Tap to enter your location"}
-            onToggle={() => toggleCard("dropoff")}
+            onToggle={() => openCard("dropoff")}
           >
             <TextInput
               style={styles.dropInput}
@@ -520,23 +503,41 @@ export default function RequestDeliveryScreen() {
             />
           </AccordionCard>
 
-          {/* Card 4 — Payment */}
+          {/* ── Step 4: Sub Total ── */}
           <AccordionCard
-            id="payment"
-            active={activeCard === "payment"}
+            active={activeCard === "subtotal"}
             done={false}
-            label="Payment"
-            summary={`Wallet Balance: ₹120 · Est. ₹${total}`}
-            onToggle={() => toggleCard("payment")}
+            label="Sub Total"
+            summary={`₹${bottomTotal.toFixed(0)} · ${cartItems.length > 0 ? `${cartItems.length} item${cartItems.length > 1 ? "s" : ""}` : "No items yet"}`}
+            onToggle={() => openCard("subtotal")}
           >
-            <View style={styles.payRow}>
-              <Text style={styles.payLabel}>Wallet Balance</Text>
-              <Text style={styles.payValue}>₹120</Text>
+            {isOutletPickup && (
+              <View style={styles.billRow}>
+                <Text style={styles.billLabel}>Item Total</Text>
+                <Text style={styles.billValue}>₹{itemsTotal.toFixed(0)}</Text>
+              </View>
+            )}
+            <View style={styles.billRow}>
+              <Text style={styles.billLabel}>Delivery Charge</Text>
+              <Text style={styles.billValue}>₹{DELIVERY_CHARGE}</Text>
             </View>
-            <View style={styles.payRow}>
-              <Text style={styles.payLabel}>Estimated Charge</Text>
-              <Text style={styles.payValue}>₹{total.toFixed(0)}</Text>
+            <View style={styles.billRow}>
+              <View>
+                <Text style={styles.billLabel}>GST on Delivery</Text>
+                <Text style={styles.billMuted}>(18% on ₹{DELIVERY_CHARGE})</Text>
+              </View>
+              <Text style={styles.billValue}>₹{gstAmount}</Text>
             </View>
+            <View style={styles.billDivider} />
+            <View style={[styles.billRow, styles.billTotalRow]}>
+              <Text style={styles.billTotalLabel}>Total Payable</Text>
+              <Text style={[styles.billTotalValue, { color: C.primary }]}>
+                ₹{bottomTotal.toFixed(0)}
+              </Text>
+            </View>
+            <Text style={styles.billNote}>
+              * GST is included in your final bill but not reflected in the total above.
+            </Text>
           </AccordionCard>
         </ScrollView>
 
@@ -544,7 +545,7 @@ export default function RequestDeliveryScreen() {
         <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
           <View>
             <Text style={styles.bottomLabel}>Total</Text>
-            <Text style={styles.bottomTotal}>₹{total.toFixed(0)}</Text>
+            <Text style={styles.bottomTotal}>₹{bottomTotal.toFixed(0)}</Text>
           </View>
           <Pressable
             style={[styles.continueBtn, (!isValid || mutation.isPending) && { opacity: 0.5 }]}
@@ -624,6 +625,7 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 9, fontFamily: "Inter_700Bold", color: C.primary, letterSpacing: 0.5 },
   cardBody: { paddingHorizontal: 16, paddingBottom: 16, borderTopWidth: 1, borderTopColor: C.border },
 
+  // ── Location list ──
   locRow: { flexDirection: "row", alignItems: "center", paddingVertical: 10, paddingHorizontal: 2, borderRadius: 12 },
   locRowSel: { backgroundColor: "rgba(91,79,232,0.05)" },
   locIcon: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" },
@@ -640,6 +642,7 @@ const styles = StyleSheet.create({
   cantFindWrap: { alignItems: "center", marginTop: 10, paddingTop: 12, borderTopWidth: 1, borderTopColor: C.border },
   cantFind: { fontSize: 14, fontFamily: "Inter_500Medium", color: C.primary },
 
+  // ── Cart ──
   cartRow: { flexDirection: "row", alignItems: "center", paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.border },
   cartName: { fontSize: 14, fontFamily: "Inter_500Medium", color: C.text },
   cartPrice: { fontSize: 13, color: C.muted, marginTop: 2 },
@@ -647,34 +650,38 @@ const styles = StyleSheet.create({
   qtyBtn: { width: 30, height: 30, borderRadius: 15, borderWidth: 1.5, borderColor: C.primary, alignItems: "center", justifyContent: "center" },
   qtyText: { fontSize: 14, fontFamily: "Inter_600SemiBold", color: C.text, minWidth: 16, textAlign: "center" },
 
-  subtotalBox: { backgroundColor: C.bg, borderRadius: 12, padding: 12, marginTop: 14 },
-  subtotalRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 6 },
-  totalRow: { marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: C.border, marginBottom: 0 },
-  subtotalLabel: { fontSize: 13, color: C.muted },
-  subtotalValue: { fontSize: 13, fontFamily: "Inter_500Medium", color: C.text },
-  totalLabel: { fontSize: 15, fontFamily: "Inter_700Bold", color: C.text },
-  totalValue: { fontSize: 15, fontFamily: "Inter_700Bold" },
-
+  // ── Drop-off ──
   dropInput: { backgroundColor: C.bg, borderRadius: 12, padding: 14, fontSize: 14, color: C.text, fontFamily: "Inter_400Regular", marginTop: 8 },
 
-  payRow: { backgroundColor: C.bg, borderRadius: 12, padding: 14, flexDirection: "row", justifyContent: "space-between", marginBottom: 8 },
-  payLabel: { fontSize: 13, color: C.muted },
-  payValue: { fontSize: 13, fontFamily: "Inter_600SemiBold", color: C.text },
+  // ── Sub Total / Bill ──
+  billRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 10 },
+  billLabel: { fontSize: 14, color: C.text, fontFamily: "Inter_400Regular" },
+  billMuted: { fontSize: 11, color: C.muted, marginTop: 1 },
+  billValue: { fontSize: 14, fontFamily: "Inter_500Medium", color: C.text },
+  billDivider: { height: 1, backgroundColor: C.border, marginVertical: 4 },
+  billTotalRow: { paddingVertical: 12 },
+  billTotalLabel: { fontSize: 16, fontFamily: "Inter_700Bold", color: C.text },
+  billTotalValue: { fontSize: 18, fontFamily: "Inter_700Bold" },
+  billNote: { fontSize: 11, color: C.muted, fontFamily: "Inter_400Regular", marginTop: 8, lineHeight: 16 },
 
+  // ── Field input ──
   fieldWrap: { marginBottom: 10 },
   fieldLabel: { fontSize: 12, fontFamily: "Inter_500Medium", color: C.muted, marginBottom: 5, marginLeft: 4 },
   fieldRow: { flexDirection: "row", alignItems: "center", backgroundColor: C.bg, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 12 },
   fieldText: { flex: 1, fontSize: 14, color: C.text, fontFamily: "Inter_400Regular" },
 
+  // ── Dropdown ──
   dropdown: { backgroundColor: C.surface, borderRadius: 12, borderWidth: 1, borderColor: C.border, marginTop: 4, overflow: "hidden" },
   dropdownItem: { paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.border },
   dropdownItemActive: { backgroundColor: "rgba(91,79,232,0.06)" },
   dropdownText: { fontSize: 14, color: C.text, fontFamily: "Inter_400Regular" },
 
+  // ── Info ──
   infoBox: { flexDirection: "row", alignItems: "flex-start", backgroundColor: "#EFF6FF", borderRadius: 10, padding: 12, marginBottom: 12 },
   infoText: { fontSize: 12, color: "#3B82F6", fontFamily: "Inter_500Medium", flex: 1 },
   hint: { fontSize: 13, color: C.muted, textAlign: "center", paddingVertical: 14 },
 
+  // ── Bottom bar ──
   bottomBar: {
     position: "absolute",
     bottom: 0,
