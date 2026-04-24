@@ -4,12 +4,10 @@ import {
   Text,
   ScrollView,
   Pressable,
-  TextInput,
   StyleSheet,
   useColorScheme,
   ActivityIndicator,
   Image,
-  Modal,
   Platform,
   TouchableOpacity,
   Dimensions,
@@ -68,45 +66,6 @@ const SERVICE_META: Record<
   tasks: { label: "Tasks", icon: "clipboard", color: "#EF4444" },
 };
 
-function EditField({
-  label,
-  value,
-  onChange,
-  placeholder,
-  multiline = false,
-  keyboardType = "default",
-  C,
-}: any) {
-  return (
-    <View style={{ marginBottom: 16 }}>
-      <Text style={[styles.editLabel, { color: C.textSecondary }]}>
-        {label}
-      </Text>
-      <View
-        style={[
-          styles.editInput,
-          { backgroundColor: C.backgroundSecondary, borderColor: C.border },
-          multiline && { minHeight: 80 },
-        ]}
-      >
-        <TextInput
-          style={[
-            styles.editInputText,
-            { color: C.text },
-            multiline && { textAlignVertical: "top" },
-          ]}
-          value={value}
-          onChangeText={onChange}
-          placeholder={placeholder}
-          placeholderTextColor={C.textTertiary}
-          keyboardType={keyboardType}
-          multiline={multiline}
-        />
-      </View>
-    </View>
-  );
-}
-
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
@@ -117,12 +76,6 @@ export default function ProfileScreen() {
   const { showToast } = useToast();
   const { forceRegisterPushToken } = useNotifications();
 
-  const [editing, setEditing] = useState(false);
-  const [name, setName] = useState(user?.name || "");
-  const [bio, setBio] = useState(user?.bio || "");
-  const [college, setCollege] = useState(user?.college || "");
-  const [program, setProgram] = useState(user?.program || "");
-  const [phone, setPhone] = useState(user?.phone || "");
 
   const postsQuery = useQuery({
     queryKey: ["userPosts", user?.id],
@@ -141,26 +94,6 @@ export default function ProfileScreen() {
       return res.json();
     },
     enabled: user?.role === "provider",
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("/users/me/profile", {
-        method: "PUT",
-        body: JSON.stringify({ name, bio, college, program, phone }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
-      return data;
-    },
-    onSuccess: (data) => {
-      updateUser(data);
-      setEditing(false);
-      queryClient.invalidateQueries({ queryKey: ["userPosts"] });
-      showToast("Profile updated!", "success");
-    },
-    onError: (err: any) =>
-      showToast(err.message || "Failed to update profile", "error"),
   });
 
   const handleLogout = async () => {
@@ -266,14 +199,7 @@ export default function ProfileScreen() {
 
   if (!user) return null;
 
-  const startEditing = () => {
-    setName(user.name);
-    setBio(user.bio || "");
-    setCollege(user.college || "");
-    setProgram(user.program || "");
-    setPhone(user.phone || "");
-    setEditing(true);
-  };
+  const openEditProfile = () => router.push("/edit-profile");
 
   const posts = postsQuery.data?.posts || [];
   const badge = user.verificationBadge
@@ -299,7 +225,7 @@ export default function ProfileScreen() {
     <View style={[styles.container, { backgroundColor: C.background }]}>
       {/* Floating top bar (overlays gradient) */}
       <View style={[styles.topBar, { paddingTop: topBarPadTop }]}>
-        <Pressable style={styles.glassBtn} onPress={startEditing}>
+        <Pressable style={styles.glassBtn} onPress={openEditProfile}>
           <Feather name="edit-2" size={18} color="#fff" />
         </Pressable>
         <Text style={styles.topTitle}>Profile</Text>
@@ -424,7 +350,7 @@ export default function ProfileScreen() {
               styles.editProfileBtn,
               { backgroundColor: C.surface },
             ]}
-            onPress={startEditing}
+            onPress={openEditProfile}
             activeOpacity={0.85}
           >
             <Feather name="edit-2" size={16} color={C.text} />
@@ -445,7 +371,7 @@ export default function ProfileScreen() {
           {user.bio ? (
             <Text style={[styles.bioText, { color: C.text }]}>{user.bio}</Text>
           ) : (
-            <Pressable onPress={startEditing}>
+            <Pressable onPress={openEditProfile}>
               <Text style={[styles.bioAdd, { color: C.primary }]}>
                 + Add a bio to tell your story
               </Text>
@@ -813,101 +739,6 @@ export default function ProfileScreen() {
         />
       )}
 
-      {/* Edit Profile Modal */}
-      <Modal
-        visible={editing}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setEditing(false)}
-      >
-        <Pressable
-          style={styles.modalOverlay}
-          onPress={() => setEditing(false)}
-        >
-          <Pressable
-            style={[styles.modalSheet, { backgroundColor: C.surface }]}
-            onPress={() => {}}
-          >
-            <View style={styles.modalHandle} />
-            <ScrollView>
-              <View style={styles.modalHeaderRow}>
-                <Text style={[styles.modalTitle, { color: C.text }]}>
-                  Edit Profile
-                </Text>
-                <TouchableOpacity onPress={() => setEditing(false)}>
-                  <Feather name="x" size={22} color={C.textSecondary} />
-                </TouchableOpacity>
-              </View>
-
-              <EditField
-                label="Full Name"
-                value={name}
-                onChange={setName}
-                placeholder="Your full name"
-                C={C}
-              />
-              <EditField
-                label="Bio"
-                value={bio}
-                onChange={setBio}
-                placeholder="Tell your campus story..."
-                multiline
-                C={C}
-              />
-              <EditField
-                label="College"
-                value={college}
-                onChange={setCollege}
-                placeholder="Your college name"
-                C={C}
-              />
-              <EditField
-                label="Program / Branch"
-                value={program}
-                onChange={setProgram}
-                placeholder="e.g. BCA, BTech CSE"
-                C={C}
-              />
-              <EditField
-                label="Mobile Number"
-                value={phone}
-                onChange={setPhone}
-                placeholder="e.g. +91 98765 43210"
-                keyboardType="phone-pad"
-                C={C}
-              />
-
-              <TouchableOpacity
-                style={[
-                  styles.saveBtn,
-                  {
-                    opacity: updateMutation.isPending ? 0.7 : 1,
-                    borderRadius: 16,
-                    overflow: "hidden",
-                  },
-                ]}
-                onPress={() => updateMutation.mutate()}
-                disabled={updateMutation.isPending}
-                activeOpacity={0.85}
-              >
-                <LinearGradient
-                  colors={["#5B4FE8", "#7B73F0"]}
-                  style={styles.saveBtnGradient}
-                >
-                  {updateMutation.isPending ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <>
-                      <Feather name="check" size={18} color="#fff" />
-                      <Text style={styles.saveBtnText}>Save Changes</Text>
-                    </>
-                  )}
-                </LinearGradient>
-              </TouchableOpacity>
-            </ScrollView>
-          </Pressable>
-        </Pressable>
-      </Modal>
     </View>
   );
 }
