@@ -2843,7 +2843,10 @@ export default function ServicesScreen() {
 
   // ── Post helpers ───────────────────────────────────────────────────────────
   const postableCats = ["deliveries", "assignments", "certifications", "tasks", "projects"].filter(canPost);
-  const openPostFor = (type: string) => { setPostType(type); setShowPostModal(true); };
+  const openPostFor = (type: string) => {
+    if (type === "deliveries") { router.push("/request-delivery" as any); return; }
+    setPostType(type); setShowPostModal(true);
+  };
   const handleFAB = () => {
     // If current tab is postable, post there; otherwise redirect to first postable cat
     const target = (activeCat !== "all" && canPost(activeCat))
