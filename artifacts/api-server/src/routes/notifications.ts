@@ -4,8 +4,55 @@ import { notificationsTable } from "@workspace/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { authMiddleware } from "../lib/auth";
 import { generateId } from "../lib/id";
+import { sendFcmNotification } from "../lib/firebaseAdmin";
 
 const router = Router();
+
+// ─── Test push notification (diagnostic) ─────────────────────────────────────
+
+router.post("/test", authMiddleware, async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const rows = await db.execute(
+      `SELECT token, platform FROM push_tokens WHERE user_id = '${userId.replace(/'/g, "''")}'`
+    ) as any;
+    const tokens = (Array.isArray(rows) ? rows : rows?.rows ?? []) as Array<{ token: string; platform: string }>;
+
+    const firebaseConfigured = !!process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+
+    const results = [];
+    for (const row of tokens) {
+      if (row.token.startsWith("ExponentPushToken[")) {
+        results.push({ token: row.token.substring(0, 30) + "...", type: "expo-legacy", status: "skipped" });
+        continue;
+      }
+      const r = await sendFcmNotification(
+        row.token,
+        "CampusConnect Test",
+        "If you see this, push notifications are working!",
+        { screen: "/(tabs)/notifications" }
+      );
+      results.push({
+        token: row.token.substring(0, 30) + "...",
+        type: "fcm",
+        platform: row.platform,
+        ok: r.ok,
+        errorCode: r.errorCode,
+        errorMessage: r.errorMessage,
+      });
+    }
+
+    res.json({
+      userId,
+      firebaseConfigured,
+      tokenCount: tokens.length,
+      results,
+    });
+  } catch (err: any) {
+    console.error("[push/test]", err);
+    res.status(500).json({ error: "ServerError", message: err?.message ?? String(err) });
+  }
+});
 
 // ─── Get notifications ────────────────────────────────────────────────────────
 

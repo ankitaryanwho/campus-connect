@@ -68,7 +68,6 @@ channel = "stable-25_05"
 [userenv]
 
 [userenv.shared]
-FIREBASE_SERVICE_ACCOUNT_JSON = ""
 VITE_API_URL = "https://campus-connect-davidaryan7256.replit.app"
 
 [userenv.production]
