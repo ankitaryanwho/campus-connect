@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
   View, Text, TextInput, Pressable, StyleSheet,
-  ActivityIndicator, Platform, Modal, FlatList,
+  ActivityIndicator, Platform, Modal, ScrollView,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -574,39 +574,38 @@ export default function RegisterScreen() {
                 onChangeText={setCollegeSearch}
               />
             </View>
-            <FlatList
-              data={filteredColleges}
-              keyExtractor={item => item.id}
-              renderItem={({ item }) => (
-                <Pressable
-                  style={[
-                    s.collegeItem,
-                    selectedCollege?.id === item.id && { backgroundColor: ICON_BG },
-                  ]}
-                  onPress={() => {
-                    setSelectedCollege(item);
-                    setEmail("");
-                    setCollegeSearch("");
-                    setShowCollegePicker(false);
-                    setError("");
-                  }}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.collegeName}>{item.name}</Text>
-                    <Text style={s.collegeDomain}>@{item.domain}</Text>
-                  </View>
-                  {selectedCollege?.id === item.id && (
-                    <Feather name="check-circle" size={18} color={PURPLE} />
-                  )}
-                </Pressable>
-              )}
-              style={{ maxHeight: 360 }}
-              ListEmptyComponent={
+            <ScrollView style={{ maxHeight: 360 }} keyboardShouldPersistTaps="handled">
+              {filteredColleges.length === 0 ? (
                 <Text style={{ textAlign: "center", color: TEXT + "66", padding: 24, fontFamily: "Inter_400Regular" }}>
                   No colleges found
                 </Text>
-              }
-            />
+              ) : (
+                filteredColleges.map(item => (
+                  <Pressable
+                    key={item.id}
+                    style={[
+                      s.collegeItem,
+                      selectedCollege?.id === item.id && { backgroundColor: ICON_BG },
+                    ]}
+                    onPress={() => {
+                      setSelectedCollege(item);
+                      setEmail("");
+                      setCollegeSearch("");
+                      setShowCollegePicker(false);
+                      setError("");
+                    }}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.collegeName}>{item.name}</Text>
+                      <Text style={s.collegeDomain}>@{item.domain}</Text>
+                    </View>
+                    {selectedCollege?.id === item.id && (
+                      <Feather name="check-circle" size={18} color={PURPLE} />
+                    )}
+                  </Pressable>
+                ))
+              )}
+            </ScrollView>
             <Pressable
               style={s.modalClose}
               onPress={() => { setShowCollegePicker(false); setCollegeSearch(""); }}
