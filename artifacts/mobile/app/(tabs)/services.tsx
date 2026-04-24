@@ -3446,10 +3446,16 @@ const CS = StyleSheet.create({
   notifDot: { position: "absolute", top: 0, right: 0, width: 9, height: 9, borderRadius: 5, backgroundColor: "#EF4444", borderWidth: 1.5, borderColor: "#FAF8F4" },
 
   // ── Category chips ────────────────────────────────────────────────────────
-  chipsRow: { paddingHorizontal: 14, paddingVertical: 11, gap: 8 },
-  chip: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1.5 },
-  chipEmoji: { fontSize: 12 },
-  chipLabel: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  // Note on heights: borderRadius implicitly clips overflow on Android, so the
+  // chip MUST be tall enough to fit the text+emoji or the glyphs get sliced
+  // off at the rounded edges. We give the row a fixed minHeight, set explicit
+  // lineHeight on both Text children, and disable includeFontPadding on
+  // Android so Inter's extra ascent/descent doesn't push the text past the
+  // clip boundary.
+  chipsRow: { paddingHorizontal: 14, paddingVertical: 11, gap: 8, alignItems: "center" },
+  chip: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 9, minHeight: 34, borderRadius: 20, borderWidth: 1.5 },
+  chipEmoji: { fontSize: 13, lineHeight: 16, includeFontPadding: false, textAlignVertical: "center" },
+  chipLabel: { fontSize: 12, lineHeight: 16, fontFamily: "Inter_600SemiBold", includeFontPadding: false, textAlignVertical: "center" },
 
   // ── Sections ──────────────────────────────────────────────────────────────
   activityBanner: { flexDirection: "row", alignItems: "center", gap: 12, marginHorizontal: 14, marginTop: 12, padding: 12, borderRadius: 14, borderWidth: 0.5 },
