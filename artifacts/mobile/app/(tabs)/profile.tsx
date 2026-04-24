@@ -23,6 +23,7 @@ import * as ImagePicker from "expo-image-picker";
 import Colors from "@/constants/colors";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
+import { useNotifications } from "@/contexts/NotificationContext";
 
 const isWeb = Platform.OS === "web";
 const { width: SW } = Dimensions.get("window");
@@ -129,6 +130,7 @@ export default function ProfileScreen() {
   const { user, apiRequest, updateUser, logout } = useAuth();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
+  const { forceRegisterPushToken } = useNotifications();
 
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(user?.name || "");
@@ -182,28 +184,55 @@ export default function ProfileScreen() {
     router.replace("/(auth)/login");
   };
 
+  const callTestEndpoint = async () => {
+    const res = await apiRequest("/notifications/test", { method: "POST" });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || "Test failed");
+    return data as {
+      userId: string;
+      firebaseConfigured: boolean;
+      tokenCount: number;
+      results: Array<{ ok?: boolean; type: string; errorCode?: string; errorMessage?: string }>;
+    };
+  };
+
+  // Two-step diagnose:
+  //   1. Ask the server how many push tokens this user has and try sending a test.
+  //   2. If zero tokens, force a fresh registration on the device and re-test —
+  //      surfacing the *exact* failure reason if it can't get a token.
   const testPushMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("/notifications/test", { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Test failed");
-      return data as {
-        userId: string;
-        firebaseConfigured: boolean;
-        tokenCount: number;
-        results: Array<{ ok?: boolean; type: string; errorCode?: string; errorMessage?: string }>;
-      };
-    },
-    onSuccess: (data) => {
+      let data = await callTestEndpoint();
       if (!data.firebaseConfigured) {
+        return { stage: "no_firebase" as const, data };
+      }
+      if (data.tokenCount === 0) {
+        const reg = await forceRegisterPushToken();
+        if (!reg.ok) {
+          return { stage: "register_failed" as const, data, regReason: reg.reason };
+        }
+        // Registration just succeeded — re-fetch tokens to confirm and send test.
+        data = await callTestEndpoint();
+        if (data.tokenCount === 0) {
+          return { stage: "still_no_token" as const, data, regReason: reg.reason };
+        }
+      }
+      return { stage: "tested" as const, data };
+    },
+    onSuccess: (out) => {
+      if (out.stage === "no_firebase") {
         showToast("Push not configured on server", "error");
         return;
       }
-      if (data.tokenCount === 0) {
-        showToast("No device registered for this account. Reopen the app and grant notifications.", "error");
+      if (out.stage === "register_failed") {
+        showToast(out.regReason, "error");
         return;
       }
-      const fcmResults = data.results.filter((r) => r.type === "fcm");
+      if (out.stage === "still_no_token") {
+        showToast(`Token reached device but server didn't store it. ${out.regReason}`, "error");
+        return;
+      }
+      const fcmResults = out.data.results.filter((r) => r.type === "fcm");
       const okCount = fcmResults.filter((r) => r.ok).length;
       if (okCount > 0) {
         showToast(`Test sent to ${okCount} device(s) — check your notifications!`, "success");

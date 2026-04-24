@@ -20,16 +20,24 @@ if (IS_NATIVE) {
   });
 }
 
+export interface RegisterResult {
+  ok: boolean;
+  token: string | null;
+  reason: string; // human-readable explanation of what happened / failed
+}
+
 interface NotificationContextType {
   expoPushToken: string | null;
   unreadCount: number;
   setUnreadCount: (n: number) => void;
+  forceRegisterPushToken: () => Promise<RegisterResult>;
 }
 
 const NotificationContext = createContext<NotificationContextType>({
   expoPushToken: null,
   unreadCount: 0,
   setUnreadCount: () => {},
+  forceRegisterPushToken: async () => ({ ok: false, token: null, reason: "Provider not mounted" }),
 });
 
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
@@ -47,6 +55,53 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   // always re-bound to the *current* account. Critical when two accounts share
   // a phone (e.g. tester + provider) — without this the token stays mapped to
   // whichever user logged in first.
+  // Centralised registration helper. Returns a structured result so callers
+  // (effect AND the manual "Test push" button) can surface the exact failure.
+  const doRegister = async (currentAuthToken: string, currentUserId: string): Promise<RegisterResult> => {
+    const result = await registerForPushNotificationsAsync();
+    if (!result.token) {
+      return result;
+    }
+    const token = result.token;
+    setExpoPushToken(token);
+    try {
+      await AsyncStorage.setItem(PUSH_TOKEN_STORAGE_KEY, token);
+    } catch {}
+
+    try {
+      const API_BASE = process.env["EXPO_PUBLIC_API_URL"] || "https://campus-connect-davidaryan7256.replit.app/api";
+      const res = await fetch(`${API_BASE}/notifications/push-token`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${currentAuthToken}`,
+        },
+        body: JSON.stringify({ token, platform: Platform.OS }),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        return { ok: false, token, reason: `Server rejected token (HTTP ${res.status}): ${text.slice(0, 80)}` };
+      }
+      console.log(`[push] Token registered with server for user ${currentUserId}`);
+      return { ok: true, token, reason: "Registered" };
+    } catch (e: any) {
+      return { ok: false, token, reason: `Network error registering token: ${e?.message ?? String(e)}` };
+    }
+  };
+
+  // Stable ref to the latest auth context so the manual "Test push" button can
+  // call doRegister on demand without re-creating the function each render.
+  const authRef = useRef<{ token: string | null; userId: string | null }>({ token: null, userId: null });
+  authRef.current = { token: authToken ?? null, userId: user?.id ?? null };
+
+  const forceRegisterPushToken = async (): Promise<RegisterResult> => {
+    const t = authRef.current.token;
+    const uid = authRef.current.userId;
+    if (!IS_NATIVE) return { ok: false, token: null, reason: "Push notifications are not supported on web" };
+    if (!t || !uid) return { ok: false, token: null, reason: "Not signed in" };
+    return doRegister(t, uid);
+  };
+
   useEffect(() => {
     if (!IS_NATIVE || !user?.id || !authToken) return;
 
@@ -58,36 +113,10 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     const authTokenAtMount = authToken;
 
     const registerToken = async () => {
-      const token = await registerForPushNotificationsAsync();
+      const result = await doRegister(authTokenAtMount, userIdAtMount);
       if (!isActive) return;
-      if (!token) {
-        console.warn("[push] No token returned (permission denied or simulator)");
-        return;
-      }
-      setExpoPushToken(token);
-      try {
-        await AsyncStorage.setItem(PUSH_TOKEN_STORAGE_KEY, token);
-      } catch {}
-      if (!isActive) return;
-
-      try {
-        const API_BASE = process.env["EXPO_PUBLIC_API_URL"] || "https://campus-connect-davidaryan7256.replit.app/api";
-        const res = await fetch(`${API_BASE}/notifications/push-token`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${authTokenAtMount}`,
-          },
-          body: JSON.stringify({ token, platform: Platform.OS }),
-        });
-        if (!isActive) return;
-        if (res.ok) {
-          console.log(`[push] Token registered with server for user ${userIdAtMount}`);
-        } else {
-          console.warn(`[push] Server rejected token registration (${res.status})`);
-        }
-      } catch (e) {
-        console.warn("[push] Failed to register token with server", e);
+      if (!result.ok) {
+        console.warn(`[push] Auto-register failed: ${result.reason}`);
       }
     };
 
@@ -160,7 +189,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   }
 
   return (
-    <NotificationContext.Provider value={{ expoPushToken, unreadCount, setUnreadCount }}>
+    <NotificationContext.Provider value={{ expoPushToken, unreadCount, setUnreadCount, forceRegisterPushToken }}>
       {children}
     </NotificationContext.Provider>
   );
@@ -170,19 +199,23 @@ export const useNotifications = () => useContext(NotificationContext);
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-async function registerForPushNotificationsAsync(): Promise<string | null> {
+async function registerForPushNotificationsAsync(): Promise<RegisterResult> {
   if (!Device.isDevice) {
-    console.log("[push] Must use a physical device for push notifications");
-    return null;
+    return { ok: false, token: null, reason: "Push needs a physical device (simulator/emulator can't receive push)" };
   }
 
   if (Platform.OS === "android") {
-    await Notifications.setNotificationChannelAsync("default", {
-      name: "CampusConnect",
-      importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: "#6366F1",
-    });
+    try {
+      await Notifications.setNotificationChannelAsync("default", {
+        name: "CampusConnect",
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: "#6366F1",
+      });
+    } catch (e: any) {
+      // Channel setup failure shouldn't block — fall through.
+      console.warn("[push] setNotificationChannelAsync failed:", e?.message ?? String(e));
+    }
   }
 
   const { status: existingStatus } = await Notifications.getPermissionsAsync();
@@ -194,18 +227,19 @@ async function registerForPushNotificationsAsync(): Promise<string | null> {
   }
 
   if (finalStatus !== "granted") {
-    console.log("[push] Permission not granted");
-    return null;
+    return { ok: false, token: null, reason: "Notification permission denied. Open phone settings → Apps → CampusConnect → Notifications and turn ON." };
   }
 
   try {
     // Use native FCM token directly — works with Firebase Admin SDK on the server
     const deviceToken = await Notifications.getDevicePushTokenAsync();
-    console.log("[push] Got device FCM token type:", deviceToken.type);
-    return deviceToken.data as string;
+    console.log("[push] Got device push token type:", deviceToken.type);
+    if (!deviceToken?.data || typeof deviceToken.data !== "string") {
+      return { ok: false, token: null, reason: `Device returned an invalid push token (type=${deviceToken?.type ?? "unknown"})` };
+    }
+    return { ok: true, token: deviceToken.data, reason: `Got ${deviceToken.type} token` };
   } catch (e: any) {
     const msg = e?.message ?? String(e);
-    console.warn("[push] Could not get device push token:", msg);
-    return null;
+    return { ok: false, token: null, reason: `Could not get device push token: ${msg.slice(0, 120)}` };
   }
 }
