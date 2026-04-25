@@ -22,6 +22,50 @@ export async function runStartupMigrations() {
     await client.query(`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS phone text;
     `);
+
+    // ── Marketplace ───────────────────────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS marketplace_listings (
+        id text PRIMARY KEY,
+        seller_id text NOT NULL REFERENCES users(id),
+        listing_type text NOT NULL,
+        item_category text NOT NULL DEFAULT 'other',
+        title text NOT NULL,
+        description text NOT NULL DEFAULT '',
+        photos text NOT NULL DEFAULT '[]',
+        price numeric(12,2) NOT NULL,
+        rental_unit text,
+        status text NOT NULL DEFAULT 'active',
+        college text,
+        views_count integer NOT NULL DEFAULT 0,
+        created_at timestamp NOT NULL DEFAULT now(),
+        updated_at timestamp NOT NULL DEFAULT now()
+      );
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS marketplace_listings_seller_idx ON marketplace_listings(seller_id);
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS marketplace_listings_status_idx ON marketplace_listings(status);
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS marketplace_offers (
+        id text PRIMARY KEY,
+        listing_id text NOT NULL REFERENCES marketplace_listings(id),
+        buyer_id text NOT NULL REFERENCES users(id),
+        amount numeric(12,2) NOT NULL,
+        message text,
+        status text NOT NULL DEFAULT 'pending',
+        created_at timestamp NOT NULL DEFAULT now()
+      );
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS marketplace_offers_listing_idx ON marketplace_offers(listing_id);
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS marketplace_offers_buyer_idx ON marketplace_offers(buyer_id);
+    `);
+
     console.log("[migrate] Startup migrations complete");
   } catch (err) {
     console.error("[migrate] Startup migration error:", err);

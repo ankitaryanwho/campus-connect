@@ -10,6 +10,7 @@ import notificationsRouter from "./notifications";
 import adminRouter from "./admin";
 import syncRouter from "./sync";
 import orderChatRouter from "./order-chat";
+import marketplaceRouter from "./marketplace";
 
 const router: IRouter = Router();
 
@@ -23,6 +24,7 @@ router.use("/services/order-chat", orderChatRouter);
 router.use("/services", servicesRouter);
 router.use("/notifications", notificationsRouter);
 router.use("/admin", adminRouter);
+router.use("/marketplace", marketplaceRouter);
 router.use("/", syncRouter);
 
 export default router;

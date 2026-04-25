@@ -15,6 +15,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
 import { AuthorBadge } from "@/components/AuthorBadge";
 import { PostActionsMenu } from "@/components/PostActionsMenu";
+import { MarketplaceFeed } from "@/components/MarketplaceFeed";
 
 const isWeb = Platform.OS === "web";
 
@@ -52,7 +53,7 @@ const CATEGORIES = [
   { id: "confessions",  label: "Confessions",  emoji: "🙈", accent: "#6B7280", bg: "#F3F4F6" },
   { id: "study",        label: "Study Help",   emoji: "📚", accent: "#3B82F6", bg: "#EFF6FF" },
   { id: "events",       label: "Events",       emoji: "🎪", accent: "#8B5CF6", bg: "#F5F3FF" },
-  { id: "buysell",      label: "Buy / Sell",   emoji: "🛒", accent: "#F59E0B", bg: "#FFFBEB" },
+  { id: "buysell",      label: "Buy · Sell · Rent", emoji: "🛒", accent: "#F59E0B", bg: "#FFFBEB" },
   { id: "social",       label: "Social",       emoji: "💬", accent: "#10B981", bg: "#ECFDF5" },
 ] as const;
 
@@ -613,46 +614,50 @@ export default function FeedScreen() {
         </ScrollView>
       </View>
 
-      {/* Feed */}
-      <FlatList
-        data={feedPosts}
-        renderItem={renderPost}
-        keyExtractor={item => item.id}
-        ListHeaderComponent={ListHeader}
-        contentContainerStyle={{ paddingBottom: isWeb ? 120 : 110 }}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefetching}
-            onRefresh={refetch}
-            tintColor={C.primary}
-            colors={[C.primary]}
-          />
-        }
-        showsVerticalScrollIndicator={false}
-        ItemSeparatorComponent={() => <View style={{ height: 10, backgroundColor: bg }} />}
-        ListEmptyComponent={
-          !isLoading ? (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyEmoji}>
-                {activeCategory === "study" ? "📚" : activeCategory === "events" ? "🎪" : activeCategory === "buysell" ? "🛒" : activeCategory === "social" ? "💬" : "✦"}
-              </Text>
-              <Text style={[styles.emptyTitle, { color: textCol }]}>Nothing here yet</Text>
-              <Text style={[styles.emptyText, { color: mutedCol }]}>
-                {activeCategory === "all"
-                  ? "Be the first to post something to your campus board!"
-                  : `No ${getCategoryInfo(activeCategory).label.toLowerCase()} posts yet. Be the first!`}
-              </Text>
-              <Pressable
-                style={[styles.emptyBtn, { backgroundColor: getCategoryInfo(activeCategory).accent }]}
-                onPress={() => router.push("/new-post")}
-              >
-                <Feather name="plus" size={15} color="#fff" />
-                <Text style={styles.emptyBtnText}>Create Post</Text>
-              </Pressable>
-            </View>
-          ) : null
-        }
-      />
+      {/* Feed — marketplace replaces regular posts for buy/sell/rent */}
+      {activeCategory === "buysell" ? (
+        <MarketplaceFeed isDark={isDark} C={C} user={user} />
+      ) : (
+        <FlatList
+          data={feedPosts}
+          renderItem={renderPost}
+          keyExtractor={item => item.id}
+          ListHeaderComponent={ListHeader}
+          contentContainerStyle={{ paddingBottom: isWeb ? 120 : 110 }}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefetching}
+              onRefresh={refetch}
+              tintColor={C.primary}
+              colors={[C.primary]}
+            />
+          }
+          showsVerticalScrollIndicator={false}
+          ItemSeparatorComponent={() => <View style={{ height: 10, backgroundColor: bg }} />}
+          ListEmptyComponent={
+            !isLoading ? (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyEmoji}>
+                  {activeCategory === "study" ? "📚" : activeCategory === "events" ? "🎪" : activeCategory === "social" ? "💬" : "✦"}
+                </Text>
+                <Text style={[styles.emptyTitle, { color: textCol }]}>Nothing here yet</Text>
+                <Text style={[styles.emptyText, { color: mutedCol }]}>
+                  {activeCategory === "all"
+                    ? "Be the first to post something to your campus board!"
+                    : `No ${getCategoryInfo(activeCategory).label.toLowerCase()} posts yet. Be the first!`}
+                </Text>
+                <Pressable
+                  style={[styles.emptyBtn, { backgroundColor: getCategoryInfo(activeCategory).accent }]}
+                  onPress={() => router.push("/new-post")}
+                >
+                  <Feather name="plus" size={15} color="#fff" />
+                  <Text style={styles.emptyBtnText}>Create Post</Text>
+                </Pressable>
+              </View>
+            ) : null
+          }
+        />
+      )}
     </View>
   );
 }
