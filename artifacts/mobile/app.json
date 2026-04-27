@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "CampusConnect",
-    "slug": "mobile",
+    "name": "Colyx",
+    "slug": "colyx",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "mobile",
+    "scheme": "colyx",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
@@ -14,10 +14,11 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": false
+      "supportsTablet": false,
+      "bundleIdentifier": "com.colyx.app"
     },
     "android": {
-      "package": "com.ankitaryanwho.mobile",
+      "package": "com.colyx.app",
       "googleServicesFile": "./google-services.json",
       "permissions": [
         "android.permission.READ_EXTERNAL_STORAGE",
