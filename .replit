@@ -1,4 +1,4 @@
-modules = ["nodejs-20", "web", "bash", "postgresql-16"]
+modules = ["web", "bash", "postgresql-16", "nodejs-24"]
 
 [[artifacts]]
 id = "artifacts/api-server"
@@ -54,7 +54,7 @@ args = "EAS_NO_VCS=1 pnpm --filter @workspace/mobile exec eas update --channel p
 outputType = "console"
 
 [agent]
-stack = "PNPM_WORKSPACE"
+stack = "BEST_EFFORT_FALLBACK"
 expertMode = true
 integrations = ["resend:1.0.0"]
 
