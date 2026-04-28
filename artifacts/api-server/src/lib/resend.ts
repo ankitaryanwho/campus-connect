@@ -1,8 +1,14 @@
 import { Resend } from "resend";
 
-let connectionSettings: any;
+async function getCredentials(): Promise<{ apiKey: string; fromEmail: string }> {
+  const directKey = process.env.RESEND_API_KEY;
+  if (directKey) {
+    return {
+      apiKey: directKey,
+      fromEmail: process.env.RESEND_FROM_EMAIL || "CampusConnect <onboarding@resend.dev>",
+    };
+  }
 
-async function getCredentials() {
   const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
   const xReplitToken = process.env.REPL_IDENTITY
     ? "repl " + process.env.REPL_IDENTITY
@@ -10,38 +16,38 @@ async function getCredentials() {
     ? "depl " + process.env.WEB_REPL_RENEWAL
     : null;
 
-  if (!xReplitToken) {
-    throw new Error("X-Replit-Token not found for repl/depl");
-  }
+  if (hostname && xReplitToken) {
+    const item = await fetch(
+      "https://" + hostname + "/api/v2/connection?include_secrets=true&connector_names=resend",
+      {
+        headers: {
+          Accept: "application/json",
+          "X-Replit-Token": xReplitToken,
+        },
+      }
+    )
+      .then((res) => res.json())
+      .then((data) => data.items?.[0])
+      .catch(() => null);
 
-  connectionSettings = await fetch(
-    "https://" + hostname + "/api/v2/connection?include_secrets=true&connector_names=resend",
-    {
-      headers: {
-        Accept: "application/json",
-        "X-Replit-Token": xReplitToken,
-      },
+    if (item?.settings?.api_key) {
+      return {
+        apiKey: item.settings.api_key as string,
+        fromEmail: (item.settings.from_email as string | undefined) || "CampusConnect <onboarding@resend.dev>",
+      };
     }
-  )
-    .then((res) => res.json())
-    .then((data) => data.items?.[0]);
-
-  if (!connectionSettings || !connectionSettings.settings.api_key) {
-    throw new Error("Resend not connected");
   }
 
-  return {
-    apiKey: connectionSettings.settings.api_key as string,
-    fromEmail: connectionSettings.settings.from_email as string | undefined,
-  };
+  throw new Error(
+    "Resend not configured: set RESEND_API_KEY secret or connect Resend via Replit Integrations."
+  );
 }
 
-// WARNING: Never cache this client. Access tokens expire.
 export async function getUncachableResendClient() {
   const { apiKey, fromEmail } = await getCredentials();
   return {
     client: new Resend(apiKey),
-    fromEmail: fromEmail || "CampusConnect <onboarding@resend.dev>",
+    fromEmail,
   };
 }
 

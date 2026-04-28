@@ -5,7 +5,7 @@ import bcrypt from "bcryptjs";
 import { eq, and, gt } from "drizzle-orm";
 import { generateToken, authMiddleware } from "../lib/auth";
 import { generateId } from "../lib/id";
-import { sendOtpEmail } from "../lib/mailer";
+import { sendOtpEmail } from "../lib/resend";
 import jwt from "jsonwebtoken";
 
 const router = Router();
