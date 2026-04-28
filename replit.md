@@ -37,7 +37,7 @@ Dark professional admin dashboard with full CRUD control over the platform.
 - College list is static (5 colleges with domains): Bennett, Amity, Manipal, Sharda, Galgotias
 - Signup: select college → enter name/email (domain validated) / password / program / **academic year (1-4)** / phone (optional) → OTP sent → verify OTP → account created
 - Service providers additionally select their services (assignments, certifications, deliveries, tasks)
-- OTP sent via Gmail SMTP (nodemailer); credentials in SMTP_USER / SMTP_PASS secrets
+- OTP sent via **Resend** (`RESEND_API_KEY` secret); from address defaults to `onboarding@resend.dev` (override with `RESEND_FROM_EMAIL`)
 - `verificationToken` (short-lived JWT) issued after OTP verification, required for `/auth/register`
 - Users have `emailVerified=true` after completing OTP flow; `year` and `phone` stored on user
 - Provider services stored as JSON array in `users.services` column, shown as badges on profile
