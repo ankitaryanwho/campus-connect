@@ -69,7 +69,7 @@ channel = "stable-25_05"
 [userenv]
 
 [userenv.shared]
-VITE_API_URL = "https://workspace-aryan20131000.replit.app"
+VITE_API_URL = "https://campus-connect-app.replit.app"
 
 [userenv.production]
 NEON_SOURCE_URL = "postgresql://neondb_owner:npg_2rRPlbeHc1Dt@ep-divine-sky-a4dm30t7.us-east-1.aws.neon.tech/neondb?sslmode=require"

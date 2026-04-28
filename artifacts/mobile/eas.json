@@ -11,7 +11,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://workspace-aryan20131000.replit.app/api"
+        "EXPO_PUBLIC_API_URL": "https://campus-connect-app.replit.app/api"
       }
     },
     "production": {
@@ -25,7 +25,7 @@
         "simulator": false
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://workspace-aryan20131000.replit.app/api"
+        "EXPO_PUBLIC_API_URL": "https://campus-connect-app.replit.app/api"
       }
     }
   },
