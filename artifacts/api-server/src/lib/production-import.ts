@@ -62,7 +62,15 @@ export async function runProductionImport(forceOverride?: boolean): Promise<Impo
   console.log(`[import] Starting import from Neon source database (force=${force})...`);
 
   const sourcePool = new Pool({ connectionString: sourceUrl });
-  const sourceClient = await sourcePool.connect();
+  let sourceClient: any;
+  try {
+    sourceClient = await sourcePool.connect();
+  } catch (connErr: any) {
+    await sourcePool.end().catch(() => {});
+    destClient.release();
+    console.warn(`[import] Cannot connect to Neon source — skipping: ${connErr.message}`);
+    return { success: true, skipped: true, reason: `Neon source unreachable: ${connErr.message}` };
+  }
   const tableResults: Record<string, { imported: number; total: number; errors: number }> = {};
 
   try {
