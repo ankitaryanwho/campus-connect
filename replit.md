@@ -91,7 +91,7 @@ Fully privacy-first anonymous posting with threaded comments, reply system, and 
 - `components/AuthorBadge.tsx` + `constants/badges.ts` — shared `BADGE_META` map and `resolveBadge()` helper. Renders a small icon next to the author's name everywhere (feed, comments, post detail, profile, public profile).
 - Posts display `EDITED` and `HIDDEN` pills above the content when applicable. Hidden posts are still visible to the owner with the HIDDEN pill.
 
-**API base for mobile**: `EXPO_PUBLIC_API_URL` env var, falling back to the deployed Replit app URL (`https://campus-connect-davidaryan7256.replit.app/api`). Backend changes therefore require redeploying the API server before OTA updates of the mobile bundle will exercise them.
+**API base for mobile**: `EXPO_PUBLIC_API_URL` env var, falling back to the deployed Replit app URL (`https://workspace-aryan20131000.replit.app/api`). Backend changes therefore require redeploying the API server before OTA updates of the mobile bundle will exercise them.
 
 ## Stack
 

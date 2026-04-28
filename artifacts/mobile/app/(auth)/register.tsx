@@ -9,7 +9,7 @@ import { Feather } from "@expo/vector-icons";
 import { useAuth } from "@/contexts/AuthContext";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 
-const API_BASE = process.env.EXPO_PUBLIC_API_URL || "/api";
+const API_BASE = process.env.EXPO_PUBLIC_API_URL || "https://workspace-aryan20131000.replit.app/api";
 const PURPLE = "#5B4FE8";
 const CREAM = "#FAF8F4";
 const TEXT = "#1A1A2E";

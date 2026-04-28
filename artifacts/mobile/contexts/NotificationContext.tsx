@@ -71,7 +71,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     } catch {}
 
     try {
-      const API_BASE = process.env["EXPO_PUBLIC_API_URL"] || "https://campus-connect-davidaryan7256.replit.app/api";
+      const API_BASE = process.env["EXPO_PUBLIC_API_URL"] || "https://workspace-aryan20131000.replit.app/api";
       const res = await fetch(`${API_BASE}/notifications/push-token`, {
         method: "POST",
         headers: {
