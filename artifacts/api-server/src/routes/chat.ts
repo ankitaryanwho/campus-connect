@@ -262,22 +262,23 @@ router.get("/conversations/:conversationId/messages", authMiddleware, async (req
     const convRows = await db.select().from(conversationsTable).where(eq(conversationsTable.id, conversationId)).limit(1);
     const conv = convRows[0];
 
-    // Build WHERE clause — apply cursor filter when provided
-    let baseWhere: any = eq(messagesTable.conversationId, conversationId);
+    // Resolve cursor to a timestamp for keyset pagination
+    let cursorDate: Date | undefined;
     if (cursor) {
       const cursorRows = await db.select({ createdAt: messagesTable.createdAt })
         .from(messagesTable).where(eq(messagesTable.id, cursor)).limit(1);
-      if (cursorRows.length) {
-        baseWhere = and(
-          eq(messagesTable.conversationId, conversationId),
-          lt(messagesTable.createdAt, cursorRows[0].createdAt),
-        );
-      }
+      if (cursorRows.length) cursorDate = cursorRows[0].createdAt;
     }
 
-    const msgs = await db.select().from(messagesTable)
-      .where(baseWhere)
-      .orderBy(desc(messagesTable.createdAt)).limit(limit);
+    // Fetch one extra row to determine whether another page exists
+    const rows = await db.select().from(messagesTable)
+      .where(cursorDate
+        ? and(eq(messagesTable.conversationId, conversationId), lt(messagesTable.createdAt, cursorDate))
+        : eq(messagesTable.conversationId, conversationId))
+      .orderBy(desc(messagesTable.createdAt)).limit(limit + 1);
+
+    const hasMore = rows.length > limit;
+    const msgs = hasMore ? rows.slice(0, limit) : rows;
 
     if (!msgs.length) {
       res.json({ messages: [], nextCursor: null });
@@ -297,8 +298,8 @@ router.get("/conversations/:conversationId/messages", authMiddleware, async (req
       return { ...m, senderId: undefined, sender, isSelf };
     });
 
-    // Return nextCursor = ID of oldest message in this page (last in newest-first order)
-    const nextCursor = msgs.length === limit ? msgs[msgs.length - 1].id : null;
+    // nextCursor = oldest message ID on this page; null when no further pages exist
+    const nextCursor = hasMore ? msgs[msgs.length - 1].id : null;
     res.json({ messages: formatted, nextCursor });
   } catch (err) {
     res.status(500).json({ error: "ServerError", message: "Failed to get messages" });
@@ -439,22 +440,23 @@ router.get("/chatrooms/:chatroomId/messages", authMiddleware, async (req, res) =
     const cursor = req.query["cursor"] as string | undefined;
     const limit = Math.min(parseInt(req.query["limit"] as string || "30", 10), 50);
 
-    // Build WHERE clause — apply cursor filter when provided
-    let baseWhere: any = eq(messagesTable.chatroomId, chatroomId);
+    // Resolve cursor to a timestamp for keyset pagination
+    let cursorDate: Date | undefined;
     if (cursor) {
       const cursorRows = await db.select({ createdAt: messagesTable.createdAt })
         .from(messagesTable).where(eq(messagesTable.id, cursor)).limit(1);
-      if (cursorRows.length) {
-        baseWhere = and(
-          eq(messagesTable.chatroomId, chatroomId),
-          lt(messagesTable.createdAt, cursorRows[0].createdAt),
-        );
-      }
+      if (cursorRows.length) cursorDate = cursorRows[0].createdAt;
     }
 
-    const msgs = await db.select().from(messagesTable)
-      .where(baseWhere)
-      .orderBy(desc(messagesTable.createdAt)).limit(limit);
+    // Fetch one extra row to determine whether another page exists
+    const rows = await db.select().from(messagesTable)
+      .where(cursorDate
+        ? and(eq(messagesTable.chatroomId, chatroomId), lt(messagesTable.createdAt, cursorDate))
+        : eq(messagesTable.chatroomId, chatroomId))
+      .orderBy(desc(messagesTable.createdAt)).limit(limit + 1);
+
+    const hasMore = rows.length > limit;
+    const msgs = hasMore ? rows.slice(0, limit) : rows;
 
     if (!msgs.length) {
       res.json({ messages: [], nextCursor: null });
@@ -471,8 +473,8 @@ router.get("/chatrooms/:chatroomId/messages", authMiddleware, async (req, res) =
       sender: pickMessageSender(sendersMap.get(m.senderId)),
     }));
 
-    // Return nextCursor = ID of oldest message in this page (last in newest-first order)
-    const nextCursor = msgs.length === limit ? msgs[msgs.length - 1].id : null;
+    // nextCursor = oldest message ID on this page; null when no further pages exist
+    const nextCursor = hasMore ? msgs[msgs.length - 1].id : null;
     res.json({ messages: formatted, nextCursor });
   } catch (err) {
     res.status(500).json({ error: "ServerError", message: "Failed to get chatroom messages" });
