@@ -8,6 +8,21 @@ import { pickConversationUser, pickMessageSender } from "../lib/userFields";
 
 const router = Router();
 
+// ─── SSE subscriber maps ─────────────────────────────────────────────────────
+// These are intentionally module-level (not per-request) so all handlers share them.
+
+const conversationClients = new Map<string, Set<any>>();
+const chatroomClients     = new Map<string, Set<any>>();
+
+function pushSSE(map: Map<string, Set<any>>, channelId: string, payload: object) {
+  const clients = map.get(channelId);
+  if (!clients?.size) return;
+  const frame = `data: ${JSON.stringify(payload)}\n\n`;
+  for (const client of clients) {
+    try { client.write(frame); } catch {}
+  }
+}
+
 // ─── Shared Helpers ──────────────────────────────────────────────────────────
 
 async function batchGetUsers(ids: string[]): Promise<Map<string, any>> {
@@ -192,6 +207,31 @@ router.post("/conversations", authMiddleware, async (req, res) => {
 
 // ─── DM Messages ──────────────────────────────────────────────────────────────
 
+router.get("/conversations/:conversationId/stream", authMiddleware, (req, res) => {
+  const conversationId = req.params["conversationId"] as string;
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+
+  res.write(": connected\n\n");
+
+  if (!conversationClients.has(conversationId)) conversationClients.set(conversationId, new Set());
+  conversationClients.get(conversationId)!.add(res);
+
+  const heartbeat = setInterval(() => {
+    try { res.write(": ping\n\n"); } catch { clearInterval(heartbeat); }
+  }, 25_000);
+
+  req.on("close", () => {
+    clearInterval(heartbeat);
+    const s = conversationClients.get(conversationId);
+    if (s) { s.delete(res); if (!s.size) conversationClients.delete(conversationId); }
+  });
+});
+
 router.get("/conversations/:conversationId/messages", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
@@ -231,7 +271,7 @@ router.get("/conversations/:conversationId/messages", authMiddleware, async (req
 router.post("/conversations/:conversationId/messages", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { conversationId } = req.params;
+    const conversationId = req.params["conversationId"] as string;
     const { content } = req.body;
     if (!content || !content.trim()) {
       res.status(400).json({ error: "ValidationError", message: "Content is required" });
@@ -266,7 +306,10 @@ router.post("/conversations/:conversationId/messages", authMiddleware, async (re
       const sendersMap = await batchGetUsers([userId]);
       sender = pickMessageSender(sendersMap.get(userId));
     }
-    res.status(201).json({ ...msgs[0], senderId: undefined, sender, isSelf: true });
+
+    const messagePayload = { ...msgs[0], senderId: undefined, sender };
+    pushSSE(conversationClients, conversationId, messagePayload);
+    res.status(201).json({ ...messagePayload, isSelf: true });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "ServerError", message: "Failed to send message" });
@@ -328,6 +371,31 @@ router.get("/chatrooms", authMiddleware, async (req, res) => {
   }
 });
 
+router.get("/chatrooms/:chatroomId/stream", authMiddleware, (req, res) => {
+  const chatroomId = req.params["chatroomId"] as string;
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+
+  res.write(": connected\n\n");
+
+  if (!chatroomClients.has(chatroomId)) chatroomClients.set(chatroomId, new Set());
+  chatroomClients.get(chatroomId)!.add(res);
+
+  const heartbeat = setInterval(() => {
+    try { res.write(": ping\n\n"); } catch { clearInterval(heartbeat); }
+  }, 25_000);
+
+  req.on("close", () => {
+    clearInterval(heartbeat);
+    const s = chatroomClients.get(chatroomId);
+    if (s) { s.delete(res); if (!s.size) chatroomClients.delete(chatroomId); }
+  });
+});
+
 router.get("/chatrooms/:chatroomId/messages", authMiddleware, async (req, res) => {
   try {
     const { chatroomId } = req.params;
@@ -359,7 +427,7 @@ router.get("/chatrooms/:chatroomId/messages", authMiddleware, async (req, res) =
 router.post("/chatrooms/:chatroomId/messages", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { chatroomId } = req.params;
+    const chatroomId = req.params["chatroomId"] as string;
     const { content } = req.body;
     if (!content) {
       res.status(400).json({ error: "ValidationError", message: "Content is required" });
@@ -372,7 +440,9 @@ router.post("/chatrooms/:chatroomId/messages", authMiddleware, async (req, res) 
 
     const msgs = await db.select().from(messagesTable).where(eq(messagesTable.id, msgId)).limit(1);
     const sendersMap = await batchGetUsers([userId]);
-    res.status(201).json({ ...msgs[0], sender: pickMessageSender(sendersMap.get(userId)) });
+    const chatroomPayload = { ...msgs[0], senderId: undefined, sender: pickMessageSender(sendersMap.get(userId)) };
+    pushSSE(chatroomClients, chatroomId, chatroomPayload);
+    res.status(201).json(chatroomPayload);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "ServerError", message: "Failed to send chatroom message" });

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useCallback } from "react";
 import {
   View, Text, FlatList, TextInput, Pressable, StyleSheet,
   useColorScheme, ActivityIndicator, Image, Platform,
@@ -9,7 +9,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Colors from "@/constants/colors";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth, API_BASE } from "@/contexts/AuthContext";
+import { useSSE } from "@/hooks/useSSE";
 
 function getInitials(name: string) {
   return name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
@@ -33,7 +34,7 @@ export default function ChatroomScreen() {
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const C = Colors[colorScheme === "dark" ? "dark" : "light"];
-  const { apiRequest, user } = useAuth();
+  const { apiRequest, user, token } = useAuth();
   const queryClient = useQueryClient();
   const [text, setText] = useState("");
   const inputRef = useRef<TextInput>(null);
@@ -54,8 +55,21 @@ export default function ChatroomScreen() {
       const res = await apiRequest(`/chat/chatrooms/${id}/messages`);
       return res.json() as Promise<{ messages: any[] }>;
     },
-    refetchInterval: 3000,
   });
+
+  const prependMessage = useCallback((msg: any) => {
+    queryClient.setQueryData(["chatroom-messages", id], (old: any) => {
+      const existing: any[] = old?.messages || [];
+      if (existing.some(m => m.id === msg.id)) return old;
+      return { ...old, messages: [msg, ...existing] };
+    });
+  }, [queryClient, id]);
+
+  useSSE(
+    id ? `${API_BASE}/chat/chatrooms/${id}/stream` : null,
+    token,
+    prependMessage,
+  );
 
   const sendMutation = useMutation({
     mutationFn: async () => {
@@ -65,9 +79,9 @@ export default function ChatroomScreen() {
       });
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (newMsg) => {
       setText("");
-      queryClient.invalidateQueries({ queryKey: ["chatroom-messages", id] });
+      prependMessage(newMsg);
       inputRef.current?.focus();
     },
   });
