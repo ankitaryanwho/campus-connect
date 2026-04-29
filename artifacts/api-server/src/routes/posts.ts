@@ -4,6 +4,7 @@ import { postsTable, usersTable, likesTable, commentsTable, notificationsTable }
 import { eq, desc, lt, and, or, ne, sql, inArray } from "drizzle-orm";
 import { authMiddleware } from "../lib/auth";
 import { generateId } from "../lib/id";
+import { pickPublicUser } from "../lib/userFields";
 
 const router = Router();
 
@@ -54,17 +55,22 @@ async function formatPosts(posts: any[], requestingUserId: string): Promise<any[
   ]);
 
   return posts.map(post => {
-    const realAuthor = authorsMap.get(post.authorId) || null;
+    const rawAuthor = authorsMap.get(post.authorId) || null;
     const isOwnPost = post.authorId === requestingUserId;
-    const author = (post.isAnonymous && !isOwnPost) ? buildAnonAuthor(realAuthor) : realAuthor;
-    return {
+    const author = (post.isAnonymous && !isOwnPost)
+      ? buildAnonAuthor(rawAuthor)
+      : pickPublicUser(rawAuthor);
+    const parsedMedia: string[] = JSON.parse(post.mediaUrls || "[]");
+    const result: any = {
       ...post,
       authorId: undefined,
-      mediaUrls: JSON.parse(post.mediaUrls || "[]"),
       author,
       isOwnPost,
       isLiked: likedSet.has(post.id),
     };
+    if (parsedMedia.length) result.mediaUrls = parsedMedia;
+    else delete result.mediaUrls;
+    return result;
   });
 }
 
@@ -315,12 +321,12 @@ router.get("/:postId/comments", authMiddleware, async (req, res) => {
     const authorsMap = await batchGetUsers(authorIds);
 
     const formatted = allComments.map(c => {
-      const realAuthor = authorsMap.get(c.authorId) || null;
+      const rawAuthor = authorsMap.get(c.authorId) || null;
       const isOwnComment = c.authorId === userId;
       const isPostAuthor = post && c.authorId === post.authorId;
       const author = (post?.isAnonymous && isPostAuthor && !isOwnComment)
-        ? buildAnonAuthor(realAuthor)
-        : realAuthor;
+        ? buildAnonAuthor(rawAuthor)
+        : pickPublicUser(rawAuthor);
       return { ...c, authorId: undefined, author, isOwnComment, isPostAuthor };
     });
 

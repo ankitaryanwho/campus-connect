@@ -3,13 +3,9 @@ import { db } from "@workspace/db";
 import { usersTable, followsTable, postsTable } from "@workspace/db/schema";
 import { eq, and, desc, sql, or, ne } from "drizzle-orm";
 import { authMiddleware } from "../lib/auth";
+import { pickFullUser } from "../lib/userFields";
 
 const router = Router();
-
-async function safeUser(user: any) {
-  const { passwordHash: _, ...u } = user;
-  return u;
-}
 
 router.get("/:userId", authMiddleware, async (req, res) => {
   try {
@@ -22,7 +18,7 @@ router.get("/:userId", authMiddleware, async (req, res) => {
     }
     const isFollowingRows = await db.select().from(followsTable)
       .where(and(eq(followsTable.followerId, currentUserId), eq(followsTable.followingId, userId))).limit(1);
-    const u = await safeUser(users[0]);
+    const u = pickFullUser(users[0]);
     res.json({ ...u, isFollowing: isFollowingRows.length > 0 });
   } catch (err) {
     res.status(500).json({ error: "ServerError", message: "Failed to get user" });
@@ -106,8 +102,7 @@ router.put("/me/profile", authMiddleware, async (req, res) => {
 
     await db.update(usersTable).set(update).where(eq(usersTable.id, userId));
     const users = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-    const u = await safeUser(users[0]);
-    res.json(u);
+    res.json(pickFullUser(users[0]));
   } catch (err) {
     res.status(500).json({ error: "ServerError", message: "Failed to update profile" });
   }

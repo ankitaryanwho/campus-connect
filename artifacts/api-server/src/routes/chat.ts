@@ -4,6 +4,7 @@ import { conversationsTable, messagesTable, usersTable, chatroomsTable } from "@
 import { eq, or, and, desc, inArray } from "drizzle-orm";
 import { authMiddleware } from "../lib/auth";
 import { generateId } from "../lib/id";
+import { pickConversationUser } from "../lib/userFields";
 
 const router = Router();
 
@@ -86,9 +87,11 @@ router.get("/conversations", authMiddleware, async (req, res) => {
       const otherIsInitiator = c.participant1Id === otherId;
 
       const realOther = usersMap.get(otherId) || null;
-      const self = usersMap.get(userId) || null;
+      const self = pickConversationUser(usersMap.get(userId) || null);
 
-      const other = (c.isAnonymous && otherIsInitiator) ? buildAnonUser(realOther) : realOther;
+      const other = (c.isAnonymous && otherIsInitiator)
+        ? buildAnonUser(realOther)
+        : pickConversationUser(realOther);
 
       const rawLastMsg = lastMsgMap.get(c.id) || null;
       let formattedLastMsg = null;
@@ -156,7 +159,7 @@ router.post("/conversations", authMiddleware, async (req, res) => {
       const conv = newConv[0];
       const usersMap = await batchGetUsers([userId, participantId]);
       const realSelf = usersMap.get(userId);
-      const other = usersMap.get(participantId);
+      const other = pickConversationUser(usersMap.get(participantId) || null);
       const anonSelf = buildAnonUser(realSelf);
       return res.json({
         id: conv.id, isAnonymous: true, anonymousPostId,
@@ -181,8 +184,8 @@ router.post("/conversations", authMiddleware, async (req, res) => {
     }
 
     const usersMap = await batchGetUsers([userId, participantId]);
-    const other = usersMap.get(participantId);
-    const self = usersMap.get(userId);
+    const other = pickConversationUser(usersMap.get(participantId) || null);
+    const self = pickConversationUser(usersMap.get(userId) || null);
     res.json({ id: conv.id, isAnonymous: false, participants: [self, other], lastMessage: null, unreadCount: 0, updatedAt: conv.updatedAt });
   } catch (err) {
     console.error(err);
