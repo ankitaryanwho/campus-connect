@@ -1,17 +1,24 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { postsTable, usersTable, likesTable, commentsTable, notificationsTable } from "@workspace/db/schema";
-import { eq, desc, lt, and, or, ne, sql } from "drizzle-orm";
+import { eq, desc, lt, and, or, ne, sql, inArray } from "drizzle-orm";
 import { authMiddleware } from "../lib/auth";
 import { generateId } from "../lib/id";
 
 const router = Router();
 
-async function getAuthor(authorId: string) {
-  const users = await db.select().from(usersTable).where(eq(usersTable.id, authorId)).limit(1);
-  if (!users.length) return null;
-  const { passwordHash: _, ...u } = users[0];
-  return u;
+// ─── Shared Helpers ──────────────────────────────────────────────────────────
+
+async function batchGetUsers(ids: string[]): Promise<Map<string, any>> {
+  if (!ids.length) return new Map();
+  const uniqueIds = [...new Set(ids)];
+  const users = await db.select().from(usersTable).where(inArray(usersTable.id, uniqueIds));
+  const map = new Map<string, any>();
+  for (const u of users) {
+    const { passwordHash: _, ...safe } = u;
+    map.set(u.id, safe);
+  }
+  return map;
 }
 
 function buildAnonAuthor(realAuthor: any) {
@@ -28,33 +35,52 @@ function buildAnonAuthor(realAuthor: any) {
   };
 }
 
-async function formatPost(post: any, requestingUserId: string) {
-  const realAuthor = await getAuthor(post.authorId);
-  const likeRows = await db.select().from(likesTable)
-    .where(and(eq(likesTable.postId, post.id), eq(likesTable.userId, requestingUserId))).limit(1);
+// ─── Batch formatter: 2 queries for any number of posts ──────────────────────
 
-  const isOwnPost = post.authorId === requestingUserId;
-  let author: any;
-  if (post.isAnonymous && !isOwnPost) {
-    author = buildAnonAuthor(realAuthor);
-  } else {
-    author = realAuthor;
-  }
+async function formatPosts(posts: any[], requestingUserId: string): Promise<any[]> {
+  if (!posts.length) return [];
 
-  return {
-    ...post,
-    authorId: undefined,
-    mediaUrls: JSON.parse(post.mediaUrls || "[]"),
-    author,
-    isOwnPost,
-    isLiked: likeRows.length > 0,
-  };
+  const authorIds = posts.map(p => p.authorId);
+  const postIds = posts.map(p => p.id);
+
+  const [authorsMap, likedSet] = await Promise.all([
+    batchGetUsers(authorIds),
+    (async () => {
+      const likeRows = await db.select({ postId: likesTable.postId })
+        .from(likesTable)
+        .where(and(inArray(likesTable.postId, postIds), eq(likesTable.userId, requestingUserId)));
+      return new Set(likeRows.map(l => l.postId));
+    })(),
+  ]);
+
+  return posts.map(post => {
+    const realAuthor = authorsMap.get(post.authorId) || null;
+    const isOwnPost = post.authorId === requestingUserId;
+    const author = (post.isAnonymous && !isOwnPost) ? buildAnonAuthor(realAuthor) : realAuthor;
+    return {
+      ...post,
+      authorId: undefined,
+      mediaUrls: JSON.parse(post.mediaUrls || "[]"),
+      author,
+      isOwnPost,
+      isLiked: likedSet.has(post.id),
+    };
+  });
 }
 
-// Visibility filter: hidden posts are visible only to their owner.
+// Single-post wrapper (still just 2 queries, same batch path)
+async function formatPost(post: any, requestingUserId: string) {
+  const [formatted] = await formatPosts([post], requestingUserId);
+  return formatted;
+}
+
+// ─── Visibility filter ────────────────────────────────────────────────────────
+
 function visibilityFilter(userId: string) {
   return or(eq(postsTable.hidden, false), eq(postsTable.authorId, userId));
 }
+
+// ─── Routes ──────────────────────────────────────────────────────────────────
 
 router.get("/", authMiddleware, async (req, res) => {
   try {
@@ -77,7 +103,7 @@ router.get("/", authMiddleware, async (req, res) => {
     const posts = await query;
     const hasMore = posts.length > limit;
     const data = posts.slice(0, limit);
-    const formattedPosts = await Promise.all(data.map(p => formatPost(p, userId)));
+    const formattedPosts = await formatPosts(data, userId);
 
     res.json({ posts: formattedPosts, nextCursor: hasMore ? data[data.length - 1].id : null });
   } catch (err) {
@@ -101,7 +127,6 @@ router.post("/", authMiddleware, async (req, res) => {
       return;
     }
 
-    // Anonymous posts always go to confessions; "all" defaults to social
     const anonBool = Boolean(isAnonymous);
     const resolvedCategory: string = anonBool
       ? "confessions"
@@ -143,7 +168,6 @@ router.get("/:postId", authMiddleware, async (req, res) => {
   }
 });
 
-// Edit post content (owner only). Sets editedAt = now.
 router.patch("/:postId", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
@@ -174,7 +198,6 @@ router.patch("/:postId", authMiddleware, async (req, res) => {
   }
 });
 
-// Hide / unhide a post (owner only). Hidden posts are visible only to the owner.
 router.post("/:postId/hide", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
@@ -218,7 +241,6 @@ router.delete("/:postId", authMiddleware, async (req, res) => {
       res.status(403).json({ error: "Forbidden", message: "Cannot delete this post" });
       return;
     }
-    // Cascade-delete dependent rows so the FK on likes/comments doesn't block deletion.
     await db.delete(likesTable).where(eq(likesTable.postId, postId));
     await db.delete(commentsTable).where(eq(commentsTable.postId, postId));
     await db.delete(postsTable).where(eq(postsTable.id, postId));
@@ -253,7 +275,8 @@ router.post("/:postId/like", authMiddleware, async (req, res) => {
       const post = await db.select().from(postsTable).where(eq(postsTable.id, postId)).limit(1);
 
       if (post.length && post[0].authorId !== userId) {
-        const liker = await getAuthor(userId);
+        const likersMap = await batchGetUsers([userId]);
+        const liker = likersMap.get(userId);
         const notifBody = post[0].isAnonymous
           ? "Someone liked your anonymous post"
           : `${liker?.name} liked your post`;
@@ -287,20 +310,19 @@ router.get("/:postId/comments", authMiddleware, async (req, res) => {
       .where(eq(commentsTable.postId, postId))
       .orderBy(desc(commentsTable.createdAt));
 
-    const formatted = await Promise.all(allComments.map(async c => {
-      const realAuthor = await getAuthor(c.authorId);
+    // Batch fetch all comment authors in one query
+    const authorIds = allComments.map(c => c.authorId);
+    const authorsMap = await batchGetUsers(authorIds);
+
+    const formatted = allComments.map(c => {
+      const realAuthor = authorsMap.get(c.authorId) || null;
       const isOwnComment = c.authorId === userId;
       const isPostAuthor = post && c.authorId === post.authorId;
-
-      let author: any;
-      if (post?.isAnonymous && isPostAuthor && !isOwnComment) {
-        author = buildAnonAuthor(realAuthor);
-      } else {
-        const { passwordHash: _, ...a } = realAuthor ? (realAuthor as any) : {};
-        author = realAuthor;
-      }
+      const author = (post?.isAnonymous && isPostAuthor && !isOwnComment)
+        ? buildAnonAuthor(realAuthor)
+        : realAuthor;
       return { ...c, authorId: undefined, author, isOwnComment, isPostAuthor };
-    }));
+    });
 
     const topLevel = formatted.filter(c => !c.parentId);
     const replies = formatted.filter(c => c.parentId);
@@ -352,7 +374,8 @@ router.post("/:postId/comments", authMiddleware, async (req, res) => {
 
     const post = postRows[0];
     if (post.authorId !== userId) {
-      const commenter = await getAuthor(userId);
+      const commentersMap = await batchGetUsers([userId]);
+      const commenter = commentersMap.get(userId);
       const notifBody = post.isAnonymous
         ? "Someone commented on your anonymous post"
         : `${commenter?.name} commented on your post`;
@@ -363,7 +386,8 @@ router.post("/:postId/comments", authMiddleware, async (req, res) => {
     }
 
     const comments = await db.select().from(commentsTable).where(eq(commentsTable.id, commentId)).limit(1);
-    const author = await getAuthor(userId);
+    const authorsMap = await batchGetUsers([userId]);
+    const author = authorsMap.get(userId) || null;
     res.status(201).json({ ...comments[0], authorId: undefined, author, replies: [] });
   } catch (err) {
     console.error(err);

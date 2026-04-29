@@ -1,17 +1,24 @@
 import { Router } from "express";
-import { db } from "@workspace/db";
+import { db, pool } from "@workspace/db";
 import { conversationsTable, messagesTable, usersTable, chatroomsTable } from "@workspace/db/schema";
-import { eq, or, and, desc } from "drizzle-orm";
+import { eq, or, and, desc, inArray } from "drizzle-orm";
 import { authMiddleware } from "../lib/auth";
 import { generateId } from "../lib/id";
 
 const router = Router();
 
-async function safeUser(userId: string) {
-  const users = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-  if (!users.length) return null;
-  const { passwordHash: _, ...u } = users[0];
-  return u;
+// ─── Shared Helpers ──────────────────────────────────────────────────────────
+
+async function batchGetUsers(ids: string[]): Promise<Map<string, any>> {
+  if (!ids.length) return new Map();
+  const uniqueIds = [...new Set(ids)];
+  const users = await db.select().from(usersTable).where(inArray(usersTable.id, uniqueIds));
+  const map = new Map<string, any>();
+  for (const u of users) {
+    const { passwordHash: _, ...safe } = u;
+    map.set(u.id, safe);
+  }
+  return map;
 }
 
 function buildAnonUser(realUser: any) {
@@ -27,6 +34,8 @@ function buildAnonUser(realUser: any) {
   };
 }
 
+// ─── Conversations ────────────────────────────────────────────────────────────
+
 router.get("/conversations", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
@@ -34,39 +43,76 @@ router.get("/conversations", authMiddleware, async (req, res) => {
       .where(or(eq(conversationsTable.participant1Id, userId), eq(conversationsTable.participant2Id, userId)))
       .orderBy(desc(conversationsTable.updatedAt));
 
-    const formatted = await Promise.all(convs.map(async (c) => {
+    if (!convs.length) {
+      res.json({ conversations: [] });
+      return;
+    }
+
+    const convIds = convs.map(c => c.id);
+
+    // Collect all participant IDs (includes current user, deduped automatically)
+    const allParticipantIds = new Set<string>();
+    for (const c of convs) {
+      allParticipantIds.add(c.participant1Id);
+      allParticipantIds.add(c.participant2Id);
+    }
+
+    // Get last message per conversation in one query using DISTINCT ON
+    const lastMsgRows: any[] = convIds.length
+      ? (await pool.query(
+          `SELECT DISTINCT ON (conversation_id) id, content, sender_id, conversation_id, is_read, metadata, created_at
+           FROM messages
+           WHERE conversation_id = ANY($1)
+           ORDER BY conversation_id, created_at DESC`,
+          [convIds]
+        )).rows
+      : [];
+
+    // Collect sender IDs from last messages
+    const lastMsgSenderIds = lastMsgRows.map((m: any) => m.sender_id).filter(Boolean);
+
+    // Batch fetch all users (participants + message senders) in one query
+    const allUserIds = [...allParticipantIds, ...lastMsgSenderIds];
+    const usersMap = await batchGetUsers(allUserIds);
+
+    // Build last message map keyed by conversation_id
+    const lastMsgMap = new Map<string, any>();
+    for (const m of lastMsgRows) {
+      lastMsgMap.set(m.conversation_id, m);
+    }
+
+    const formatted = convs.map(c => {
       const otherId = c.participant1Id === userId ? c.participant2Id : c.participant1Id;
-      const isInitiator = c.participant1Id === userId;
       const otherIsInitiator = c.participant1Id === otherId;
 
-      const realOther = await safeUser(otherId);
-      const self = await safeUser(userId);
+      const realOther = usersMap.get(otherId) || null;
+      const self = usersMap.get(userId) || null;
 
-      let other: any;
-      if (c.isAnonymous && otherIsInitiator) {
-        other = buildAnonUser(realOther);
-      } else {
-        other = realOther;
-      }
+      const other = (c.isAnonymous && otherIsInitiator) ? buildAnonUser(realOther) : realOther;
 
-      const lastMsgs = await db.select().from(messagesTable)
-        .where(eq(messagesTable.conversationId, c.id))
-        .orderBy(desc(messagesTable.createdAt)).limit(1);
-      const lastMsg = lastMsgs.length ? lastMsgs[0] : null;
+      const rawLastMsg = lastMsgMap.get(c.id) || null;
       let formattedLastMsg = null;
-      if (lastMsg) {
-        const isSenderInitiator = lastMsg.senderId === c.participant1Id;
+      if (rawLastMsg) {
+        const isSenderInitiator = rawLastMsg.sender_id === c.participant1Id;
         let senderName: string;
         let senderAvatar: string | null;
-        if (c.isAnonymous && isSenderInitiator && lastMsg.senderId !== userId) {
+        if (c.isAnonymous && isSenderInitiator && rawLastMsg.sender_id !== userId) {
           senderName = "Hidden Profile";
           senderAvatar = null;
         } else {
-          const sender = await safeUser(lastMsg.senderId);
+          const sender = usersMap.get(rawLastMsg.sender_id);
           senderName = sender?.name || "";
           senderAvatar = sender?.avatar || null;
         }
-        formattedLastMsg = { ...lastMsg, senderId: undefined, senderName, senderAvatar };
+        formattedLastMsg = {
+          id: rawLastMsg.id,
+          content: rawLastMsg.content,
+          conversationId: rawLastMsg.conversation_id,
+          createdAt: rawLastMsg.created_at,
+          metadata: rawLastMsg.metadata,
+          senderName,
+          senderAvatar,
+        };
       }
 
       return {
@@ -78,7 +124,7 @@ router.get("/conversations", authMiddleware, async (req, res) => {
         unreadCount: 0,
         updatedAt: c.updatedAt,
       };
-    }));
+    });
 
     res.json({ conversations: formatted });
   } catch (err) {
@@ -108,8 +154,9 @@ router.post("/conversations", authMiddleware, async (req, res) => {
       });
       const newConv = await db.select().from(conversationsTable).where(eq(conversationsTable.id, anonConvId)).limit(1);
       const conv = newConv[0];
-      const realSelf = await safeUser(userId);
-      const other = await safeUser(participantId);
+      const usersMap = await batchGetUsers([userId, participantId]);
+      const realSelf = usersMap.get(userId);
+      const other = usersMap.get(participantId);
       const anonSelf = buildAnonUser(realSelf);
       return res.json({
         id: conv.id, isAnonymous: true, anonymousPostId,
@@ -133,14 +180,17 @@ router.post("/conversations", authMiddleware, async (req, res) => {
       conv = newConv[0];
     }
 
-    const other = await safeUser(participantId);
-    const self = await safeUser(userId);
+    const usersMap = await batchGetUsers([userId, participantId]);
+    const other = usersMap.get(participantId);
+    const self = usersMap.get(userId);
     res.json({ id: conv.id, isAnonymous: false, participants: [self, other], lastMessage: null, unreadCount: 0, updatedAt: conv.updatedAt });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "ServerError", message: "Failed to create conversation" });
   }
 });
+
+// ─── DM Messages ──────────────────────────────────────────────────────────────
 
 router.get("/conversations/:conversationId/messages", authMiddleware, async (req, res) => {
   try {
@@ -154,7 +204,16 @@ router.get("/conversations/:conversationId/messages", authMiddleware, async (req
       .where(eq(messagesTable.conversationId, conversationId))
       .orderBy(desc(messagesTable.createdAt)).limit(50);
 
-    const formatted = await Promise.all(msgs.map(async m => {
+    if (!msgs.length) {
+      res.json({ messages: [], nextCursor: null });
+      return;
+    }
+
+    // Batch fetch all unique senders in one query
+    const senderIds = msgs.map(m => m.senderId);
+    const sendersMap = await batchGetUsers(senderIds);
+
+    const formatted = msgs.map(m => {
       const isSenderInitiator = conv && m.senderId === conv.participant1Id;
       const isSelf = m.senderId === userId;
       let senderName: string;
@@ -163,12 +222,12 @@ router.get("/conversations/:conversationId/messages", authMiddleware, async (req
         senderName = "Hidden Profile";
         senderAvatar = null;
       } else {
-        const sender = await safeUser(m.senderId);
+        const sender = sendersMap.get(m.senderId);
         senderName = isSelf ? "You" : (sender?.name || "");
         senderAvatar = sender?.avatar || null;
       }
       return { ...m, senderId: undefined, senderName, senderAvatar, isSelf };
-    }));
+    });
 
     res.json({ messages: formatted, nextCursor: null });
   } catch (err) {
@@ -213,7 +272,8 @@ router.post("/conversations/:conversationId/messages", authMiddleware, async (re
       senderName = "Hidden Profile";
       senderAvatar = null;
     } else {
-      const sender = await safeUser(userId);
+      const sendersMap = await batchGetUsers([userId]);
+      const sender = sendersMap.get(userId);
       senderName = sender?.name || "";
       senderAvatar = sender?.avatar || null;
     }
@@ -224,21 +284,55 @@ router.post("/conversations/:conversationId/messages", authMiddleware, async (re
   }
 });
 
+// ─── Chatrooms ────────────────────────────────────────────────────────────────
+
 router.get("/chatrooms", authMiddleware, async (req, res) => {
   try {
     const chatrooms = await db.select().from(chatroomsTable).orderBy(chatroomsTable.name);
-    const formatted = await Promise.all(chatrooms.map(async r => {
-      const lastMsgs = await db.select().from(messagesTable)
-        .where(eq(messagesTable.chatroomId, r.id))
-        .orderBy(desc(messagesTable.createdAt)).limit(1);
-      const lastMsg = lastMsgs.length ? lastMsgs[0] : null;
+
+    if (!chatrooms.length) {
+      res.json({ chatrooms: [] });
+      return;
+    }
+
+    const chatroomIds = chatrooms.map(r => r.id);
+
+    // Get last message per chatroom in one query using DISTINCT ON
+    const lastMsgRows: any[] = (await pool.query(
+      `SELECT DISTINCT ON (chatroom_id) id, content, sender_id, chatroom_id, created_at
+       FROM messages
+       WHERE chatroom_id = ANY($1)
+       ORDER BY chatroom_id, created_at DESC`,
+      [chatroomIds]
+    )).rows;
+
+    // Batch fetch all last-message senders at once
+    const senderIds = lastMsgRows.map((m: any) => m.sender_id).filter(Boolean);
+    const sendersMap = await batchGetUsers(senderIds);
+
+    // Build last message map keyed by chatroom_id
+    const lastMsgMap = new Map<string, any>();
+    for (const m of lastMsgRows) {
+      lastMsgMap.set(m.chatroom_id, m);
+    }
+
+    const formatted = chatrooms.map(r => {
+      const rawLastMsg = lastMsgMap.get(r.id) || null;
       let formattedLastMsg = null;
-      if (lastMsg) {
-        const sender = await safeUser(lastMsg.senderId);
-        formattedLastMsg = { ...lastMsg, senderName: sender?.name || "", senderAvatar: sender?.avatar || null };
+      if (rawLastMsg) {
+        const sender = sendersMap.get(rawLastMsg.sender_id);
+        formattedLastMsg = {
+          id: rawLastMsg.id,
+          content: rawLastMsg.content,
+          chatroomId: rawLastMsg.chatroom_id,
+          createdAt: rawLastMsg.created_at,
+          senderName: sender?.name || "",
+          senderAvatar: sender?.avatar || null,
+        };
       }
       return { ...r, lastMessage: formattedLastMsg };
-    }));
+    });
+
     res.json({ chatrooms: formatted });
   } catch (err) {
     res.status(500).json({ error: "ServerError", message: "Failed to get chatrooms" });
@@ -252,10 +346,20 @@ router.get("/chatrooms/:chatroomId/messages", authMiddleware, async (req, res) =
       .where(eq(messagesTable.chatroomId, chatroomId))
       .orderBy(desc(messagesTable.createdAt)).limit(50);
 
-    const formatted = await Promise.all(msgs.map(async m => {
-      const sender = await safeUser(m.senderId);
+    if (!msgs.length) {
+      res.json({ messages: [], nextCursor: null });
+      return;
+    }
+
+    // Batch fetch all senders in one query
+    const senderIds = msgs.map(m => m.senderId);
+    const sendersMap = await batchGetUsers(senderIds);
+
+    const formatted = msgs.map(m => {
+      const sender = sendersMap.get(m.senderId);
       return { ...m, senderName: sender?.name || "", senderAvatar: sender?.avatar || null };
-    }));
+    });
+
     res.json({ messages: formatted, nextCursor: null });
   } catch (err) {
     res.status(500).json({ error: "ServerError", message: "Failed to get chatroom messages" });
@@ -277,7 +381,8 @@ router.post("/chatrooms/:chatroomId/messages", authMiddleware, async (req, res) 
     await db.update(chatroomsTable).set({ updatedAt: new Date() }).where(eq(chatroomsTable.id, chatroomId));
 
     const msgs = await db.select().from(messagesTable).where(eq(messagesTable.id, msgId)).limit(1);
-    const sender = await safeUser(userId);
+    const sendersMap = await batchGetUsers([userId]);
+    const sender = sendersMap.get(userId);
     res.status(201).json({ ...msgs[0], senderName: sender?.name || "", senderAvatar: sender?.avatar || null });
   } catch (err) {
     console.error(err);
