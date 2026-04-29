@@ -113,12 +113,28 @@ export default function EditProfileScreen() {
       });
       if (!result.canceled && result.assets[0]) {
         const asset = result.assets[0];
-        const avatarData = asset.base64
+        const base64DataUri = asset.base64
           ? `data:image/jpeg;base64,${asset.base64}`
           : asset.uri;
+
+        let avatarUrl = base64DataUri;
+        if (base64DataUri.startsWith("data:image/")) {
+          const uploadRes = await apiRequest("/upload", {
+            method: "POST",
+            body: JSON.stringify({ base64: base64DataUri, folder: "campusconnect/avatars" }),
+          });
+          if (uploadRes.ok) {
+            const { url } = await uploadRes.json();
+            avatarUrl = url;
+          } else {
+            showToast("Failed to upload image", "error");
+            return;
+          }
+        }
+
         const res = await apiRequest("/users/me/profile", {
           method: "PUT",
-          body: JSON.stringify({ avatar: avatarData }),
+          body: JSON.stringify({ avatar: avatarUrl }),
         });
         if (res.ok) {
           const data = await res.json();

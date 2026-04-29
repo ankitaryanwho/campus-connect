@@ -55,9 +55,23 @@ export default function NewPostScreen() {
   const createMutation = useMutation({
     mutationFn: async () => {
       if (!content.trim() && mediaUris.length === 0) throw new Error("Please write something first");
+
+      const resolvedUrls = await Promise.all(
+        mediaUris.map(async (uri) => {
+          if (!uri.startsWith("data:image/")) return uri;
+          const uploadRes = await apiRequest("/upload", {
+            method: "POST",
+            body: JSON.stringify({ base64: uri, folder: "campusconnect/posts" }),
+          });
+          if (!uploadRes.ok) throw new Error("Failed to upload one or more images");
+          const { url } = await uploadRes.json();
+          return url as string;
+        }),
+      );
+
       const res = await apiRequest("/posts", {
         method: "POST",
-        body: JSON.stringify({ content: content.trim(), mediaUrls: mediaUris, isAnonymous, category: isAnonymous ? "confessions" : postCategory }),
+        body: JSON.stringify({ content: content.trim(), mediaUrls: resolvedUrls, isAnonymous, category: isAnonymous ? "confessions" : postCategory }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to create post");

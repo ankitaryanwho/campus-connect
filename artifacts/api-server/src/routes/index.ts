@@ -11,6 +11,7 @@ import adminRouter from "./admin";
 import syncRouter from "./sync";
 import orderChatRouter from "./order-chat";
 import marketplaceRouter from "./marketplace";
+import uploadRouter from "./upload";
 
 const router: IRouter = Router();
 
@@ -25,6 +26,7 @@ router.use("/services", servicesRouter);
 router.use("/notifications", notificationsRouter);
 router.use("/admin", adminRouter);
 router.use("/marketplace", marketplaceRouter);
+router.use("/upload", uploadRouter);
 router.use("/", syncRouter);
 
 export default router;
