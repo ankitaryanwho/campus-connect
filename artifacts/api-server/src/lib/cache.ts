@@ -2,30 +2,49 @@ import { LRUCache } from "lru-cache";
 
 const IS_DEV = process.env.NODE_ENV === "development";
 
-function makeCache<V extends object>(
-  name: string,
-  max: number,
-  ttlSeconds: number,
-): LRUCache<string, V> {
-  const cache = new LRUCache<string, V>({
-    max,
-    ttl: ttlSeconds * 1000,
-  });
+class TrackedCache<V extends object> {
+  private readonly inner: LRUCache<string, V>;
+  private hits = 0;
+  private misses = 0;
+  private readonly name: string;
 
-  if (IS_DEV) {
-    const original = cache.get.bind(cache);
-    (cache as any).get = (key: string) => {
-      const val = original(key);
-      console.log(`[cache:${name}] ${val ? "HIT" : "MISS"} key="${key}" size=${cache.size}/${max}`);
-      return val;
-    };
+  constructor(name: string, max: number, ttlSeconds: number) {
+    this.name = name;
+    this.inner = new LRUCache<string, V>({ max, ttl: ttlSeconds * 1000 });
   }
 
-  return cache;
+  get(key: string): V | undefined {
+    const val = this.inner.get(key);
+    if (IS_DEV) {
+      val !== undefined ? this.hits++ : this.misses++;
+      const total = this.hits + this.misses;
+      const rate = total ? ((this.hits / total) * 100).toFixed(1) : "0.0";
+      console.log(
+        `[cache:${this.name}] ${val !== undefined ? "HIT" : "MISS"} ` +
+        `key="${key}" hitRate=${rate}% (${this.hits}/${total}) size=${this.inner.size}`,
+      );
+    }
+    return val;
+  }
+
+  set(key: string, value: V): this {
+    this.inner.set(key, value);
+    return this;
+  }
+
+  delete(key: string): boolean {
+    return this.inner.delete(key);
+  }
+
+  clear(): void {
+    this.inner.clear();
+  }
+
+  get size(): number {
+    return this.inner.size;
+  }
 }
 
-export const postsCache = makeCache<object>("posts", 200, 30);
-
-export const chatroomsCache = makeCache<object>("chatrooms", 50, 60);
-
-export const usersCache = makeCache<object>("users", 500, 60);
+export const postsCache     = new TrackedCache<object>("posts",     200, 30);
+export const chatroomsCache = new TrackedCache<object>("chatrooms",  50, 60);
+export const usersCache     = new TrackedCache<object>("users",     500, 60);

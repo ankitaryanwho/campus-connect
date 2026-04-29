@@ -263,6 +263,7 @@ router.delete("/:postId", authMiddleware, async (req, res) => {
     await db.delete(commentsTable).where(eq(commentsTable.postId, postId));
     await db.delete(postsTable).where(eq(postsTable.id, postId));
     await db.update(usersTable).set({ postsCount: sql`${usersTable.postsCount} - 1` }).where(eq(usersTable.id, userId));
+    postsCache.clear();
     res.json({ success: true, message: "Post deleted" });
   } catch (err) {
     console.error(err);
