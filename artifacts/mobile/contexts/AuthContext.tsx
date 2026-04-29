@@ -61,7 +61,7 @@ const [AuthProvider, useAuth] = createContextHook<AuthState>(() => {
     keepaliveRef.current = setInterval(async () => {
       try {
         await fetch(`${API_BASE}/ping`, {
-          headers: { Authorization: `Bearer ${currentToken}` },
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${currentToken}` },
         });
       } catch {
         // ignore — offline or server briefly restarting
