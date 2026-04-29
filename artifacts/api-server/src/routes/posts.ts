@@ -393,7 +393,7 @@ router.post("/:postId/comments", authMiddleware, async (req, res) => {
 
     const comments = await db.select().from(commentsTable).where(eq(commentsTable.id, commentId)).limit(1);
     const authorsMap = await batchGetUsers([userId]);
-    const author = authorsMap.get(userId) || null;
+    const author = pickPublicUser(authorsMap.get(userId) || null);
     res.status(201).json({ ...comments[0], authorId: undefined, author, replies: [] });
   } catch (err) {
     console.error(err);
