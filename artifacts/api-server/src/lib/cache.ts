@@ -18,10 +18,11 @@ class TrackedCache<V extends object> {
     if (IS_DEV) {
       val !== undefined ? this.hits++ : this.misses++;
       const total = this.hits + this.misses;
-      const rate = total ? ((this.hits / total) * 100).toFixed(1) : "0.0";
+      const hitRate  = total ? ((this.hits   / total) * 100).toFixed(1) : "0.0";
+      const missRate = total ? ((this.misses / total) * 100).toFixed(1) : "0.0";
       console.log(
         `[cache:${this.name}] ${val !== undefined ? "HIT" : "MISS"} ` +
-        `key="${key}" hitRate=${rate}% (${this.hits}/${total}) size=${this.inner.size}`,
+        `key="${key}" hitRate=${hitRate}% missRate=${missRate}% (${this.hits}h/${this.misses}m/${total}t) size=${this.inner.size}`,
       );
     }
     return val;
