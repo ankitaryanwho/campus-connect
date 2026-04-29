@@ -7,7 +7,7 @@ import { KeyboardAvoidingView, useKeyboardState } from "react-native-keyboard-co
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Colors from "@/constants/colors";
 import { useAuth, API_BASE } from "@/contexts/AuthContext";
 import { useSSE } from "@/hooks/useSSE";
@@ -91,27 +91,37 @@ export default function ChatDetailScreen() {
     },
   });
 
-  const { data, isLoading } = useQuery({
+  const {
+    data,
+    isLoading,
+    isFetchingNextPage,
+    hasNextPage,
+    fetchNextPage,
+  } = useInfiniteQuery({
     queryKey: ["messages", id],
-    queryFn: async () => {
-      const res = await apiRequest(`/chat/conversations/${id}/messages`);
-      return res.json() as Promise<{ messages: any[] }>;
+    queryFn: async ({ pageParam }) => {
+      const qs = pageParam ? `?cursor=${pageParam}&limit=30` : "?limit=30";
+      const res = await apiRequest(`/chat/conversations/${id}/messages${qs}`);
+      return res.json() as Promise<{ messages: any[]; nextCursor: string | null }>;
     },
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    initialPageParam: null as string | null,
   });
 
   const prependMessage = useCallback((msg: any) => {
     queryClient.setQueryData(["messages", id], (old: any) => {
-      const existing: any[] = old?.messages || [];
+      if (!old?.pages) return old;
+      const firstPage = old.pages[0] ?? { messages: [], nextCursor: null };
+      const existing: any[] = firstPage.messages || [];
       const idx = existing.findIndex(m => m.id === msg.id);
       if (idx !== -1) {
-        // Merge: keep existing entry but apply any authoritative fields (e.g. isSelf)
-        // from whichever payload arrives later (SSE vs POST response race).
+        // Merge: keep existing entry but apply authoritative fields (e.g. isSelf from POST)
         const merged = { ...existing[idx], ...msg };
         const updated = [...existing];
         updated[idx] = merged;
-        return { ...old, messages: updated };
+        return { ...old, pages: [{ ...firstPage, messages: updated }, ...old.pages.slice(1)] };
       }
-      return { ...old, messages: [msg, ...existing] };
+      return { ...old, pages: [{ ...firstPage, messages: [msg, ...existing] }, ...old.pages.slice(1)] };
     });
   }, [queryClient, id]);
 
@@ -139,8 +149,8 @@ export default function ChatDetailScreen() {
   const conversation = convQuery.data;
   const other = conversation?.participants?.find((p: any) => p?.id !== user?.id);
 
-  // API returns newest-first; keep that order — inverted FlatList puts index 0 at bottom.
-  const rawMessages = data?.messages || [];
+  // Flatten all pages (newest-first per page); inverted FlatList puts index 0 at bottom.
+  const rawMessages = data?.pages.flatMap(p => p.messages) ?? [];
   const chatItems = buildChatItems(rawMessages);
 
   const renderItem = ({ item, index }: { item: ChatItem; index: number }) => {
@@ -250,6 +260,13 @@ export default function ChatDetailScreen() {
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           renderItem={renderItem}
+          onEndReached={() => { if (hasNextPage && !isFetchingNextPage) fetchNextPage(); }}
+          onEndReachedThreshold={0.3}
+          ListFooterComponent={isFetchingNextPage ? (
+            <View style={{ paddingVertical: 12, alignItems: "center" }}>
+              <ActivityIndicator size="small" color={C.primary} />
+            </View>
+          ) : null}
           ListEmptyComponent={
             <View style={styles.emptyChat}>
               <View style={[styles.emptyIconWrap, { backgroundColor: C.primaryLight }]}>

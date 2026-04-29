@@ -7,7 +7,7 @@ import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Colors from "@/constants/colors";
 import { useAuth, API_BASE } from "@/contexts/AuthContext";
 import { useSSE } from "@/hooks/useSSE";
@@ -49,19 +49,30 @@ export default function ChatroomScreen() {
     select: (data) => data.chatrooms.find(r => r.id === id),
   });
 
-  const { data, isLoading } = useQuery({
+  const {
+    data,
+    isLoading,
+    isFetchingNextPage,
+    hasNextPage,
+    fetchNextPage,
+  } = useInfiniteQuery({
     queryKey: ["chatroom-messages", id],
-    queryFn: async () => {
-      const res = await apiRequest(`/chat/chatrooms/${id}/messages`);
-      return res.json() as Promise<{ messages: any[] }>;
+    queryFn: async ({ pageParam }) => {
+      const qs = pageParam ? `?cursor=${pageParam}&limit=30` : "?limit=30";
+      const res = await apiRequest(`/chat/chatrooms/${id}/messages${qs}`);
+      return res.json() as Promise<{ messages: any[]; nextCursor: string | null }>;
     },
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    initialPageParam: null as string | null,
   });
 
   const prependMessage = useCallback((msg: any) => {
     queryClient.setQueryData(["chatroom-messages", id], (old: any) => {
-      const existing: any[] = old?.messages || [];
+      if (!old?.pages) return old;
+      const firstPage = old.pages[0] ?? { messages: [], nextCursor: null };
+      const existing: any[] = firstPage.messages || [];
       if (existing.some(m => m.id === msg.id)) return old;
-      return { ...old, messages: [msg, ...existing] };
+      return { ...old, pages: [{ ...firstPage, messages: [msg, ...existing] }, ...old.pages.slice(1)] };
     });
   }, [queryClient, id]);
 
@@ -86,7 +97,7 @@ export default function ChatroomScreen() {
     },
   });
 
-  const messages = (data?.messages || []).slice().reverse();
+  const messages = (data?.pages.flatMap(p => p.messages) ?? []).slice().reverse();
   const room = roomQuery.data;
 
   return (
@@ -119,6 +130,13 @@ export default function ChatroomScreen() {
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{ paddingHorizontal: 14, paddingVertical: 12 }}
           showsVerticalScrollIndicator={false}
+          onEndReached={() => { if (hasNextPage && !isFetchingNextPage) fetchNextPage(); }}
+          onEndReachedThreshold={0.3}
+          ListFooterComponent={isFetchingNextPage ? (
+            <View style={{ paddingVertical: 12, alignItems: "center" }}>
+              <ActivityIndicator size="small" color={C.primary} />
+            </View>
+          ) : null}
           renderItem={({ item }) => {
             const isMe = item.sender?.id === user?.id;
             return (
