@@ -20,8 +20,7 @@ export function pickPublicUser(user: any): any {
   };
 }
 
-// For conversation participant lists — smaller shape for chat list items.
-// Matches spec: id, name, avatar, college, program.
+// For conversation participant lists — id, name, avatar, college, program.
 export function pickConversationUser(user: any): any {
   if (!user) return null;
   return {
@@ -30,6 +29,16 @@ export function pickConversationUser(user: any): any {
     avatar: user.avatar ?? null,
     college: user.college ?? null,
     program: user.program ?? null,
+  };
+}
+
+// For message sender objects embedded in message list items — id, name, avatar.
+export function pickMessageSender(user: any): { id: string; name: string; avatar: string | null } {
+  if (!user) return { id: "", name: "", avatar: null };
+  return {
+    id: user.id,
+    name: user.name ?? "",
+    avatar: user.avatar ?? null,
   };
 }
 

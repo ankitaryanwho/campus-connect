@@ -142,13 +142,13 @@ export default function ChatDetailScreen() {
     // In inverted list, index+1 is the message ABOVE (older)
     const prevItem = chatItems[index - 1];
     const prevMsg = prevItem?.type === "message" ? prevItem.data : null;
-    const showAvatar = !isMe && (!prevMsg || prevMsg.senderName !== msg.senderName || getDateKey(prevMsg.createdAt) !== getDateKey(msg.createdAt));
+    const showAvatar = !isMe && (!prevMsg || prevMsg.sender?.id !== msg.sender?.id || getDateKey(prevMsg.createdAt) !== getDateKey(msg.createdAt));
 
     return (
       <View style={[styles.messageRow, isMe ? styles.messageRowRight : styles.messageRowLeft, { marginBottom: 3 }]}>
         {!isMe && (
           <View style={{ width: 30, alignItems: "center", justifyContent: "flex-end" }}>
-            {showAvatar && <Avatar name={msg.senderName} avatar={msg.senderAvatar} size={28} C={C} />}
+            {showAvatar && <Avatar name={msg.sender?.name} avatar={msg.sender?.avatar} size={28} C={C} />}
           </View>
         )}
 

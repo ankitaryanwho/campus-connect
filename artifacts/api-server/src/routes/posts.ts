@@ -32,6 +32,7 @@ function buildAnonAuthor(realAuthor: any) {
     year: realAuthor?.year || null,
     gender: realAuthor?.gender || null,
     verified: false,
+    verificationBadge: null,
     isAnonymous: true,
   };
 }

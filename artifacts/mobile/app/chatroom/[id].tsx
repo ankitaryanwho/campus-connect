@@ -106,14 +106,14 @@ export default function ChatroomScreen() {
           contentContainerStyle={{ paddingHorizontal: 14, paddingVertical: 12 }}
           showsVerticalScrollIndicator={false}
           renderItem={({ item }) => {
-            const isMe = item.senderId === user?.id;
+            const isMe = item.sender?.id === user?.id;
             return (
               <View style={[styles.messageRow, isMe && styles.messageRowRight]}>
-                {!isMe && <Avatar name={item.senderName} avatar={item.senderAvatar} size={28} C={C} />}
+                {!isMe && <Avatar name={item.sender?.name} avatar={item.sender?.avatar} size={28} C={C} />}
                 <View style={styles.messageGroup}>
                   {!isMe && (
                     <Text style={[styles.senderName, { color: C.textSecondary, fontFamily: "Inter_600SemiBold" }]}>
-                      {item.senderName}
+                      {item.sender?.name}
                     </Text>
                   )}
                   <View style={[styles.bubble, isMe ? { backgroundColor: C.primary } : { backgroundColor: C.surface, borderColor: C.border, borderWidth: 0.5 }]}>

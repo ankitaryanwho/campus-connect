@@ -4,7 +4,7 @@ import { conversationsTable, messagesTable, usersTable, chatroomsTable } from "@
 import { eq, or, and, desc, inArray } from "drizzle-orm";
 import { authMiddleware } from "../lib/auth";
 import { generateId } from "../lib/id";
-import { pickConversationUser } from "../lib/userFields";
+import { pickConversationUser, pickMessageSender } from "../lib/userFields";
 
 const router = Router();
 
@@ -27,11 +27,8 @@ function buildAnonUser(realUser: any) {
     id: "anonymous",
     name: "Hidden Profile",
     avatar: null,
-    program: realUser?.program || null,
-    year: realUser?.year || null,
     college: null,
-    verified: false,
-    isAnonymous: true,
+    program: realUser?.program || null,
   };
 }
 
@@ -219,17 +216,10 @@ router.get("/conversations/:conversationId/messages", authMiddleware, async (req
     const formatted = msgs.map(m => {
       const isSenderInitiator = conv && m.senderId === conv.participant1Id;
       const isSelf = m.senderId === userId;
-      let senderName: string;
-      let senderAvatar: string | null;
-      if (conv?.isAnonymous && isSenderInitiator && !isSelf) {
-        senderName = "Hidden Profile";
-        senderAvatar = null;
-      } else {
-        const sender = sendersMap.get(m.senderId);
-        senderName = isSelf ? "You" : (sender?.name || "");
-        senderAvatar = sender?.avatar || null;
-      }
-      return { ...m, senderId: undefined, senderName, senderAvatar, isSelf };
+      const sender = (conv?.isAnonymous && isSenderInitiator && !isSelf)
+        ? { id: "anonymous", name: "Hidden Profile", avatar: null }
+        : pickMessageSender(sendersMap.get(m.senderId));
+      return { ...m, senderId: undefined, sender, isSelf };
     });
 
     res.json({ messages: formatted, nextCursor: null });
@@ -269,18 +259,14 @@ router.post("/conversations/:conversationId/messages", authMiddleware, async (re
 
     const msgs = await db.select().from(messagesTable).where(eq(messagesTable.id, msgId)).limit(1);
     const isSenderInitiator = msgs[0].senderId === conv.participant1Id;
-    let senderName: string;
-    let senderAvatar: string | null;
+    let sender: { id: string; name: string; avatar: string | null };
     if (conv.isAnonymous && isSenderInitiator) {
-      senderName = "Hidden Profile";
-      senderAvatar = null;
+      sender = { id: "anonymous", name: "Hidden Profile", avatar: null };
     } else {
       const sendersMap = await batchGetUsers([userId]);
-      const sender = sendersMap.get(userId);
-      senderName = sender?.name || "";
-      senderAvatar = sender?.avatar || null;
+      sender = pickMessageSender(sendersMap.get(userId));
     }
-    res.status(201).json({ ...msgs[0], senderId: undefined, senderName, senderAvatar, isSelf: true });
+    res.status(201).json({ ...msgs[0], senderId: undefined, sender, isSelf: true });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "ServerError", message: "Failed to send message" });
@@ -358,10 +344,10 @@ router.get("/chatrooms/:chatroomId/messages", authMiddleware, async (req, res) =
     const senderIds = msgs.map(m => m.senderId);
     const sendersMap = await batchGetUsers(senderIds);
 
-    const formatted = msgs.map(m => {
-      const sender = sendersMap.get(m.senderId);
-      return { ...m, senderName: sender?.name || "", senderAvatar: sender?.avatar || null };
-    });
+    const formatted = msgs.map(m => ({
+      ...m,
+      sender: pickMessageSender(sendersMap.get(m.senderId)),
+    }));
 
     res.json({ messages: formatted, nextCursor: null });
   } catch (err) {
@@ -385,8 +371,7 @@ router.post("/chatrooms/:chatroomId/messages", authMiddleware, async (req, res) 
 
     const msgs = await db.select().from(messagesTable).where(eq(messagesTable.id, msgId)).limit(1);
     const sendersMap = await batchGetUsers([userId]);
-    const sender = sendersMap.get(userId);
-    res.status(201).json({ ...msgs[0], senderName: sender?.name || "", senderAvatar: sender?.avatar || null });
+    res.status(201).json({ ...msgs[0], sender: pickMessageSender(sendersMap.get(userId)) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "ServerError", message: "Failed to send chatroom message" });
