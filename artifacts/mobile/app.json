@@ -15,10 +15,10 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.colyx.app"
+      "bundleIdentifier": "com.ankitaryanwho.mobile"
     },
     "android": {
-      "package": "com.colyx.app",
+      "package": "com.ankitaryanwho.mobile",
       "googleServicesFile": "./google-services.json",
       "permissions": [
         "android.permission.READ_EXTERNAL_STORAGE",
