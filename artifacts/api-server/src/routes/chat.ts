@@ -346,6 +346,7 @@ router.get("/chatrooms/:chatroomId/messages", authMiddleware, async (req, res) =
 
     const formatted = msgs.map(m => ({
       ...m,
+      senderId: undefined,
       sender: pickMessageSender(sendersMap.get(m.senderId)),
     }));
 
