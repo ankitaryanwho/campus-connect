@@ -1,0 +1,96 @@
+SECTION 1 — App Architecture
+
+1. What is our current app architecture (monolith or microservices)?
+2. What exact tech stack are we using (frontend, backend, database)?
+3. Are we using REST APIs, GraphQL, or both?
+4. Where is our backend hosted (AWS, VPS, etc.)?
+5. What is the average server response time (in ms)?
+
+--------------------------------------------------
+
+SECTION 2 — Network & API Performance
+
+6. What is the average API response time (in ms) for:
+   - login
+   - home screen load
+   - fetching messages
+
+7. Are we using HTTP/2 or HTTP/3?
+8. Are API responses compressed (Gzip or Brotli)?
+9. What is the average API payload size (in KB/MB)?
+10. Are we batching API requests or making multiple separate calls?
+
+--------------------------------------------------
+
+SECTION 3 — Messaging System
+
+11. Is our messaging system using polling, long polling, or WebSockets?
+12. If WebSockets:
+    - Which library are we using (Socket.IO or native)?
+    - Is the connection persistent or reconnecting frequently?
+
+13. What is the average message delivery latency (in ms)?
+14. Are messages first stored in the database before sending, or sent in real-time?
+15. Are we using any message queue (Redis, etc.)?
+
+--------------------------------------------------
+
+SECTION 4 — Caching
+
+16. Are we using any caching system (Redis, in-memory, or none)?
+17. Is frequently accessed data cached?
+18. Do we cache API responses on the frontend (app side)?
+19. Are we using a stale-while-revalidate caching strategy?
+
+--------------------------------------------------
+
+SECTION 5 — Database Performance
+
+20. Which database are we using?
+21. Are indexes implemented on key fields like user_id and message queries?
+22. What is the average database query time (in ms)?
+23. Are we using pagination for messages or loading full chat history?
+
+--------------------------------------------------
+
+SECTION 6 — Media Optimization
+
+24. What image formats are we using (JPG, PNG, WebP, etc.)?
+25. Are images compressed before delivery?
+26. Are we using a CDN for images and static files?
+27. Are images lazy loaded?
+
+--------------------------------------------------
+
+SECTION 7 — App Load Performance
+
+28. What APIs are called during app startup?
+29. Are we loading all data at once or using lazy loading?
+30. Do we use code splitting for different app features?
+31. Do we show skeleton UI or just a loading spinner?
+
+--------------------------------------------------
+
+SECTION 8 — Sync & Reliability
+
+32. What happens when the user has slow or unstable internet?
+33. Do we retry failed API requests automatically?
+34. Do we support offline mode or queue actions (like messages) when offline?
+
+--------------------------------------------------
+
+SECTION 9 — Monitoring & Debugging
+
+35. Do we have performance monitoring tools (Firebase, logs, etc.)?
+36. Can you provide logs for:
+    - slow API responses
+    - error rates
+    - timeout rates
+
+--------------------------------------------------
+
+SECTION 10 — Direct Assessment
+
+37. Why is the app slow on low internet connections?
+38. What are the top 3 performance bottlenecks currently?
+39. What specific changes would you implement to improve app speed by 3x?
