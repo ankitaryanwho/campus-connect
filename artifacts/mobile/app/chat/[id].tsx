@@ -102,7 +102,15 @@ export default function ChatDetailScreen() {
   const prependMessage = useCallback((msg: any) => {
     queryClient.setQueryData(["messages", id], (old: any) => {
       const existing: any[] = old?.messages || [];
-      if (existing.some(m => m.id === msg.id)) return old;
+      const idx = existing.findIndex(m => m.id === msg.id);
+      if (idx !== -1) {
+        // Merge: keep existing entry but apply any authoritative fields (e.g. isSelf)
+        // from whichever payload arrives later (SSE vs POST response race).
+        const merged = { ...existing[idx], ...msg };
+        const updated = [...existing];
+        updated[idx] = merged;
+        return { ...old, messages: updated };
+      }
       return { ...old, messages: [msg, ...existing] };
     });
   }, [queryClient, id]);
@@ -149,7 +157,9 @@ export default function ChatDetailScreen() {
     }
 
     const msg = item.data;
-    const isMe = msg.isSelf === true;
+    // Use sender.id when available (non-anonymous). Fall back to isSelf flag for
+    // anonymous conversations where sender.id is "anonymous" regardless of direction.
+    const isMe = msg.sender?.id === user?.id || msg.isSelf === true;
     const orderCtx = msg.metadata?.orderContext ?? null;
 
     // Detect consecutive messages from same sender (for avatar grouping)
