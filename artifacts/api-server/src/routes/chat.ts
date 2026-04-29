@@ -19,8 +19,14 @@ function pushSSE(map: Map<string, Set<any>>, channelId: string, payload: object)
   if (!clients?.size) return;
   const frame = `data: ${JSON.stringify(payload)}\n\n`;
   for (const client of clients) {
-    try { client.write(frame); } catch {}
+    try {
+      client.write(frame);
+    } catch {
+      // Remove stale/closed connections immediately
+      clients.delete(client);
+    }
   }
+  if (!clients.size) map.delete(channelId);
 }
 
 // ─── Shared Helpers ──────────────────────────────────────────────────────────
@@ -207,8 +213,22 @@ router.post("/conversations", authMiddleware, async (req, res) => {
 
 // ─── DM Messages ──────────────────────────────────────────────────────────────
 
-router.get("/conversations/:conversationId/stream", authMiddleware, (req, res) => {
+router.get("/conversations/:conversationId/stream", authMiddleware, async (req, res) => {
   const conversationId = req.params["conversationId"] as string;
+  const userId = (req as any).userId;
+
+  // Verify the requester is a participant before opening the stream
+  const convRows = await db.select().from(conversationsTable)
+    .where(eq(conversationsTable.id, conversationId)).limit(1);
+  if (!convRows.length) {
+    res.status(404).json({ error: "NotFound", message: "Conversation not found" });
+    return;
+  }
+  const conv = convRows[0];
+  if (conv.participant1Id !== userId && conv.participant2Id !== userId) {
+    res.status(403).json({ error: "Forbidden", message: "Not a participant" });
+    return;
+  }
 
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");

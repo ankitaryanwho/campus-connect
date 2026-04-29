@@ -30,21 +30,25 @@ export function useSSE(
       xhr.setRequestHeader("Accept", "text/event-stream");
       xhr.setRequestHeader("Cache-Control", "no-cache");
 
+      // `receiveBuffer` persists across onprogress calls so split frames are reassembled.
+      // SSE frames are separated by "\n\n"; lines within a frame start with "data: ".
+      let receiveBuffer = "";
+
       xhr.onprogress = () => {
-        const chunk = xhr.responseText.slice(lastLen);
+        receiveBuffer += xhr.responseText.slice(lastLen);
         lastLen = xhr.responseText.length;
 
-        const lines = chunk.split("\n");
-        let buffer = "";
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            buffer = line.slice(6);
-          } else if (line === "" && buffer) {
-            try {
-              onMessageRef.current(JSON.parse(buffer));
-            } catch {}
-            buffer = "";
-          }
+        // Split on frame boundaries (double newline)
+        const frames = receiveBuffer.split("\n\n");
+        // The last element may be incomplete — keep it in the buffer
+        receiveBuffer = frames.pop() ?? "";
+
+        for (const frame of frames) {
+          const dataLine = frame.split("\n").find(l => l.startsWith("data: "));
+          if (!dataLine) continue;
+          try {
+            onMessageRef.current(JSON.parse(dataLine.slice(6)));
+          } catch {}
         }
       };
 
