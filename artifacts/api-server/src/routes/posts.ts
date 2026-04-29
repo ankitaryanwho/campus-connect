@@ -5,6 +5,7 @@ import { eq, desc, lt, and, or, ne, sql, inArray } from "drizzle-orm";
 import { authMiddleware } from "../lib/auth";
 import { generateId } from "../lib/id";
 import { pickPublicUser } from "../lib/userFields";
+import { postsCache } from "../lib/cache";
 
 const router = Router();
 
@@ -93,7 +94,14 @@ router.get("/", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
     const limit = parseInt(req.query.limit as string) || 20;
-    const cursor = req.query.cursor as string;
+    const cursor = (req.query.cursor as string) || "";
+    const cacheKey = `posts:${userId}:${cursor}:${limit}`;
+
+    const cached = postsCache.get(cacheKey);
+    if (cached) {
+      res.json(cached);
+      return;
+    }
 
     let query = db.select().from(postsTable)
       .where(visibilityFilter(userId))
@@ -112,7 +120,9 @@ router.get("/", authMiddleware, async (req, res) => {
     const data = posts.slice(0, limit);
     const formattedPosts = await formatPosts(data, userId);
 
-    res.json({ posts: formattedPosts, nextCursor: hasMore ? data[data.length - 1].id : null });
+    const payload = { posts: formattedPosts, nextCursor: hasMore ? data[data.length - 1].id : null };
+    postsCache.set(cacheKey, payload);
+    res.json(payload);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "ServerError", message: "Failed to get posts" });
@@ -148,6 +158,7 @@ router.post("/", authMiddleware, async (req, res) => {
 
     const post = await db.select().from(postsTable).where(eq(postsTable.id, postId)).limit(1);
     const formatted = await formatPost(post[0], userId);
+    postsCache.clear();
     res.status(201).json(formatted);
   } catch (err) {
     console.error(err);

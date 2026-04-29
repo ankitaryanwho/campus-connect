@@ -25,6 +25,7 @@
     "express": "^5",
     "firebase-admin": "^13.7.0",
     "jsonwebtoken": "^9.0.3",
+    "lru-cache": "^11.3.5",
     "nanoid": "^5.1.7",
     "nodemailer": "^8.0.3",
     "pg": "^8.20.0",

@@ -5,6 +5,7 @@ import { eq, or, and, desc, lt, inArray } from "drizzle-orm";
 import { authMiddleware } from "../lib/auth";
 import { generateId } from "../lib/id";
 import { pickConversationUser, pickMessageSender } from "../lib/userFields";
+import { chatroomsCache } from "../lib/cache";
 
 const router = Router();
 
@@ -361,10 +362,18 @@ router.post("/conversations/:conversationId/messages", authMiddleware, async (re
 
 router.get("/chatrooms", authMiddleware, async (req, res) => {
   try {
+    const cached = chatroomsCache.get("all");
+    if (cached) {
+      res.json(cached);
+      return;
+    }
+
     const chatrooms = await db.select().from(chatroomsTable).orderBy(chatroomsTable.name);
 
     if (!chatrooms.length) {
-      res.json({ chatrooms: [] });
+      const payload = { chatrooms: [] };
+      chatroomsCache.set("all", payload);
+      res.json(payload);
       return;
     }
 
@@ -406,7 +415,9 @@ router.get("/chatrooms", authMiddleware, async (req, res) => {
       return { ...r, lastMessage: formattedLastMsg };
     });
 
-    res.json({ chatrooms: formatted });
+    const payload = { chatrooms: formatted };
+    chatroomsCache.set("all", payload);
+    res.json(payload);
   } catch (err) {
     res.status(500).json({ error: "ServerError", message: "Failed to get chatrooms" });
   }
@@ -504,6 +515,7 @@ router.post("/chatrooms/:chatroomId/messages", authMiddleware, async (req, res) 
     const msgs = await db.select().from(messagesTable).where(eq(messagesTable.id, msgId)).limit(1);
     const sendersMap = await batchGetUsers([userId]);
     const chatroomPayload = { ...msgs[0], senderId: undefined, sender: pickMessageSender(sendersMap.get(userId)) };
+    chatroomsCache.delete("all");
     pushSSE(chatroomClients, chatroomId, chatroomPayload);
     res.status(201).json(chatroomPayload);
   } catch (err) {
