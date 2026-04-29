@@ -15,6 +15,19 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
+const PING_INTERVAL_MS = 4 * 60 * 1000;
+
+function startKeepalive(port: number) {
+  const pingUrl = `http://localhost:${port}/api/ping`;
+  setInterval(async () => {
+    try {
+      await fetch(pingUrl);
+    } catch {
+      // silently ignore — server may briefly be restarting
+    }
+  }, PING_INTERVAL_MS);
+}
+
 async function start() {
   console.log("[startup] Running migrations...");
   await runStartupMigrations();
@@ -28,6 +41,7 @@ async function start() {
 
   app.listen(port, () => {
     console.log(`Server listening on port ${port}`);
+    startKeepalive(port);
   });
 }
 

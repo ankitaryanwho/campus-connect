@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import createContextHook from "@nkzw/create-context-hook";
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 
 const API_BASE = process.env["EXPO_PUBLIC_API_URL"] || "https://campus-connect-app.replit.app/api";
 
@@ -48,10 +48,33 @@ interface RegisterData {
   verificationToken?: string;
 }
 
+const KEEPALIVE_INTERVAL_MS = 4 * 60 * 1000;
+
 const [AuthProvider, useAuth] = createContextHook<AuthState>(() => {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const keepaliveRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startKeepalive = useCallback((currentToken: string) => {
+    if (keepaliveRef.current) clearInterval(keepaliveRef.current);
+    keepaliveRef.current = setInterval(async () => {
+      try {
+        await fetch(`${API_BASE}/ping`, {
+          headers: { Authorization: `Bearer ${currentToken}` },
+        });
+      } catch {
+        // ignore — offline or server briefly restarting
+      }
+    }, KEEPALIVE_INTERVAL_MS);
+  }, []);
+
+  const stopKeepalive = useCallback(() => {
+    if (keepaliveRef.current) {
+      clearInterval(keepaliveRef.current);
+      keepaliveRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     const loadAuth = async () => {
@@ -61,12 +84,14 @@ const [AuthProvider, useAuth] = createContextHook<AuthState>(() => {
         if (storedToken && storedUser) {
           setToken(storedToken);
           setUser(JSON.parse(storedUser));
+          startKeepalive(storedToken);
         }
       } catch {}
       setIsLoading(false);
     };
     loadAuth();
-  }, []);
+    return () => stopKeepalive();
+  }, [startKeepalive, stopKeepalive]);
 
   const apiRequest = useCallback(async (path: string, options: RequestInit = {}): Promise<Response> => {
     const currentToken = token || await AsyncStorage.getItem("@auth_token");
@@ -103,7 +128,8 @@ const [AuthProvider, useAuth] = createContextHook<AuthState>(() => {
     setUser(data.user);
     await AsyncStorage.setItem("@auth_token", data.token);
     await AsyncStorage.setItem("@auth_user", JSON.stringify(data.user));
-  }, []);
+    startKeepalive(data.token);
+  }, [startKeepalive]);
 
   const register = useCallback(async (registerData: RegisterData) => {
     let res: Response;
@@ -127,7 +153,8 @@ const [AuthProvider, useAuth] = createContextHook<AuthState>(() => {
     setUser(data.user);
     await AsyncStorage.setItem("@auth_token", data.token);
     await AsyncStorage.setItem("@auth_user", JSON.stringify(data.user));
-  }, []);
+    startKeepalive(data.token);
+  }, [startKeepalive]);
 
   const logout = useCallback(async () => {
     // Best-effort: tell the server to drop this device's push token BEFORE we
@@ -148,12 +175,13 @@ const [AuthProvider, useAuth] = createContextHook<AuthState>(() => {
         }).catch(() => {});
       }
     } catch {}
+    stopKeepalive();
     setToken(null);
     setUser(null);
     await AsyncStorage.removeItem("@auth_token");
     await AsyncStorage.removeItem("@auth_user");
     await AsyncStorage.removeItem("@push_token");
-  }, [token]);
+  }, [token, stopKeepalive]);
 
   const updateUser = useCallback((updatedUser: User) => {
     setUser(updatedUser);
