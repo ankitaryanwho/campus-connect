@@ -257,16 +257,19 @@ router.get("/conversations/:conversationId/messages", authMiddleware, async (req
     const userId = (req as any).userId;
     const { conversationId } = req.params;
     const cursor = req.query["cursor"] as string | undefined;
-    const limit = Math.min(parseInt(req.query["limit"] as string || "30", 10), 50);
+    const rawLimit = parseInt(req.query["limit"] as string || "30", 10);
+    const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 50) : 30;
 
     const convRows = await db.select().from(conversationsTable).where(eq(conversationsTable.id, conversationId)).limit(1);
     const conv = convRows[0];
 
-    // Resolve cursor to a timestamp for keyset pagination
+    // Resolve cursor to a timestamp — scoped to this conversation to prevent cross-thread leakage
     let cursorDate: Date | undefined;
     if (cursor) {
       const cursorRows = await db.select({ createdAt: messagesTable.createdAt })
-        .from(messagesTable).where(eq(messagesTable.id, cursor)).limit(1);
+        .from(messagesTable)
+        .where(and(eq(messagesTable.id, cursor), eq(messagesTable.conversationId, conversationId)))
+        .limit(1);
       if (cursorRows.length) cursorDate = cursorRows[0].createdAt;
     }
 
@@ -438,13 +441,16 @@ router.get("/chatrooms/:chatroomId/messages", authMiddleware, async (req, res) =
   try {
     const { chatroomId } = req.params;
     const cursor = req.query["cursor"] as string | undefined;
-    const limit = Math.min(parseInt(req.query["limit"] as string || "30", 10), 50);
+    const rawLimit = parseInt(req.query["limit"] as string || "30", 10);
+    const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 50) : 30;
 
-    // Resolve cursor to a timestamp for keyset pagination
+    // Resolve cursor to a timestamp — scoped to this chatroom to prevent cross-thread leakage
     let cursorDate: Date | undefined;
     if (cursor) {
       const cursorRows = await db.select({ createdAt: messagesTable.createdAt })
-        .from(messagesTable).where(eq(messagesTable.id, cursor)).limit(1);
+        .from(messagesTable)
+        .where(and(eq(messagesTable.id, cursor), eq(messagesTable.chatroomId, chatroomId)))
+        .limit(1);
       if (cursorRows.length) cursorDate = cursorRows[0].createdAt;
     }
 
