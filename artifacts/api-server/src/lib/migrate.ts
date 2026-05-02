@@ -1,3 +1,5 @@
+import crypto from "node:crypto";
+import fs from "node:fs";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import path from "path";
@@ -13,16 +15,18 @@ export async function runStartupMigrations() {
   const client = await pool.connect();
   try {
     // ── Drizzle migration runner ──────────────────────────────────────────────
-    // Drizzle tracks applied migrations in "__drizzle_migrations". On an
-    // existing database (set up before migration tracking was added) the
-    // initial migration contains CREATE TABLE statements that would fail
-    // because the tables already exist.
+    // This project was originally set up with drizzle-kit push (no migration
+    // files). Migration 0000 is a full schema bootstrap that cannot run on
+    // existing databases because the tables already exist. We baseline it by
+    // inserting its tracking record into drizzle.__drizzle_migrations so that
+    // Drizzle skips it and only applies incremental migrations (0001+).
     //
-    // Strategy: if the users table already exists and no migrations have been
-    // tracked yet, insert a baseline record so Drizzle skips the initial
-    // migration and only runs new ones going forward.
+    // The baseline hash and timestamp are derived from the actual migration
+    // files on disk, so they stay correct if the files are ever regenerated.
+
+    await client.query(`CREATE SCHEMA IF NOT EXISTS drizzle;`);
     await client.query(`
-      CREATE TABLE IF NOT EXISTS "__drizzle_migrations" (
+      CREATE TABLE IF NOT EXISTS drizzle.__drizzle_migrations (
         id serial PRIMARY KEY,
         hash text NOT NULL,
         created_at bigint
@@ -36,42 +40,43 @@ export async function runStartupMigrations() {
       ) AS exists;
     `);
     const { rows: migrationCheck } = await client.query(
-      `SELECT id FROM "__drizzle_migrations" LIMIT 1;`
+      `SELECT id FROM drizzle.__drizzle_migrations LIMIT 1;`
     );
 
     if (tableCheck[0]?.exists && migrationCheck.length === 0) {
-      // Existing database without migration history — baseline the initial
-      // migration so Drizzle does not try to re-create existing tables.
-      // The created_at value MUST equal or exceed the migration's `when`
-      // timestamp from _journal.json (1777746134296) so Drizzle's
-      // `created_at < folderMillis` check evaluates to false and skips it.
-      await client.query(
-        `INSERT INTO "__drizzle_migrations" (hash, created_at) VALUES ($1, $2);`,
-        ["0000_furry_dark_beast", 1777746134296]
+      // Existing database without migration history: baseline migration 0000
+      // (schema bootstrap) by computing its hash from the SQL file on disk.
+      const journal = JSON.parse(
+        fs.readFileSync(
+          path.join(MIGRATIONS_FOLDER, "meta/_journal.json"),
+          "utf8"
+        )
+      ) as { entries: Array<{ idx: number; tag: string; when: number }> };
+
+      const baseline = journal.entries[0];
+      const baselineSql = fs.readFileSync(
+        path.join(MIGRATIONS_FOLDER, `${baseline.tag}.sql`),
+        "utf8"
       );
-      console.log("[migrate] Baselined existing database");
+      const baselineHash = crypto
+        .createHash("sha256")
+        .update(baselineSql)
+        .digest("hex");
+
+      await client.query(
+        `INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES ($1, $2);`,
+        [baselineHash, baseline.when]
+      );
+      console.log("[migrate] Baselined schema bootstrap migration (existing database)");
     }
 
     const db = drizzle(client);
-    try {
-      await migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
-      console.log("[migrate] Drizzle migrations up to date");
-    } catch (err: any) {
-      // On databases created before migration tracking was introduced, the
-      // initial migration contains plain CREATE TABLE statements that fail
-      // because the tables already exist. This is expected and safe — all
-      // indexes are applied idempotently by the raw SQL section below.
-      if (err?.cause?.code === "42P07" || err?.cause?.message?.includes("already exists")) {
-        console.log("[migrate] Skipping Drizzle baseline migration (existing database)");
-      } else {
-        throw err;
-      }
-    }
+    await migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
 
     // ── Legacy / supplemental raw SQL ─────────────────────────────────────────
-    // Tables and indexes created before migration tracking was introduced.
-    // All statements are idempotent (IF NOT EXISTS) so they are safe to run
-    // on every startup alongside the Drizzle runner above.
+    // Tables and columns added before Drizzle migration tracking was
+    // introduced. All statements are idempotent (IF NOT EXISTS / ADD COLUMN IF
+    // NOT EXISTS) and coexist safely with the Drizzle runner above.
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS order_messages (
@@ -136,47 +141,8 @@ export async function runStartupMigrations() {
       CREATE INDEX IF NOT EXISTS marketplace_offers_buyer_idx ON marketplace_offers(buyer_id);
     `);
 
-    // ── Performance indexes ────────────────────────────────────────────────────
-    // Mirrors the indexes declared in the Drizzle schema and generated
-    // migration. All use IF NOT EXISTS so they are safe on every startup.
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS posts_created_at_idx ON posts(created_at DESC);
-    `);
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS posts_author_id_idx ON posts(author_id);
-    `);
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS posts_author_created_at_idx ON posts(author_id, created_at DESC);
-    `);
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS messages_conversation_id_created_at_idx ON messages(conversation_id, created_at DESC);
-    `);
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS messages_chatroom_id_created_at_idx ON messages(chatroom_id, created_at DESC);
-    `);
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS messages_sender_id_idx ON messages(sender_id);
-    `);
-    await client.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS likes_post_id_user_id_idx ON likes(post_id, user_id);
-    `);
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS comments_post_id_idx ON comments(post_id);
-    `);
     await client.query(`
       CREATE INDEX IF NOT EXISTS conversations_participants_idx ON conversations(participant1_id, participant2_id);
-    `);
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS follows_follower_following_idx ON follows(follower_id, following_id);
-    `);
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS follows_follower_id_idx ON follows(follower_id);
-    `);
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS follows_following_id_idx ON follows(following_id);
-    `);
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS order_messages_order_id_created_at_idx ON order_messages(order_id, created_at DESC);
     `);
 
     console.log("[migrate] Startup migrations complete");
