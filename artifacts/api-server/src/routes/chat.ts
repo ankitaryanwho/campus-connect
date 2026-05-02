@@ -238,11 +238,30 @@ router.get("/conversations/:conversationId/stream", authMiddleware, async (req, 
   res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders();
 
-  // Register BEFORE replay so no live message falls into the gap between
-  // the replay query completing and the client being subscribed.
-  // Clients deduplicate by ID, so receiving a message via both paths is safe.
+  // When recovery is active we buffer any live pushes that arrive while the
+  // replay DB query is running.  This guarantees the client always sees
+  // replayed (older) frames BEFORE live (newer) frames, preserving the
+  // chronological order that the cache's prependMessage relies on.
+  // Without buffering, a live push received during the async await could be
+  // written to res before the replay burst, causing ordering inversion.
+  const pendingFrames: string[] = [];
+  let isReplaying = !!since;
+  const realWrite = (chunk: string) => res.write(chunk);
+
+  if (isReplaying) {
+    (res as any).write = (chunk: string) => {
+      if (isReplaying) { pendingFrames.push(chunk); return true; }
+      return res.write(chunk);
+    };
+  }
+
+  // Register client — live pushes are intercepted into pendingFrames while replaying.
   if (!conversationClients.has(conversationId)) conversationClients.set(conversationId, new Set());
   conversationClients.get(conversationId)!.add(res);
+
+  // Emit `: connected` immediately via realWrite so the client hides the banner
+  // without waiting for the replay query to complete.
+  realWrite(": connected\n\n");
 
   // Replay messages sent while the client was disconnected
   if (since) {
@@ -268,13 +287,18 @@ router.get("/conversations/:conversationId/stream", authMiddleware, async (req, 
           const sender = (conv.isAnonymous && isSenderInitiator && !isSelf)
             ? { id: "anonymous", name: "Hidden Profile", avatar: null }
             : pickMessageSender(sendersMap.get(m.senderId));
-          res.write(`data: ${JSON.stringify({ ...m, senderId: undefined, sender, isSelf })}\n\n`);
+          realWrite(`data: ${JSON.stringify({ ...m, senderId: undefined, sender, isSelf })}\n\n`);
         }
       }
     }
   }
 
-  res.write(": connected\n\n");
+  // Replay done — restore res.write and flush any live frames that were buffered.
+  if (isReplaying) {
+    isReplaying = false;
+    delete (res as any).write;
+    for (const frame of pendingFrames) res.write(frame);
+  }
 
   const heartbeat = setInterval(() => {
     try { res.write(": ping\n\n"); } catch { clearInterval(heartbeat); }
@@ -490,11 +514,27 @@ router.get("/chatrooms/:chatroomId/stream", authMiddleware, async (req, res) => 
   res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders();
 
-  // Register BEFORE replay so no live message falls into the gap between
-  // the replay query completing and the client being subscribed.
-  // Clients deduplicate by ID, so receiving a message via both paths is safe.
+  // Buffer live pushes during the async replay query so replayed (older) frames
+  // always arrive at the client before live (newer) frames — preserving the
+  // chronological ordering that the cache's prependMessage relies on.
+  const pendingFrames: string[] = [];
+  let isReplaying = !!since;
+  const realWrite = (chunk: string) => res.write(chunk);
+
+  if (isReplaying) {
+    (res as any).write = (chunk: string) => {
+      if (isReplaying) { pendingFrames.push(chunk); return true; }
+      return res.write(chunk);
+    };
+  }
+
+  // Register client — live pushes are intercepted into pendingFrames while replaying.
   if (!chatroomClients.has(chatroomId)) chatroomClients.set(chatroomId, new Set());
   chatroomClients.get(chatroomId)!.add(res);
+
+  // Emit `: connected` immediately via realWrite so the client hides the banner
+  // without waiting for the replay query to complete.
+  realWrite(": connected\n\n");
 
   // Replay messages sent while the client was disconnected
   if (since) {
@@ -516,13 +556,18 @@ router.get("/chatrooms/:chatroomId/stream", authMiddleware, async (req, res) => 
         const sendersMap = await batchGetUsers(missed.map(m => m.senderId));
         for (const m of missed) {
           const payload = { ...m, senderId: undefined, sender: pickMessageSender(sendersMap.get(m.senderId)) };
-          res.write(`data: ${JSON.stringify(payload)}\n\n`);
+          realWrite(`data: ${JSON.stringify(payload)}\n\n`);
         }
       }
     }
   }
 
-  res.write(": connected\n\n");
+  // Replay done — restore res.write and flush any live frames that were buffered.
+  if (isReplaying) {
+    isReplaying = false;
+    delete (res as any).write;
+    for (const frame of pendingFrames) res.write(frame);
+  }
 
   const heartbeat = setInterval(() => {
     try { res.write(": ping\n\n"); } catch { clearInterval(heartbeat); }

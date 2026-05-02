@@ -68,9 +68,13 @@ export function useSSE(
 
     function onDisconnect(connectedAt: number) {
       if (aborted) return;
-      // Backoff resets only when the connection that closed was genuinely stable.
+      // Backoff and attempt counter reset only when the connection that just
+      // closed was genuinely stable (> STABLE_THRESHOLD ms of live data).
       const age = connectedAt > 0 ? Date.now() - connectedAt : 0;
-      if (age > STABLE_THRESHOLD) delay = INITIAL_DELAY;
+      if (age > STABLE_THRESHOLD) {
+        delay        = INITIAL_DELAY;
+        attemptCount = 0; // reset so next outage banner starts at attempt 1
+      }
 
       const currentDelay = delay;
       delay = Math.min(delay * 2, MAX_DELAY);
@@ -100,10 +104,13 @@ export function useSSE(
 
       // disconnectOnce ensures heartbeat + XHR callbacks never race to schedule
       // two concurrent reconnect timers for the same dropped connection.
+      // It also aborts the XHR so a stale-but-still-open stream stops emitting
+      // onprogress events after the watchdog fires.
       function disconnectOnce() {
         if (closed) return;
         closed = true;
         clearHeartbeat();
+        xhr?.abort(); // no-op if already closed; prevents stale stream from continuing
         onDisconnect(connectedAt);
       }
 
