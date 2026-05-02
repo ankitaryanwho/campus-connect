@@ -1,7 +1,19 @@
+import * as Sentry from "@sentry/node";
 import app from "./app";
 import { runStartupMigrations } from "./lib/migrate";
 import { runProductionImport } from "./lib/production-import";
 import { seedData } from "./lib/seed";
+
+// Initialise Sentry as early as possible so all unhandled errors and slow
+// spans are captured before the server starts accepting requests.
+if (process.env["SENTRY_DSN"]) {
+  Sentry.init({
+    dsn: process.env["SENTRY_DSN"],
+    tracesSampleRate: 0.2,
+    environment: process.env["NODE_ENV"] ?? "development",
+  });
+  console.log("[sentry] Initialised");
+}
 
 const rawPort = process.env["PORT"];
 

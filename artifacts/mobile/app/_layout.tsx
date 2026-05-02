@@ -13,12 +13,24 @@ import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import * as Sentry from "@sentry/react-native";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { ApiError } from "@/lib/ApiError";
 import { ToastProvider } from "@/contexts/ToastContext";
 import { NotificationProvider } from "@/contexts/NotificationContext";
 import { OfflineQueueProvider } from "@/contexts/OfflineQueueContext";
+
+// Initialise Sentry before the component tree renders so all unhandled
+// errors and React Native crashes are captured from the very first render.
+// Safe no-op when EXPO_PUBLIC_SENTRY_DSN is not set (local development).
+if (process.env.EXPO_PUBLIC_SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
+    tracesSampleRate: 0.2,
+    environment: __DEV__ ? "development" : "production",
+  });
+}
 
 SplashScreen.preventAutoHideAsync();
 
@@ -70,7 +82,7 @@ function RootLayoutNav() {
   );
 }
 
-export default function RootLayout() {
+function RootLayout() {
   useFonts({
     Inter_400Regular,
     Inter_500Medium,
@@ -109,3 +121,8 @@ export default function RootLayout() {
     </SafeAreaProvider>
   );
 }
+
+// Sentry.wrap adds a top-level error boundary and registers the component
+// as the app root for React Native crash reporting. It is safe to call even
+// when Sentry.init() was not called (DSN not set) — it just passes through.
+export default Sentry.wrap(RootLayout);

@@ -10,6 +10,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@sentry/node": "^8.55.2",
     "@types/bcryptjs": "^3.0.0",
     "@types/compression": "^1.8.1",
     "@types/jsonwebtoken": "^9.0.10",
@@ -31,6 +32,7 @@
     "nodemailer": "^8.0.3",
     "pg": "^8.20.0",
     "resend": "4.0.0",
+    "@sentry/node": "^8",
     "sharp": "^0.34.5"
   },
   "devDependencies": {

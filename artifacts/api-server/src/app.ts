@@ -3,6 +3,7 @@ import cors from "cors";
 import compression from "compression";
 import path from "path";
 import type { Socket } from "net";
+import * as Sentry from "@sentry/node";
 import router from "./routes";
 
 const app: Express = express();
@@ -51,6 +52,25 @@ app.get("/", (_req, res) => {
   res.json({ status: "ok" });
 });
 
+// Timing middleware: log slow responses and report them to Sentry.
+// Must be registered before the router so `res.on("finish")` fires correctly.
+app.use("/api", (req, res, next) => {
+  const start = Date.now();
+  res.on("finish", () => {
+    const duration = Date.now() - start;
+    if (duration > 1000) {
+      console.warn(`[slow-api] ${req.method} ${req.path} took ${duration}ms`);
+      if (process.env["SENTRY_DSN"]) {
+        Sentry.captureMessage("Slow API response", {
+          level: "warning",
+          extra: { path: req.path, method: req.method, duration },
+        });
+      }
+    }
+  });
+  next();
+});
+
 app.use("/api", router);
 
 const adminDist = path.resolve(process.cwd(), "artifacts/admin/dist/public");
@@ -58,5 +78,11 @@ app.use("/admin", express.static(adminDist));
 app.get("/admin/*splat", (_req, res) => {
   res.sendFile(path.join(adminDist, "index.html"));
 });
+
+// Sentry error handler — must be registered after all routes so it captures
+// errors that propagate up from route handlers.
+if (process.env["SENTRY_DSN"]) {
+  Sentry.setupExpressErrorHandler(app);
+}
 
 export default app;
