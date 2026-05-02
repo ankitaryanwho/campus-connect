@@ -1,4 +1,4 @@
-import { pgTable, text, integer, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, timestamp, boolean, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -34,7 +34,11 @@ export const followsTable = pgTable("follows", {
   followerId: text("follower_id").notNull().references(() => usersTable.id),
   followingId: text("following_id").notNull().references(() => usersTable.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("follows_follower_id_idx").on(t.followerId),
+  index("follows_following_id_idx").on(t.followingId),
+  index("follows_follower_following_idx").on(t.followerId, t.followingId),
+]);
 
 export const otpCodesTable = pgTable("otp_codes", {
   id: text("id").primaryKey(),

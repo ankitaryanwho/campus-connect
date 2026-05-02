@@ -1,4 +1,4 @@
-import { pgTable, text, integer, timestamp, boolean, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, timestamp, boolean, jsonb, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { usersTable } from "./users";
@@ -25,7 +25,11 @@ export const messagesTable = pgTable("messages", {
   isRead: boolean("is_read").notNull().default(false),
   metadata: jsonb("metadata"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("messages_conversation_id_created_at_idx").on(t.conversationId, t.createdAt),
+  index("messages_chatroom_id_created_at_idx").on(t.chatroomId, t.createdAt),
+  index("messages_sender_id_idx").on(t.senderId),
+]);
 
 export const insertMessageSchema = createInsertSchema(messagesTable).omit({ createdAt: true, isRead: true });
 export type InsertMessage = z.infer<typeof insertMessageSchema>;
@@ -38,7 +42,9 @@ export const orderMessagesTable = pgTable("order_messages", {
   senderId: text("sender_id").notNull().references(() => usersTable.id),
   content: text("content").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("order_messages_order_id_created_at_idx").on(t.orderId, t.createdAt),
+]);
 
 export type OrderMessage = typeof orderMessagesTable.$inferSelect;
 

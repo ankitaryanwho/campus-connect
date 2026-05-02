@@ -1,4 +1,4 @@
-import { pgTable, text, integer, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, timestamp, boolean, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { usersTable } from "./users";
@@ -15,7 +15,11 @@ export const postsTable = pgTable("posts", {
   hidden: boolean("hidden").notNull().default(false),
   editedAt: timestamp("edited_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("posts_created_at_idx").on(t.createdAt),
+  index("posts_author_id_idx").on(t.authorId),
+  index("posts_author_created_at_idx").on(t.authorId, t.createdAt),
+]);
 
 export const insertPostSchema = createInsertSchema(postsTable).omit({ createdAt: true, likesCount: true, commentsCount: true });
 export type InsertPost = z.infer<typeof insertPostSchema>;
@@ -25,7 +29,9 @@ export const likesTable = pgTable("likes", {
   userId: text("user_id").notNull().references(() => usersTable.id),
   postId: text("post_id").notNull().references(() => postsTable.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("likes_post_id_user_id_idx").on(t.postId, t.userId),
+]);
 
 export const commentsTable = pgTable("comments", {
   id: text("id").primaryKey(),
@@ -34,7 +40,9 @@ export const commentsTable = pgTable("comments", {
   postId: text("post_id").notNull().references(() => postsTable.id),
   parentId: text("parent_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("comments_post_id_idx").on(t.postId),
+]);
 
 export const insertCommentSchema = createInsertSchema(commentsTable).omit({ createdAt: true });
 export type InsertComment = z.infer<typeof insertCommentSchema>;
