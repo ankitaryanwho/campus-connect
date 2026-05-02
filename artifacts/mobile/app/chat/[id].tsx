@@ -235,10 +235,17 @@ export default function ChatDetailScreen() {
     });
   }, [queryClient, id]);
 
+  // Seed missed-message recovery with the latest confirmed (non-optimistic) message
+  // from the REST cache so reconnects fill gaps even before the first SSE frame.
+  const latestMessageId = (data?.pages[0]?.messages ?? []).find(
+    (m: any) => m.id && !m.id.startsWith("optimistic-") && !m.status,
+  )?.id ?? null;
+
   const { attempt: sseAttempt, nextDelay: sseDelay } = useSSE(
     id ? `${API_BASE}/chat/conversations/${id}/stream` : null,
     token,
     prependMessage,
+    latestMessageId,
   );
 
   const sendMutation = useMutation({

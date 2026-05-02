@@ -252,8 +252,14 @@ router.get("/conversations/:conversationId/stream", authMiddleware, async (req, 
       .limit(1);
     if (sinceRows.length) {
       const missed = await db.select().from(messagesTable)
-        .where(and(eq(messagesTable.conversationId, conversationId), gt(messagesTable.createdAt, sinceRows[0].createdAt)))
-        .orderBy(messagesTable.createdAt);
+        .where(and(
+          eq(messagesTable.conversationId, conversationId),
+          or(
+            gt(messagesTable.createdAt, sinceRows[0].createdAt),
+            and(eq(messagesTable.createdAt, sinceRows[0].createdAt), gt(messagesTable.id, since)),
+          ),
+        ))
+        .orderBy(messagesTable.createdAt, messagesTable.id);
       if (missed.length) {
         const sendersMap = await batchGetUsers(missed.map(m => m.senderId));
         for (const m of missed) {
@@ -498,8 +504,14 @@ router.get("/chatrooms/:chatroomId/stream", authMiddleware, async (req, res) => 
       .limit(1);
     if (sinceRows.length) {
       const missed = await db.select().from(messagesTable)
-        .where(and(eq(messagesTable.chatroomId, chatroomId), gt(messagesTable.createdAt, sinceRows[0].createdAt)))
-        .orderBy(messagesTable.createdAt);
+        .where(and(
+          eq(messagesTable.chatroomId, chatroomId),
+          or(
+            gt(messagesTable.createdAt, sinceRows[0].createdAt),
+            and(eq(messagesTable.createdAt, sinceRows[0].createdAt), gt(messagesTable.id, since)),
+          ),
+        ))
+        .orderBy(messagesTable.createdAt, messagesTable.id);
       if (missed.length) {
         const sendersMap = await batchGetUsers(missed.map(m => m.senderId));
         for (const m of missed) {
