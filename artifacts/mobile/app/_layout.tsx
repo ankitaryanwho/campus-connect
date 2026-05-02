@@ -20,6 +20,7 @@ import { ApiError } from "@/lib/ApiError";
 import { ToastProvider } from "@/contexts/ToastContext";
 import { NotificationProvider } from "@/contexts/NotificationContext";
 import { OfflineQueueProvider } from "@/contexts/OfflineQueueContext";
+import { useBatchStartup } from "@/hooks/useBatchStartup";
 
 // Initialise Sentry before the component tree renders so all unhandled
 // errors and React Native crashes are captured from the very first render.
@@ -52,6 +53,8 @@ const queryClient = new QueryClient({
 function RootLayoutNav() {
   const { user, isLoading } = useAuth();
   const segments = useSegments();
+
+  useBatchStartup();
 
   useEffect(() => {
     if (!isLoading) {

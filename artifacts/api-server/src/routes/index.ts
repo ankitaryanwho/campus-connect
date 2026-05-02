@@ -12,10 +12,12 @@ import syncRouter from "./sync";
 import orderChatRouter from "./order-chat";
 import marketplaceRouter from "./marketplace";
 import uploadRouter from "./upload";
+import batchRouter from "./batch";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
+router.use(batchRouter);
 router.use("/auth", authRouter);
 router.use("/posts", postsRouter);
 router.use("/users", usersRouter);

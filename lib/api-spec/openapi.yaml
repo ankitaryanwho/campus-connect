@@ -27,6 +27,37 @@ tags:
     description: Admin panel operations
 
 paths:
+  /batch:
+    post:
+      operationId: batchStartup
+      tags: [health]
+      summary: Batch multiple GET requests into one round trip
+      description: |
+        Accepts up to 10 startup GET sub-requests and fans them out in-process,
+        returning all responses in a single HTTP call. Only GET requests against
+        a whitelisted set of paths are permitted. Mutations are not supported.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BatchRequest"
+      responses:
+        "200":
+          description: Batch results (individual sub-request errors are reflected in each response's status field)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BatchResponse"
+        "400":
+          description: Invalid batch payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /healthz:
     get:
       operationId: healthCheck
@@ -1446,6 +1477,54 @@ components:
       bearerFormat: JWT
 
   schemas:
+    BatchSubRequest:
+      type: object
+      required: [id, path]
+      properties:
+        id:
+          type: string
+          description: Caller-assigned identifier echoed back in the response
+        method:
+          type: string
+          enum: [GET]
+          default: GET
+          description: HTTP method — only GET is supported
+        path:
+          type: string
+          description: API path including optional query string (e.g. /posts or /marketplace?type=all)
+
+    BatchSubResponse:
+      type: object
+      required: [id, status, body]
+      properties:
+        id:
+          type: string
+          description: Matches the id from the corresponding sub-request
+        status:
+          type: integer
+          description: HTTP status code of the sub-request
+        body:
+          description: Parsed JSON body of the sub-request response
+
+    BatchRequest:
+      type: object
+      required: [requests]
+      properties:
+        requests:
+          type: array
+          maxItems: 10
+          items:
+            $ref: "#/components/schemas/BatchSubRequest"
+
+    BatchResponse:
+      type: object
+      required: [responses]
+      properties:
+        responses:
+          type: array
+          items:
+            $ref: "#/components/schemas/BatchSubResponse"
+
     HealthStatus:
       type: object
       properties:
