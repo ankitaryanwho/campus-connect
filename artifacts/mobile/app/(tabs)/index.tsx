@@ -117,7 +117,7 @@ function GradientAvatar({ name, avatar, size = 44 }: { name: string; avatar?: st
 }
 
 // Compact horizontal card for swim-lane strips
-function PostMiniCard({ post, accent }: { post: Post; accent: string }) {
+const PostMiniCard = React.memo(function PostMiniCard({ post, accent }: { post: Post; accent: string }) {
   const [liked, setLiked] = useState(post.isLiked);
   const [likes, setLikes] = useState(post.likesCount);
   const { showToast } = useToast();
@@ -179,7 +179,7 @@ function PostMiniCard({ post, accent }: { post: Post; accent: string }) {
       </View>
     </Pressable>
   );
-}
+});
 
 // Category swim-lane strip
 function CategoryStrip({ categoryId, posts, onSeeAll }: { categoryId: CategoryId; posts: Post[]; onSeeAll: () => void }) {
@@ -219,7 +219,7 @@ function CategoryStrip({ categoryId, posts, onSeeAll }: { categoryId: CategoryId
 }
 
 // Full-width post card (for the feed section)
-function PostCard({ post, C, onLike, onComment, isDark }: any) {
+const PostCard = React.memo(function PostCard({ post, C, onLike, onComment, isDark }: any) {
   const [liked, setLiked] = useState(post.isLiked);
   const [likes, setLikes] = useState(post.likesCount);
   const [saved, setSaved] = useState(false);
@@ -390,7 +390,7 @@ function PostCard({ post, C, onLike, onComment, isDark }: any) {
       </View>
     </Pressable>
   );
-}
+});
 
 // Skeleton loader
 function SkeletonStrip({ isDark, C }: any) {
@@ -484,15 +484,18 @@ export default function FeedScreen() {
     return postsByCategory[activeCategory] ?? [];
   }, [posts, postsByCategory, activeCategory]);
 
+  const handleLike = useCallback((id: string) => likeMutation.mutate(id), [likeMutation]);
+  const handleComment = useCallback((id: string) => router.push(`/post/${id}`), []);
+
   const renderPost = useCallback(({ item }: { item: Post }) => (
     <PostCard
       post={item}
       C={C}
       isDark={isDark}
-      onLike={(id: string) => likeMutation.mutate(id)}
-      onComment={(id: string) => router.push(`/post/${id}`)}
+      onLike={handleLike}
+      onComment={handleComment}
     />
-  ), [C, isDark]);
+  ), [C, isDark, handleLike, handleComment]);
 
   const ListHeader = () => (
     <View style={{ backgroundColor: bg }}>

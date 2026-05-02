@@ -132,17 +132,47 @@ export default function ChatDetailScreen() {
   );
 
   const sendMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (content: string) => {
       const res = await apiRequest(`/chat/conversations/${id}/messages`, {
         method: "POST",
-        body: JSON.stringify({ content: text.trim() }),
+        body: JSON.stringify({ content }),
       });
+      if (!res.ok) throw new Error("Failed to send");
       return res.json();
     },
-    onSuccess: (newMsg) => {
+    onMutate: async (content: string) => {
+      await queryClient.cancelQueries({ queryKey: ["messages", id] });
+      const previous = queryClient.getQueryData(["messages", id]);
+      const tempId = `optimistic-${Date.now()}`;
+      const optimisticMsg = {
+        id: tempId,
+        content,
+        createdAt: new Date().toISOString(),
+        sender: { id: user?.id, name: user?.name, avatar: user?.avatar ?? null },
+        isSelf: true,
+      };
+      prependMessage(optimisticMsg);
       setText("");
-      prependMessage(newMsg);
       inputRef.current?.focus();
+      return { previous, tempId };
+    },
+    onSuccess: (newMsg, _content, context) => {
+      queryClient.setQueryData(["messages", id], (old: any) => {
+        if (!old?.pages) return old;
+        const firstPage = old.pages[0] ?? { messages: [], nextCursor: null };
+        const existing: any[] = firstPage.messages || [];
+        const withoutOptimistic = existing.filter(m => m.id !== context?.tempId);
+        const alreadyPresent = withoutOptimistic.some(m => m.id === newMsg.id);
+        const updated = alreadyPresent
+          ? withoutOptimistic
+          : [{ ...newMsg, isSelf: true }, ...withoutOptimistic];
+        return { ...old, pages: [{ ...firstPage, messages: updated }, ...old.pages.slice(1)] };
+      });
+    },
+    onError: (_err, _content, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(["messages", id], context.previous);
+      }
     },
   });
 
@@ -303,7 +333,7 @@ export default function ChatDetailScreen() {
         />
         <Pressable
           style={[styles.iconBtn, { backgroundColor: text.trim() ? C.primary : C.backgroundSecondary }]}
-          onPress={() => text.trim() && sendMutation.mutate()}
+          onPress={() => { const t = text.trim(); if (t) sendMutation.mutate(t); }}
           disabled={!text.trim() || sendMutation.isPending}
         >
           {sendMutation.isPending

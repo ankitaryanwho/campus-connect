@@ -82,12 +82,11 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
-    if ((fontsLoaded || fontError) && updateChecked) {
+    if (updateChecked) {
       SplashScreen.hideAsync();
     }
-  }, [fontsLoaded, fontError, updateChecked]);
+  }, [updateChecked]);
 
-  if (!fontsLoaded && !fontError) return null;
   if (!updateChecked) return null;
 
   return (
