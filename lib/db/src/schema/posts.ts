@@ -1,8 +1,8 @@
 import { pgTable, text, integer, timestamp, boolean, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { desc } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { usersTable } from "./users";
-import { desc } from "drizzle-orm";
 
 export const postsTable = pgTable("posts", {
   id: text("id").primaryKey(),

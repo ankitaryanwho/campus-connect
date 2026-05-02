@@ -3,13 +3,12 @@ import fs from "node:fs";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import path from "path";
-import { fileURLToPath } from "url";
 import { pool } from "@workspace/db";
 
-const MIGRATIONS_FOLDER = path.resolve(
-  fileURLToPath(import.meta.url),
-  "../../../../../lib/db/migrations"
-);
+// Resolve migrations folder relative to process.cwd() (the api-server package
+// root). This is stable in development (tsx) and production (compiled) builds
+// because pnpm always sets cwd to the package directory before running scripts.
+const MIGRATIONS_FOLDER = path.join(process.cwd(), "../../lib/db/migrations");
 
 export async function runStartupMigrations() {
   const client = await pool.connect();
@@ -21,8 +20,8 @@ export async function runStartupMigrations() {
     // inserting its tracking record into drizzle.__drizzle_migrations so that
     // Drizzle skips it and only applies incremental migrations (0001+).
     //
-    // The baseline hash and timestamp are derived from the actual migration
-    // files on disk, so they stay correct if the files are ever regenerated.
+    // The baseline hash and timestamp are read from the migration files on disk
+    // at startup, so they stay in sync if files are ever regenerated.
 
     await client.query(`CREATE SCHEMA IF NOT EXISTS drizzle;`);
     await client.query(`
@@ -146,8 +145,6 @@ export async function runStartupMigrations() {
     `);
 
     console.log("[migrate] Startup migrations complete");
-  } catch (err) {
-    console.error("[migrate] Startup migration error:", err);
   } finally {
     client.release();
   }
