@@ -26,7 +26,7 @@ import { useNotifications } from "@/contexts/NotificationContext";
 import { PostActionsMenu } from "@/components/PostActionsMenu";
 import { AuthorBadge } from "@/components/AuthorBadge";
 import { resolveBadge } from "@/constants/badges";
-import { RetryableError } from "@/components/RetryableError";
+import { RetryableError, RetryingBanner } from "@/components/RetryableError";
 import { throwIfNotOk } from "@/lib/ApiError";
 
 const isWeb = Platform.OS === "web";
@@ -616,6 +616,9 @@ export default function ProfileScreen() {
             )}
           </View>
 
+          {postsQuery.failureCount > 0 && postsQuery.isFetching && !postsQuery.isError && (
+            <RetryingBanner attempt={postsQuery.failureCount} />
+          )}
           {postsQuery.isLoading ? (
             <ActivityIndicator color={C.primary} style={{ marginTop: 20 }} />
           ) : postsQuery.isError ? (

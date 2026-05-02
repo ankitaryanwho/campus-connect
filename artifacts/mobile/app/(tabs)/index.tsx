@@ -18,7 +18,7 @@ import { useToast } from "@/contexts/ToastContext";
 import { AuthorBadge } from "@/components/AuthorBadge";
 import { PostActionsMenu } from "@/components/PostActionsMenu";
 import { MarketplaceFeed } from "@/components/MarketplaceFeed";
-import { RetryableError } from "@/components/RetryableError";
+import { RetryableError, RetryingBanner } from "@/components/RetryableError";
 import { throwIfNotOk } from "@/lib/ApiError";
 
 const isWeb = Platform.OS === "web";
@@ -481,7 +481,7 @@ export default function FeedScreen() {
   const textCol = isDark ? C.text : WARM.text;
   const mutedCol = isDark ? C.textTertiary : WARM.textTertiary;
 
-  const { data, isLoading, isError, refetch, isRefetching } = useQuery({
+  const { data, isLoading, isError, isFetching, failureCount, refetch, isRefetching } = useQuery({
     queryKey: ["posts"],
     queryFn: async () => {
       const res = await apiRequest("/posts");
@@ -660,6 +660,11 @@ export default function FeedScreen() {
           })}
         </ScrollView>
       </View>
+
+      {/* Retry-in-progress banner */}
+      {failureCount > 0 && isFetching && !isError && (
+        <RetryingBanner attempt={failureCount} />
+      )}
 
       {/* Feed — marketplace replaces regular posts for buy/sell/rent */}
       {activeCategory === "buysell" ? (

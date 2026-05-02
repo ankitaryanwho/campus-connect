@@ -3,12 +3,12 @@ import { View, Text, TouchableOpacity, StyleSheet, useColorScheme } from "react-
 import { Feather } from "@expo/vector-icons";
 import Colors from "@/constants/colors";
 
-interface Props {
+interface RetryableErrorProps {
   message?: string;
   onRetry: () => void;
 }
 
-export function RetryableError({ message, onRetry }: Props) {
+export function RetryableError({ message, onRetry }: RetryableErrorProps) {
   const isDark = useColorScheme() === "dark";
   const C = Colors[isDark ? "dark" : "light"];
 
@@ -27,6 +27,25 @@ export function RetryableError({ message, onRetry }: Props) {
         <Feather name="refresh-cw" size={14} color="#fff" />
         <Text style={styles.btnText}>Try again</Text>
       </TouchableOpacity>
+    </View>
+  );
+}
+
+interface RetryingBannerProps {
+  attempt: number;
+  maxAttempts?: number;
+}
+
+export function RetryingBanner({ attempt, maxAttempts = 3 }: RetryingBannerProps) {
+  const isDark = useColorScheme() === "dark";
+  const C = Colors[isDark ? "dark" : "light"];
+
+  return (
+    <View style={[styles.banner, { backgroundColor: isDark ? "#2D2200" : "#FFFBEB", borderColor: "#F59E0B44" }]}>
+      <Feather name="refresh-cw" size={13} color="#F59E0B" />
+      <Text style={[styles.bannerText, { color: isDark ? "#FCD34D" : "#92400E" }]}>
+        Connection issue — retrying ({attempt}/{maxAttempts})…
+      </Text>
     </View>
   );
 }
@@ -57,4 +76,17 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   btnText: { color: "#fff", fontFamily: "Inter_600SemiBold", fontSize: 14 },
+  banner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginHorizontal: 14,
+    marginTop: 6,
+    marginBottom: 2,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 0.5,
+  },
+  bannerText: { fontSize: 12, fontFamily: "Inter_500Medium", flex: 1 },
 });

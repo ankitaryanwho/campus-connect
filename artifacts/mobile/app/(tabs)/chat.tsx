@@ -14,7 +14,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useFocusEffect } from "expo-router";
 import Colors from "@/constants/colors";
 import { useAuth } from "@/contexts/AuthContext";
-import { RetryableError } from "@/components/RetryableError";
+import { RetryableError, RetryingBanner } from "@/components/RetryableError";
 import { throwIfNotOk } from "@/lib/ApiError";
 
 const isWeb = Platform.OS === "web";
@@ -139,6 +139,8 @@ export default function ChatScreen() {
 
   const isLoading = mode === "dms" ? conversationsQuery.isLoading : chatroomsQuery.isLoading;
   const isError = mode === "dms" ? conversationsQuery.isError : chatroomsQuery.isError;
+  const isFetching = mode === "dms" ? conversationsQuery.isFetching : chatroomsQuery.isFetching;
+  const failureCount = mode === "dms" ? conversationsQuery.failureCount : chatroomsQuery.failureCount;
   const refetchCurrent = mode === "dms" ? conversationsQuery.refetch : chatroomsQuery.refetch;
   const conversations = (conversationsQuery.data?.conversations || []).filter((c: any) => {
     if (!search) return true;
@@ -262,6 +264,11 @@ export default function ChatScreen() {
           <Text style={[styles.tabBtnText, { color: mode === "rooms" ? C.primary : C.textTertiary }]}>Chatrooms</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Retry-in-progress banner */}
+      {failureCount > 0 && isFetching && !isError && (
+        <RetryingBanner attempt={failureCount} />
+      )}
 
       {/* Content */}
       {isLoading ? (
