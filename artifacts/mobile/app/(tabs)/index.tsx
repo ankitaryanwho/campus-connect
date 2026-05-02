@@ -554,7 +554,7 @@ export default function FeedScreen() {
       likesCount: 0,
       commentsCount: 0,
       isLiked: false,
-      createdAt: new Date().toISOString(),
+      createdAt: item.enqueuedAt,
       author: {
         id: user?.id ?? "",
         name: user?.name ?? "You",

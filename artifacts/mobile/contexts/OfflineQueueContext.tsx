@@ -19,6 +19,7 @@ export interface QueueItem {
   payload: any;
   status: "pending" | "failed";
   retries: number;
+  enqueuedAt: string;
 }
 
 interface OfflineQueueContextValue {
@@ -186,7 +187,10 @@ export function OfflineQueueProvider({ children }: { children: React.ReactNode }
       for (const item of pending) {
         let attempt = 0;
         let succeeded = false;
-        while (attempt < MAX_RETRIES) {
+        // Use cumulative retries so the cap is enforced across reconnects,
+        // not just within a single processQueue invocation.
+        const attemptsLeft = MAX_RETRIES - item.retries;
+        while (attempt < attemptsLeft) {
           // Bail out if we've lost connectivity mid-loop
           if (!isOnlineRef.current) break;
           try {
@@ -196,13 +200,13 @@ export function OfflineQueueProvider({ children }: { children: React.ReactNode }
             break;
           } catch {
             attempt += 1;
-            if (attempt < MAX_RETRIES) {
-              await sleep(RETRY_DELAYS[attempt - 1] ?? 4000);
+            if (attempt < attemptsLeft) {
+              await sleep(RETRY_DELAYS[Math.min(attempt - 1, RETRY_DELAYS.length - 1)]);
             }
           }
         }
         if (!succeeded && isOnlineRef.current) {
-          // Exhausted all attempts while online → permanently failed
+          // Exhausted all cumulative attempts while online → permanently failed
           updateQueue(prev =>
             prev.map(i =>
               i.id === item.id
@@ -212,8 +216,7 @@ export function OfflineQueueProvider({ children }: { children: React.ReactNode }
           );
           markCacheFailed(item);
         } else if (!succeeded) {
-          // Went offline mid-retry; increment retries and leave as pending for
-          // next reconnect
+          // Went offline mid-retry; record cumulative attempts for next run
           updateQueue(prev =>
             prev.map(i =>
               i.id === item.id
@@ -285,7 +288,10 @@ export function OfflineQueueProvider({ children }: { children: React.ReactNode }
   const enqueue = useCallback(
     (type: QueueItemType, payload: any, existingId?: string): string => {
       const id = existingId ?? `q-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-      const item: QueueItem = { id, type, payload, status: "pending", retries: 0 };
+      // Dedup guard: if the id is already in the queue (e.g. repeated onError
+      // callbacks), skip adding a duplicate entry.
+      if (queueRef.current.some(i => i.id === id)) return id;
+      const item: QueueItem = { id, type, payload, status: "pending", retries: 0, enqueuedAt: new Date().toISOString() };
       updateQueue(prev => [...prev, item]);
       // Send immediately if already online
       if (isOnlineRef.current) {
