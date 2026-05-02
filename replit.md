@@ -232,6 +232,28 @@ Every package extends `tsconfig.base.json` which sets `composite: true`. The roo
 - `pnpm run build` — runs `typecheck` first, then recursively runs `build` in all packages
 - `pnpm run typecheck` — runs `tsc --build --emitDeclarationOnly`
 
+## Infrastructure
+
+### Reverse Proxy — Caddy (`Caddyfile`)
+- Caddy 2.10 runs on port **5000** (the user-facing port), proxying to Express on port **8080**
+- Enables HTTP/2 upstream transport, gzip+zstd compression, keep-alive (60 s, 20 idle conns)
+- Adds security headers: `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`
+- SSE streams flushed immediately (`flush_interval -1`)
+- Workflow: `artifacts/caddy: Reverse Proxy`
+
+### Cache — Redis via ioredis (`artifacts/api-server/src/lib/cache.ts`)
+- Auto-activates when `REDIS_URL` secret is set; falls back to in-memory LRU when absent
+- TTLs: posts 120 s, users 300 s, chatrooms 180 s, messages 60 s
+- Cursor-based keys for paginated DM and chatroom message queries
+- Active backend reported by `GET /api/ping` → `"cache":"redis"|"memory"`
+- URL parsing strips surrounding quotes and handles `KEY="value"` paste format
+
+### Observability — Sentry
+- **Server** (`@sentry/node`): init in `src/index.ts` when `SENTRY_DSN` set; `tracesSampleRate=0.2`; `setupExpressErrorHandler` in `app.ts`; slow API warnings captured (>1000 ms)
+- **Mobile** (`@sentry/react-native`): init in `_layout.tsx` when `EXPO_PUBLIC_SENTRY_DSN` set; `tracesSampleRate=0.2`
+- **Batch spans**: server wraps the entire `POST /api/batch` fan-out + per-subrequest child spans with `http.status_code`, `batch.slow=true` for >500 ms; mobile wraps `apiRequest("/batch")` in `op: "http.client"` span
+- Secrets: `SENTRY_DSN`, `EXPO_PUBLIC_SENTRY_DSN`
+
 ## Development Notes
 
 - Mobile API URL: Set via `artifacts/mobile/.env.local` (`EXPO_PUBLIC_API_URL`)

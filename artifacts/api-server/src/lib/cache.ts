@@ -1,8 +1,18 @@
 import { LRUCache } from "lru-cache";
 import Redis from "ioredis";
 
-// Strip surrounding quotes that may appear when a secret is pasted with quotes included.
-const REDIS_URL = process.env["REDIS_URL"]?.replace(/^["']|["']$/g, "") || undefined;
+// The secret may be stored as the full assignment (KEY="value") or with surrounding quotes.
+// Extract just the URL part in either case.
+function parseRedisUrl(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  // Handle KEY="value" or KEY=value form pasted as the whole assignment
+  const eqMatch = raw.match(/=["']?(.+?)["']?$/);
+  if (eqMatch) raw = eqMatch[1];
+  // Strip any remaining surrounding quotes
+  raw = raw.replace(/^["']+|["']+$/g, "").trim();
+  return raw.startsWith("redis") ? raw : undefined;
+}
+const REDIS_URL = parseRedisUrl(process.env["REDIS_URL"]);
 const IS_DEV    = process.env.NODE_ENV === "development";
 
 /** Which cache backend is active — exposed via GET /api/ping. */
