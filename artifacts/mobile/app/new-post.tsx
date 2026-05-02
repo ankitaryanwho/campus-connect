@@ -85,7 +85,26 @@ export default function NewPostScreen() {
       showToast(isAnonymous ? "Anonymous post shared!" : "Post shared!", "success");
       router.back();
     },
-    onError: (err: any) => showToast(err.message || "Failed to post", "error"),
+    onError: (err: any) => {
+      // On network/connectivity failure with text-only content, preserve the
+      // post in the queue instead of losing it. Skip when media is attached
+      // because image upload deferral is not yet supported.
+      const isNetworkErr =
+        !isOnline ||
+        (err?.message && /network|fetch|failed to fetch|timeout/i.test(err.message));
+      if (isNetworkErr && mediaUris.length === 0 && content.trim()) {
+        enqueue("post", {
+          content: content.trim(),
+          mediaUrls: [],
+          isAnonymous,
+          category: isAnonymous ? "confessions" : postCategory,
+        });
+        showToast("Post queued — will publish when you're back online", "success");
+        router.back();
+        return;
+      }
+      showToast(err.message || "Failed to post", "error");
+    },
   });
 
   const canPost = content.trim().length > 0 || mediaUris.length > 0;
