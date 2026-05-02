@@ -113,16 +113,18 @@ async function start() {
     (req: http2.Http2ServerRequest, res: http2.Http2ServerResponse) => {
       applyH2Descs(req, H2_REQ_DESCS);
       applyH2Descs(res, H2_RES_DESCS);
-      app(req, res);
+      // Http2ServerRequest extends IncomingMessage; Http2ServerResponse does not
+      // extend ServerResponse, so cast through the listener type to satisfy Express.
+      (app as http.RequestListener)(
+        req as unknown as http.IncomingMessage,
+        res as unknown as http.ServerResponse,
+      );
     },
   );
 
   h2cServer.on("error", (err: Error) => {
     console.error("[h2c] Error:", err.message);
   });
-
-  h2cServer.keepAliveTimeout = 65000;
-  h2cServer.headersTimeout   = 66000;
 
   await new Promise<void>((resolve) => h2cServer.listen(h2cPort, "127.0.0.1", resolve));
   console.log(`HTTP/2 h2c server listening on internal port ${h2cPort}`);
