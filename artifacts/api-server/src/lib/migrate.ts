@@ -35,13 +35,14 @@ export async function runStartupMigrations() {
   try {
     // ── Drizzle migration runner ──────────────────────────────────────────────
     // This project was originally set up with drizzle-kit push (no migration
-    // files). Migration 0000 is a full schema bootstrap that cannot run on
-    // existing databases (tables already exist). Migration 0001 adds the
-    // performance indexes; it may also conflict on databases where a previous
-    // version of this startup script already created those indexes via raw SQL.
+    // files). Migration 0000 is a full schema bootstrap; it cannot run on
+    // existing databases because the tables already exist. We baseline it by
+    // checking for the `users` table so Drizzle can take ownership of schema
+    // state going forward.
     //
-    // We baseline whichever migrations have already been applied so Drizzle
-    // can take ownership of schema state going forward without re-running them.
+    // Migration 0001 uses CREATE INDEX IF NOT EXISTS throughout, so it is safe
+    // to run on any database regardless of prior state — no baselining needed.
+    //
     // Baseline hashes and timestamps are computed from the migration files on
     // disk — no hardcoded values.
 
@@ -68,16 +69,8 @@ export async function runStartupMigrations() {
         continue; // Already tracked — skip
       }
 
-      const migSql = fs.readFileSync(
-        path.join(MIGRATIONS_FOLDER, `${entry.tag}.sql`),
-        "utf8"
-      );
-
-      // Detect whether this migration has already been applied to the DB by
-      // checking for a side-effect that is unique to it:
-      //   0000 — creates the `users` table
-      //   0001 — creates the `posts_created_at_idx` index
-      let alreadyApplied = false;
+      // Only baseline 0000: it uses plain CREATE TABLE which fails if tables
+      // already exist. Check for the `users` table as a sentinel.
       if (entry.idx === 0) {
         const { rows } = await client.query<{ exists: boolean }>(`
           SELECT EXISTS (
@@ -85,25 +78,21 @@ export async function runStartupMigrations() {
             WHERE schemaname = 'public' AND tablename = 'users'
           ) AS exists;
         `);
-        alreadyApplied = rows[0]?.exists ?? false;
-      } else if (entry.idx === 1) {
-        const { rows } = await client.query<{ exists: boolean }>(`
-          SELECT EXISTS (
-            SELECT 1 FROM pg_indexes
-            WHERE schemaname = 'public' AND indexname = 'posts_created_at_idx'
-          ) AS exists;
-        `);
-        alreadyApplied = rows[0]?.exists ?? false;
+        if (rows[0]?.exists) {
+          const migSql = fs.readFileSync(
+            path.join(MIGRATIONS_FOLDER, `${entry.tag}.sql`),
+            "utf8"
+          );
+          const hash = crypto.createHash("sha256").update(migSql).digest("hex");
+          await client.query(
+            `INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES ($1, $2);`,
+            [hash, entry.when]
+          );
+          console.log(`[migrate] Baselined existing migration: ${entry.tag}`);
+        }
       }
-
-      if (alreadyApplied) {
-        const hash = crypto.createHash("sha256").update(migSql).digest("hex");
-        await client.query(
-          `INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES ($1, $2);`,
-          [hash, entry.when]
-        );
-        console.log(`[migrate] Baselined existing migration: ${entry.tag}`);
-      }
+      // 0001 and any future index-only migrations use IF NOT EXISTS and are
+      // safe to run unconditionally — Drizzle's migrate() handles them below.
     }
 
     // Run any migrations not yet tracked (e.g. new ones added after the initial
