@@ -1,8 +1,9 @@
 import React, { useState, useRef, useCallback } from "react";
 import {
   View, Text, FlatList, TextInput, Pressable, StyleSheet,
-  useColorScheme, ActivityIndicator, Image, Platform,
+  useColorScheme, ActivityIndicator, Platform,
 } from "react-native";
+import { Image } from "expo-image";
 import { KeyboardAvoidingView, useKeyboardState } from "react-native-keyboard-controller";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -20,7 +21,7 @@ function getInitials(name: string) {
 
 function Avatar({ name, avatar, size = 36, C }: any) {
   if (avatar)
-    return <Image source={{ uri: avatar }} style={{ width: size, height: size, borderRadius: size / 2 }} />;
+    return <Image source={{ uri: avatar }} style={{ width: size, height: size, borderRadius: size / 2 }} cachePolicy="disk" />;
   return (
     <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: C.primary, alignItems: "center", justifyContent: "center" }}>
       <Text style={{ color: "#fff", fontFamily: "Inter_600SemiBold", fontSize: size * 0.35 }}>{getInitials(name || "?")}</Text>
@@ -70,6 +71,50 @@ function buildChatItems(messages: any[]): ChatItem[] {
   }
   return result;
 }
+
+const MessageBubble = React.memo(function MessageBubble({
+  msg, isMe, showAvatar, C,
+}: { msg: any; isMe: boolean; showAvatar: boolean; C: any }) {
+  const orderCtx = msg.metadata?.orderContext ?? null;
+  return (
+    <View style={[styles.messageRow, isMe ? styles.messageRowRight : styles.messageRowLeft, { marginBottom: 3 }]}>
+      {!isMe && (
+        <View style={{ width: 30, alignItems: "center", justifyContent: "flex-end" }}>
+          {showAvatar && <Avatar name={msg.sender?.name} avatar={msg.sender?.avatar} size={28} C={C} />}
+        </View>
+      )}
+      <View style={[styles.bubbleWrapper, isMe ? { alignItems: "flex-end" } : { alignItems: "flex-start" }]}>
+        {orderCtx && (
+          <View style={[styles.orderBanner, { backgroundColor: isMe ? "rgba(255,255,255,0.18)" : "#EDE9FE" }]}>
+            <Feather name="package" size={11} color={isMe ? "#fff" : "#5B4FE8"} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 9, fontFamily: "Inter_600SemiBold", color: isMe ? "rgba(255,255,255,0.85)" : "#5B4FE8" }}>
+                Order Message
+              </Text>
+              <Text style={{ fontSize: 10, color: isMe ? "rgba(255,255,255,0.7)" : "#78716C", fontFamily: "Inter_500Medium" }} numberOfLines={1}>
+                {orderCtx.title || orderCtx.id?.substring(0, 8)?.toUpperCase()}
+              </Text>
+            </View>
+          </View>
+        )}
+        <View
+          style={[
+            styles.bubble,
+            isMe
+              ? { backgroundColor: C.primary, borderBottomRightRadius: 5 }
+              : { backgroundColor: C.surface, borderColor: C.border, borderWidth: 0.5, borderBottomLeftRadius: 5 },
+            orderCtx && { borderTopLeftRadius: 5, borderTopRightRadius: 5 },
+          ]}
+        >
+          <Text style={[styles.bubbleText, { color: isMe ? "#fff" : C.text }]}>{msg.content}</Text>
+          <Text style={[styles.bubbleTime, { color: isMe ? "rgba(255,255,255,0.65)" : C.textTertiary }]}>
+            {formatTime(msg.createdAt)}
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+});
 
 export default function ChatDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -183,7 +228,7 @@ export default function ChatDetailScreen() {
   const rawMessages = data?.pages.flatMap(p => p.messages) ?? [];
   const chatItems = buildChatItems(rawMessages);
 
-  const renderItem = ({ item, index }: { item: ChatItem; index: number }) => {
+  const renderItem = useCallback(({ item, index }: { item: ChatItem; index: number }) => {
     if (item.type === "divider") {
       return (
         <View style={styles.dateDividerRow}>
@@ -195,59 +240,13 @@ export default function ChatDetailScreen() {
         </View>
       );
     }
-
     const msg = item.data;
-    // Use sender.id when available (non-anonymous). Fall back to isSelf flag for
-    // anonymous conversations where sender.id is "anonymous" regardless of direction.
     const isMe = msg.sender?.id === user?.id || msg.isSelf === true;
-    const orderCtx = msg.metadata?.orderContext ?? null;
-
-    // Detect consecutive messages from same sender (for avatar grouping)
-    // In inverted list, index+1 is the message ABOVE (older)
     const prevItem = chatItems[index - 1];
     const prevMsg = prevItem?.type === "message" ? prevItem.data : null;
     const showAvatar = !isMe && (!prevMsg || prevMsg.sender?.id !== msg.sender?.id || getDateKey(prevMsg.createdAt) !== getDateKey(msg.createdAt));
-
-    return (
-      <View style={[styles.messageRow, isMe ? styles.messageRowRight : styles.messageRowLeft, { marginBottom: 3 }]}>
-        {!isMe && (
-          <View style={{ width: 30, alignItems: "center", justifyContent: "flex-end" }}>
-            {showAvatar && <Avatar name={msg.sender?.name} avatar={msg.sender?.avatar} size={28} C={C} />}
-          </View>
-        )}
-
-        <View style={[styles.bubbleWrapper, isMe ? { alignItems: "flex-end" } : { alignItems: "flex-start" }]}>
-          {orderCtx && (
-            <View style={[styles.orderBanner, { backgroundColor: isMe ? "rgba(255,255,255,0.18)" : "#EDE9FE" }]}>
-              <Feather name="package" size={11} color={isMe ? "#fff" : "#5B4FE8"} />
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 9, fontFamily: "Inter_600SemiBold", color: isMe ? "rgba(255,255,255,0.85)" : "#5B4FE8" }}>
-                  Order Message
-                </Text>
-                <Text style={{ fontSize: 10, color: isMe ? "rgba(255,255,255,0.7)" : "#78716C", fontFamily: "Inter_500Medium" }} numberOfLines={1}>
-                  {orderCtx.title || orderCtx.id?.substring(0, 8)?.toUpperCase()}
-                </Text>
-              </View>
-            </View>
-          )}
-          <View
-            style={[
-              styles.bubble,
-              isMe
-                ? { backgroundColor: C.primary, borderBottomRightRadius: 5 }
-                : { backgroundColor: C.surface, borderColor: C.border, borderWidth: 0.5, borderBottomLeftRadius: 5 },
-              orderCtx && { borderTopLeftRadius: 5, borderTopRightRadius: 5 },
-            ]}
-          >
-            <Text style={[styles.bubbleText, { color: isMe ? "#fff" : C.text }]}>{msg.content}</Text>
-            <Text style={[styles.bubbleTime, { color: isMe ? "rgba(255,255,255,0.65)" : C.textTertiary }]}>
-              {formatTime(msg.createdAt)}
-            </Text>
-          </View>
-        </View>
-      </View>
-    );
-  };
+    return <MessageBubble msg={msg} isMe={isMe} showAvatar={showAvatar} C={C} />;
+  }, [chatItems, user?.id, C]);
 
   return (
     <KeyboardAvoidingView

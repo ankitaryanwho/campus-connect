@@ -1,8 +1,9 @@
 import React, { useState, useRef, useCallback } from "react";
 import {
   View, Text, FlatList, TextInput, Pressable, StyleSheet,
-  useColorScheme, ActivityIndicator, Image, Platform,
+  useColorScheme, ActivityIndicator, Platform,
 } from "react-native";
+import { Image } from "expo-image";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -17,7 +18,7 @@ function getInitials(name: string) {
 }
 
 function Avatar({ name, avatar, size = 32, C }: any) {
-  if (avatar) return <Image source={{ uri: avatar }} style={{ width: size, height: size, borderRadius: size / 2 }} />;
+  if (avatar) return <Image source={{ uri: avatar }} style={{ width: size, height: size, borderRadius: size / 2 }} cachePolicy="disk" />;
   return (
     <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: C.primary, alignItems: "center", justifyContent: "center" }}>
       <Text style={{ color: "#fff", fontFamily: "Inter_600SemiBold", fontSize: size * 0.35 }}>{getInitials(name || "?")}</Text>
@@ -28,6 +29,30 @@ function Avatar({ name, avatar, size = 32, C }: any) {
 function formatTime(date: string) {
   return new Date(date).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
 }
+
+const ChatroomBubble = React.memo(function ChatroomBubble({
+  item, userId, C,
+}: { item: any; userId: string | undefined; C: any }) {
+  const isMe = item.sender?.id === userId;
+  return (
+    <View style={[styles.messageRow, isMe && styles.messageRowRight]}>
+      {!isMe && <Avatar name={item.sender?.name} avatar={item.sender?.avatar} size={28} C={C} />}
+      <View style={styles.messageGroup}>
+        {!isMe && (
+          <Text style={[styles.senderName, { color: C.textSecondary, fontFamily: "Inter_600SemiBold" }]}>
+            {item.sender?.name}
+          </Text>
+        )}
+        <View style={[styles.bubble, isMe ? { backgroundColor: C.primary } : { backgroundColor: C.surface, borderColor: C.border, borderWidth: 0.5 }]}>
+          <Text style={[styles.bubbleText, { color: isMe ? "#fff" : C.text, fontFamily: "Inter_400Regular" }]}>{item.content}</Text>
+          <Text style={[styles.bubbleTime, { color: isMe ? "rgba(255,255,255,0.7)" : C.textTertiary, fontFamily: "Inter_400Regular" }]}>
+            {formatTime(item.createdAt)}
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+});
 
 export default function ChatroomScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -167,27 +192,7 @@ export default function ChatroomScreen() {
               <ActivityIndicator size="small" color={C.primary} />
             </View>
           ) : null}
-          renderItem={({ item }) => {
-            const isMe = item.sender?.id === user?.id;
-            return (
-              <View style={[styles.messageRow, isMe && styles.messageRowRight]}>
-                {!isMe && <Avatar name={item.sender?.name} avatar={item.sender?.avatar} size={28} C={C} />}
-                <View style={styles.messageGroup}>
-                  {!isMe && (
-                    <Text style={[styles.senderName, { color: C.textSecondary, fontFamily: "Inter_600SemiBold" }]}>
-                      {item.sender?.name}
-                    </Text>
-                  )}
-                  <View style={[styles.bubble, isMe ? { backgroundColor: C.primary } : { backgroundColor: C.surface, borderColor: C.border, borderWidth: 0.5 }]}>
-                    <Text style={[styles.bubbleText, { color: isMe ? "#fff" : C.text, fontFamily: "Inter_400Regular" }]}>{item.content}</Text>
-                    <Text style={[styles.bubbleTime, { color: isMe ? "rgba(255,255,255,0.7)" : C.textTertiary, fontFamily: "Inter_400Regular" }]}>
-                      {formatTime(item.createdAt)}
-                    </Text>
-                  </View>
-                </View>
-              </View>
-            );
-          }}
+          renderItem={({ item }) => <ChatroomBubble item={item} userId={user?.id} C={C} />}
           ListEmptyComponent={
             <View style={styles.empty}>
               <Feather name="hash" size={40} color={C.textTertiary} />

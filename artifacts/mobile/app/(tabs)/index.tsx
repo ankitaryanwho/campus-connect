@@ -1,9 +1,10 @@
 import React, { useState, useCallback, useRef } from "react";
 import {
   View, Text, FlatList, Pressable, StyleSheet,
-  useColorScheme, RefreshControl, Image, Platform,
+  useColorScheme, RefreshControl, Platform,
   Animated, TouchableOpacity, ScrollView,
 } from "react-native";
+import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -107,7 +108,7 @@ function detectCategory(content: string): CategoryId {
 function GradientAvatar({ name, avatar, size = 44 }: { name: string; avatar?: string; size?: number }) {
   const grad = getGradient(name || "?");
   if (avatar) {
-    return <Image source={{ uri: avatar }} style={{ width: size, height: size, borderRadius: size / 2 }} />;
+    return <Image source={{ uri: avatar }} style={{ width: size, height: size, borderRadius: size / 2 }} cachePolicy="disk" />;
   }
   return (
     <LinearGradient colors={grad as any} style={{ width: size, height: size, borderRadius: size / 2, alignItems: "center", justifyContent: "center" }}>
@@ -352,7 +353,7 @@ const PostCard = React.memo(function PostCard({ post, C, onLike, onComment, isDa
       {post.mediaUrls?.length > 0 && (
         <View style={styles.mediaContainer}>
           {post.mediaUrls.length === 1 ? (
-            <Image source={{ uri: post.mediaUrls[0] }} style={styles.mediaSingle} resizeMode="cover" />
+            <Image source={{ uri: post.mediaUrls[0] }} style={styles.mediaSingle} contentFit="cover" cachePolicy="disk" />
           ) : (
             <View style={styles.mediaGrid}>
               {post.mediaUrls.slice(0, 4).map((uri: string, i: number) => (
@@ -360,7 +361,8 @@ const PostCard = React.memo(function PostCard({ post, C, onLike, onComment, isDa
                   key={i}
                   source={{ uri }}
                   style={[styles.mediaGridItem, post.mediaUrls.length === 2 ? { width: "49.5%", height: 180 } : { width: "49.5%", height: 120 }]}
-                  resizeMode="cover"
+                  contentFit="cover"
+                  cachePolicy="disk"
                 />
               ))}
             </View>
@@ -484,7 +486,7 @@ export default function FeedScreen() {
     return postsByCategory[activeCategory] ?? [];
   }, [posts, postsByCategory, activeCategory]);
 
-  const handleLike = useCallback((id: string) => likeMutation.mutate(id), [likeMutation]);
+  const handleLike = useCallback((id: string) => likeMutation.mutate(id), [likeMutation.mutate]);
   const handleComment = useCallback((id: string) => router.push(`/post/${id}`), []);
 
   const renderPost = useCallback(({ item }: { item: Post }) => (
