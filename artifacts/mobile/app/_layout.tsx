@@ -20,9 +20,21 @@ import { NotificationProvider } from "@/contexts/NotificationContext";
 
 SplashScreen.preventAutoHideAsync();
 
+function isAuthError(error: unknown): boolean {
+  return error instanceof Error && /401|403|unauthorized|forbidden/i.test(error.message);
+}
+
+function isValidationError(error: unknown): boolean {
+  return error instanceof Error && /400|validation|invalid/i.test(error.message);
+}
+
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { retry: 1, staleTime: 60000 },
+    queries: {
+      staleTime: 60000,
+      retry: (count, error) => count < 3 && !isAuthError(error) && !isValidationError(error),
+      retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
+    },
   },
 });
 

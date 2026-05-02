@@ -18,6 +18,7 @@ import { useToast } from "@/contexts/ToastContext";
 import { AuthorBadge } from "@/components/AuthorBadge";
 import { PostActionsMenu } from "@/components/PostActionsMenu";
 import { MarketplaceFeed } from "@/components/MarketplaceFeed";
+import { RetryableError } from "@/components/RetryableError";
 
 const isWeb = Platform.OS === "web";
 
@@ -479,7 +480,7 @@ export default function FeedScreen() {
   const textCol = isDark ? C.text : WARM.text;
   const mutedCol = isDark ? C.textTertiary : WARM.textTertiary;
 
-  const { data, isLoading, refetch, isRefetching } = useQuery({
+  const { data, isLoading, isError, refetch, isRefetching } = useQuery({
     queryKey: ["posts"],
     queryFn: async () => {
       const res = await apiRequest("/posts");
@@ -662,6 +663,8 @@ export default function FeedScreen() {
       {/* Feed — marketplace replaces regular posts for buy/sell/rent */}
       {activeCategory === "buysell" ? (
         <MarketplaceFeed isDark={isDark} C={C} user={user} />
+      ) : isError ? (
+        <RetryableError onRetry={refetch} />
       ) : (
         <FlatList
           data={feedPosts}

@@ -26,6 +26,7 @@ import { useNotifications } from "@/contexts/NotificationContext";
 import { PostActionsMenu } from "@/components/PostActionsMenu";
 import { AuthorBadge } from "@/components/AuthorBadge";
 import { resolveBadge } from "@/constants/badges";
+import { RetryableError } from "@/components/RetryableError";
 
 const isWeb = Platform.OS === "web";
 const { width: SW } = Dimensions.get("window");
@@ -615,6 +616,8 @@ export default function ProfileScreen() {
 
           {postsQuery.isLoading ? (
             <ActivityIndicator color={C.primary} style={{ marginTop: 20 }} />
+          ) : postsQuery.isError ? (
+            <RetryableError onRetry={postsQuery.refetch} />
           ) : posts.length === 0 ? (
             <View
               style={[

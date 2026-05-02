@@ -14,6 +14,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useFocusEffect } from "expo-router";
 import Colors from "@/constants/colors";
 import { useAuth } from "@/contexts/AuthContext";
+import { RetryableError } from "@/components/RetryableError";
 
 const isWeb = Platform.OS === "web";
 
@@ -134,6 +135,8 @@ export default function ChatScreen() {
   };
 
   const isLoading = mode === "dms" ? conversationsQuery.isLoading : chatroomsQuery.isLoading;
+  const isError = mode === "dms" ? conversationsQuery.isError : chatroomsQuery.isError;
+  const refetchCurrent = mode === "dms" ? conversationsQuery.refetch : chatroomsQuery.refetch;
   const conversations = (conversationsQuery.data?.conversations || []).filter((c: any) => {
     if (!search) return true;
     const other = c.participants?.find((p: any) => p?.id !== user?.id);
@@ -264,6 +267,8 @@ export default function ChatScreen() {
             <SkeletonConversationRow key={i} C={C} isDark={colorScheme === "dark"} />
           ))}
         </View>
+      ) : isError ? (
+        <RetryableError onRetry={refetchCurrent} />
       ) : mode === "dms" ? (
         <FlatList
           data={conversations}

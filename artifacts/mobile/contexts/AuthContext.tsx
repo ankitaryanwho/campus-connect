@@ -102,7 +102,23 @@ const [AuthProvider, useAuth] = createContextHook<AuthState>(() => {
     if (currentToken) {
       headers["Authorization"] = `Bearer ${currentToken}`;
     }
-    return fetch(`${API_BASE}${path}`, { ...options, headers });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    try {
+      const response = await fetch(`${API_BASE}${path}`, {
+        ...options,
+        headers,
+        signal: controller.signal,
+      });
+      return response;
+    } catch (err: any) {
+      if (err?.name === "AbortError") {
+        throw new Error("Request timed out. Please check your connection and try again.");
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }, [token]);
 
   const login = useCallback(async (email: string, password: string) => {
