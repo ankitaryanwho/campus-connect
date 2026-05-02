@@ -37,6 +37,13 @@ class TrackedCache<V extends object> {
     return this.inner.delete(key);
   }
 
+  /** Delete all entries whose key starts with the given prefix. */
+  deleteByPrefix(prefix: string): void {
+    for (const key of this.inner.keys()) {
+      if (key.startsWith(prefix)) this.inner.delete(key);
+    }
+  }
+
   clear(): void {
     this.inner.clear();
   }
@@ -46,6 +53,16 @@ class TrackedCache<V extends object> {
   }
 }
 
-export const postsCache     = new TrackedCache<object>("posts",     200, 30);
-export const chatroomsCache = new TrackedCache<object>("chatrooms",  50, 60);
-export const usersCache     = new TrackedCache<object>("users",     500, 60);
+export const postsCache     = new TrackedCache<object>("posts",     200, 120);
+export const chatroomsCache = new TrackedCache<object>("chatrooms",  50, 180);
+export const usersCache     = new TrackedCache<object>("users",     500, 300);
+
+// Paginated message pages keyed by `{conversationId|chatroomId}|{cursor}|{limit}`.
+// 60-second TTL — fresh enough to avoid stale reads, old enough to serve repeated
+// scroll-ups without hitting the database.
+export const messagesPageCache = new TrackedCache<object>("messages", 500, 60);
+
+/** Build the cache key for a paginated message page. */
+export function messagePageKey(channelId: string, cursor: string | undefined, limit: number): string {
+  return `${channelId}|${cursor ?? ""}|${limit}`;
+}

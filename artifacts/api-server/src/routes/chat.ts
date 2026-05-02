@@ -5,7 +5,7 @@ import { eq, or, and, desc, lt, inArray } from "drizzle-orm";
 import { authMiddleware } from "../lib/auth";
 import { generateId } from "../lib/id";
 import { pickConversationUser, pickMessageSender } from "../lib/userFields";
-import { chatroomsCache } from "../lib/cache";
+import { chatroomsCache, messagesPageCache, messagePageKey } from "../lib/cache";
 
 const router = Router();
 
@@ -261,6 +261,13 @@ router.get("/conversations/:conversationId/messages", authMiddleware, async (req
     const rawLimit = parseInt(req.query["limit"] as string || "30", 10);
     const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 50) : 30;
 
+    const cacheKey = messagePageKey(conversationId, cursor, limit);
+    const cached = messagesPageCache.get(cacheKey);
+    if (cached) {
+      res.json(cached);
+      return;
+    }
+
     const convRows = await db.select().from(conversationsTable).where(eq(conversationsTable.id, conversationId)).limit(1);
     const conv = convRows[0];
 
@@ -285,7 +292,9 @@ router.get("/conversations/:conversationId/messages", authMiddleware, async (req
     const msgs = hasMore ? rows.slice(0, limit) : rows;
 
     if (!msgs.length) {
-      res.json({ messages: [], nextCursor: null });
+      const payload = { messages: [], nextCursor: null };
+      messagesPageCache.set(cacheKey, payload);
+      res.json(payload);
       return;
     }
 
@@ -304,7 +313,9 @@ router.get("/conversations/:conversationId/messages", authMiddleware, async (req
 
     // nextCursor = oldest message ID on this page; null when no further pages exist
     const nextCursor = hasMore ? msgs[msgs.length - 1].id : null;
-    res.json({ messages: formatted, nextCursor });
+    const payload = { messages: formatted, nextCursor };
+    messagesPageCache.set(cacheKey, payload);
+    res.json(payload);
   } catch (err) {
     res.status(500).json({ error: "ServerError", message: "Failed to get messages" });
   }
@@ -350,6 +361,8 @@ router.post("/conversations/:conversationId/messages", authMiddleware, async (re
     }
 
     const messagePayload = { ...msgs[0], senderId: undefined, sender };
+    // Invalidate all cached pages for this conversation so the next read is fresh
+    messagesPageCache.deleteByPrefix(`${conversationId}|`);
     pushSSE(conversationClients, conversationId, messagePayload);
     res.status(201).json({ ...messagePayload, isSelf: true });
   } catch (err) {
@@ -455,6 +468,13 @@ router.get("/chatrooms/:chatroomId/messages", authMiddleware, async (req, res) =
     const rawLimit = parseInt(req.query["limit"] as string || "30", 10);
     const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 50) : 30;
 
+    const cacheKey = messagePageKey(chatroomId, cursor, limit);
+    const cached = messagesPageCache.get(cacheKey);
+    if (cached) {
+      res.json(cached);
+      return;
+    }
+
     // Resolve cursor to a timestamp — scoped to this chatroom to prevent cross-thread leakage
     let cursorDate: Date | undefined;
     if (cursor) {
@@ -476,7 +496,9 @@ router.get("/chatrooms/:chatroomId/messages", authMiddleware, async (req, res) =
     const msgs = hasMore ? rows.slice(0, limit) : rows;
 
     if (!msgs.length) {
-      res.json({ messages: [], nextCursor: null });
+      const payload = { messages: [], nextCursor: null };
+      messagesPageCache.set(cacheKey, payload);
+      res.json(payload);
       return;
     }
 
@@ -492,7 +514,9 @@ router.get("/chatrooms/:chatroomId/messages", authMiddleware, async (req, res) =
 
     // nextCursor = oldest message ID on this page; null when no further pages exist
     const nextCursor = hasMore ? msgs[msgs.length - 1].id : null;
-    res.json({ messages: formatted, nextCursor });
+    const payload = { messages: formatted, nextCursor };
+    messagesPageCache.set(cacheKey, payload);
+    res.json(payload);
   } catch (err) {
     res.status(500).json({ error: "ServerError", message: "Failed to get chatroom messages" });
   }
@@ -516,6 +540,8 @@ router.post("/chatrooms/:chatroomId/messages", authMiddleware, async (req, res) 
     const sendersMap = await batchGetUsers([userId]);
     const chatroomPayload = { ...msgs[0], senderId: undefined, sender: pickMessageSender(sendersMap.get(userId)) };
     chatroomsCache.delete("all");
+    // Invalidate all cached pages for this chatroom so the next read is fresh
+    messagesPageCache.deleteByPrefix(`${chatroomId}|`);
     pushSSE(chatroomClients, chatroomId, chatroomPayload);
     res.status(201).json(chatroomPayload);
   } catch (err) {
