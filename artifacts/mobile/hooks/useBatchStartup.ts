@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -20,13 +20,30 @@ const STARTUP_REQUESTS: BatchRequest[] = [
   { id: "conversations", path: "/chat/conversations" },
 ];
 
-export function useBatchStartup(): void {
+/**
+ * Fires a single /api/batch call immediately after auth is confirmed and
+ * pre-populates TanStack Query's cache with the results.  Individual screens
+ * will hit the cache on first mount rather than making separate network calls.
+ *
+ * Returns `isReady: true` once the batch completes (success or failure) or when
+ * the user is not logged in.  The root layout uses this to delay hiding the
+ * splash screen so that the tab screens always mount with data already cached.
+ */
+export function useBatchStartup(): { isReady: boolean } {
   const { apiRequest, user, token } = useAuth();
   const queryClient = useQueryClient();
+  const [isReady, setIsReady] = useState(false);
   const didRunRef = useRef(false);
 
   useEffect(() => {
-    if (!user || !token || didRunRef.current) return;
+    // Not logged in — nothing to prefetch; mark ready so the splash can hide.
+    if (!user || !token) {
+      setIsReady(true);
+      return;
+    }
+
+    // Only run once per auth session.
+    if (didRunRef.current) return;
     didRunRef.current = true;
 
     const run = async () => {
@@ -40,7 +57,7 @@ export function useBatchStartup(): void {
         console.timeEnd("[useBatchStartup]");
 
         if (!res.ok) {
-          console.warn("[useBatchStartup] batch request failed with status", res.status);
+          console.warn("[useBatchStartup] batch responded with status", res.status);
           return;
         }
 
@@ -65,10 +82,15 @@ export function useBatchStartup(): void {
         }
       } catch (err) {
         console.timeEnd("[useBatchStartup]");
-        console.warn("[useBatchStartup] failed, screens will fetch independently:", err);
+        console.warn("[useBatchStartup] failed; screens will fetch independently:", err);
+      } finally {
+        // Always mark ready — either we pre-loaded the cache or screens fall back.
+        setIsReady(true);
       }
     };
 
     run();
   }, [user?.id, token]);
+
+  return { isReady };
 }

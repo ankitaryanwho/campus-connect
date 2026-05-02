@@ -52,15 +52,19 @@ const queryClient = new QueryClient({
 
 function RootLayoutNav() {
   const { user, isLoading } = useAuth();
+  const { isReady } = useBatchStartup();
   const segments = useSegments();
 
-  useBatchStartup();
-
+  // Keep the splash screen visible while:
+  //   1. Auth is still loading from storage  (isLoading = true), OR
+  //   2. A logged-in user's batch prefetch is still in flight (!isReady).
+  // For logged-out users useBatchStartup sets isReady = true synchronously,
+  // so the splash hides as soon as auth finishes loading — same as before.
   useEffect(() => {
-    if (!isLoading) {
+    if (!isLoading && isReady) {
       SplashScreen.hideAsync().catch(() => {});
     }
-  }, [isLoading]);
+  }, [isLoading, isReady]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -71,6 +75,11 @@ function RootLayoutNav() {
       router.replace("/(tabs)");
     }
   }, [user, isLoading, segments]);
+
+  // While a returning user's batch is in flight, render nothing — the splash
+  // screen is still covering the app so there is no blank-screen flash.
+  // Logged-out users and users whose batch has completed render normally.
+  if (user && !isReady) return null;
 
   return (
     <Stack screenOptions={{ headerShown: false }}>

@@ -1,27 +1,32 @@
 import { Router } from "express";
 import { authMiddleware } from "../lib/auth";
+import { dispatchInProcess } from "../lib/batchDispatch";
 
 const router = Router();
 
 const MAX_REQUESTS = 10;
 
-const ALLOWED_PATH_PREFIXES: string[] = [
+/**
+ * Exact set of startup GET paths permitted in a batch call.
+ * Query strings are allowed (e.g. /marketplace?type=all) but the base path
+ * must be in this set.  SSE streams, uploads, paginated sub-paths, and all
+ * mutations are intentionally excluded.
+ */
+const ALLOWED_BASE_PATHS = new Set([
   "/posts",
   "/notifications",
   "/chat/chatrooms",
   "/chat/conversations",
   "/marketplace",
-];
+]);
 
 function isPathAllowed(rawPath: string): boolean {
-  const base = rawPath.split("?")[0];
-  return ALLOWED_PATH_PREFIXES.some(
-    (prefix) => base === prefix || base.startsWith(prefix + "/"),
-  );
+  const base = rawPath.includes("?") ? rawPath.slice(0, rawPath.indexOf("?")) : rawPath;
+  return ALLOWED_BASE_PATHS.has(base);
 }
 
 router.post("/batch", authMiddleware, async (req, res) => {
-  const { requests } = req.body ?? {};
+  const { requests } = (req.body ?? {}) as Record<string, unknown>;
 
   if (!Array.isArray(requests) || requests.length === 0) {
     res.status(400).json({
@@ -39,65 +44,49 @@ router.post("/batch", authMiddleware, async (req, res) => {
     return;
   }
 
-  for (const r of requests) {
-    if (!r.id || typeof r.id !== "string") {
+  for (const r of requests as Array<Record<string, unknown>>) {
+    if (!r["id"] || typeof r["id"] !== "string") {
       res.status(400).json({ error: "ValidationError", message: "Each request must have a string id" });
       return;
     }
-    if (!r.path || typeof r.path !== "string") {
+    if (!r["path"] || typeof r["path"] !== "string") {
       res.status(400).json({ error: "ValidationError", message: "Each request must have a string path" });
       return;
     }
-    const method = (r.method ?? "GET").toUpperCase();
+    const method = ((r["method"] as string | undefined) ?? "GET").toUpperCase();
     if (method !== "GET") {
       res.status(400).json({
         error: "ValidationError",
-        message: `Only GET requests are supported in batch (got ${method} for id=${r.id})`,
+        message: `Only GET requests are supported in batch (got ${method} for id=${r["id"]})`,
       });
       return;
     }
-    if (!isPathAllowed(r.path)) {
+    if (!isPathAllowed(r["path"] as string)) {
       res.status(400).json({
         error: "ValidationError",
-        message: `Path not allowed in batch: ${r.path}`,
+        message: `Path not allowed in batch: ${r["path"]}`,
       });
       return;
     }
   }
 
-  const authHeader = req.headers["authorization"] ?? "";
-  const port = process.env["PORT"] ?? "8080";
-  const internalBase = `http://127.0.0.1:${port}/api`;
-
+  const authHeader = (req.headers["authorization"] as string) ?? "";
   const t0 = Date.now();
 
   const responses = await Promise.all(
     (requests as Array<{ id: string; path: string }>).map(async (r) => {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 7000);
       try {
-        const resp = await fetch(`${internalBase}${r.path}`, {
-          method: "GET",
-          headers: {
-            Authorization: authHeader,
-            "Content-Type": "application/json",
-            Accept: "application/json",
-          },
-          signal: controller.signal,
-        });
-        const body = await resp.json().catch(() => null);
-        return { id: r.id, status: resp.status, body };
-      } catch (err: any) {
+        const result = await dispatchInProcess(r.path, authHeader);
+        return { id: r.id, status: result.status, body: result.body };
+      } catch (err: unknown) {
         return {
           id: r.id,
           status: 503,
           body: {
             error: "BatchSubrequestFailed",
-            message: err?.message ?? "Subrequest failed",
+            message: (err as Error)?.message ?? "Subrequest failed",
           },
         };
-      } finally {
-        clearTimeout(timeout);
       }
     }),
   );

@@ -13,6 +13,7 @@ import orderChatRouter from "./order-chat";
 import marketplaceRouter from "./marketplace";
 import uploadRouter from "./upload";
 import batchRouter from "./batch";
+import { setRouter } from "../lib/batchDispatch";
 
 const router: IRouter = Router();
 
@@ -30,5 +31,8 @@ router.use("/admin", adminRouter);
 router.use("/marketplace", marketplaceRouter);
 router.use("/upload", uploadRouter);
 router.use("/", syncRouter);
+
+// Store a reference so the batch handler can dispatch sub-requests in-process.
+setRouter(router);
 
 export default router;
