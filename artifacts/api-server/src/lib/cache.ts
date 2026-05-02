@@ -90,7 +90,8 @@ class RedisCache implements AppCache {
     try {
       const raw = await this.client.get(this.k(key));
       return raw ? (JSON.parse(raw) as object) : undefined;
-    } catch {
+    } catch (err) {
+      console.warn("[redis] get failed:", (err as Error).message);
       return undefined;
     }
   }
@@ -98,13 +99,17 @@ class RedisCache implements AppCache {
   async set(key: string, value: object): Promise<void> {
     try {
       await this.client.set(this.k(key), JSON.stringify(value), "EX", this.ttlSeconds);
-    } catch {}
+    } catch (err) {
+      console.warn("[redis] set failed:", (err as Error).message);
+    }
   }
 
   async delete(key: string): Promise<void> {
     try {
       await this.client.del(this.k(key));
-    } catch {}
+    } catch (err) {
+      console.warn("[redis] delete failed:", (err as Error).message);
+    }
   }
 
   async deleteByPrefix(prefix: string): Promise<void> {
@@ -116,7 +121,9 @@ class RedisCache implements AppCache {
         cursor = next;
         if (keys.length) await this.client.del(...keys);
       } while (cursor !== "0");
-    } catch {}
+    } catch (err) {
+      console.warn("[redis] deleteByPrefix failed:", (err as Error).message);
+    }
   }
 
   async clear(): Promise<void> {

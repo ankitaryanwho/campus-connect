@@ -549,7 +549,7 @@ router.get("/chatrooms/:chatroomId/messages", authMiddleware, async (req, res) =
     const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 50) : 30;
 
     const cacheKey = chatroomPageKey(chatroomId, cursor, limit);
-    const cached = messagesPageCache.get(cacheKey);
+    const cached = await messagesPageCache.get(cacheKey);
     if (cached) {
       res.json(cached);
       return;
