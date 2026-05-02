@@ -14,6 +14,7 @@ import Colors from "@/constants/colors";
 import { useAuth, API_BASE } from "@/contexts/AuthContext";
 import { useOfflineQueue } from "@/contexts/OfflineQueueContext";
 import { useSSE } from "@/hooks/useSSE";
+import { RetryingBanner } from "@/components/RetryableError";
 
 function getInitials(name: string) {
   return name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
@@ -170,7 +171,7 @@ export default function ChatroomScreen() {
     });
   }, [queryClient, id]);
 
-  useSSE(
+  const { attempt: sseAttempt, nextDelay: sseDelay } = useSSE(
     id ? `${API_BASE}/chat/chatrooms/${id}/stream` : null,
     token,
     prependMessage,
@@ -265,6 +266,9 @@ export default function ChatroomScreen() {
         </View>
         <Feather name="more-vertical" size={20} color={C.text} />
       </View>
+
+      {/* SSE reconnecting banner */}
+      {sseAttempt > 0 && <RetryingBanner attempt={sseAttempt} delay={sseDelay} />}
 
       {isLoading ? (
         <View style={styles.center}><ActivityIndicator color={C.primary} /></View>

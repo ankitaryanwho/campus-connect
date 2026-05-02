@@ -33,18 +33,22 @@ export function RetryableError({ message, onRetry }: RetryableErrorProps) {
 
 interface RetryingBannerProps {
   attempt: number;
-  maxAttempts?: number;
+  delay?: number;
 }
 
-export function RetryingBanner({ attempt, maxAttempts = 3 }: RetryingBannerProps) {
+export function RetryingBanner({ attempt, delay }: RetryingBannerProps) {
   const isDark = useColorScheme() === "dark";
-  const C = Colors[isDark ? "dark" : "light"];
+
+  const delaySec = delay !== undefined ? Math.round(delay / 1000) : null;
+  const label = delaySec !== null
+    ? `Reconnecting in ${delaySec} s (attempt ${attempt})`
+    : `Connection issue — retrying (attempt ${attempt})…`;
 
   return (
     <View style={[styles.banner, { backgroundColor: isDark ? "#2D2200" : "#FFFBEB", borderColor: "#F59E0B44" }]}>
       <Feather name="refresh-cw" size={13} color="#F59E0B" />
       <Text style={[styles.bannerText, { color: isDark ? "#FCD34D" : "#92400E" }]}>
-        Connection issue — retrying ({attempt}/{maxAttempts})…
+        {label}
       </Text>
     </View>
   );

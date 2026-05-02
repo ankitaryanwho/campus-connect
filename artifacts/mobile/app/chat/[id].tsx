@@ -14,6 +14,7 @@ import Colors from "@/constants/colors";
 import { useAuth, API_BASE } from "@/contexts/AuthContext";
 import { useOfflineQueue } from "@/contexts/OfflineQueueContext";
 import { useSSE } from "@/hooks/useSSE";
+import { RetryingBanner } from "@/components/RetryableError";
 
 const isWeb = Platform.OS === "web";
 
@@ -234,7 +235,7 @@ export default function ChatDetailScreen() {
     });
   }, [queryClient, id]);
 
-  useSSE(
+  const { attempt: sseAttempt, nextDelay: sseDelay } = useSSE(
     id ? `${API_BASE}/chat/conversations/${id}/stream` : null,
     token,
     prependMessage,
@@ -357,6 +358,9 @@ export default function ChatDetailScreen() {
           <Pressable hitSlop={8}><Feather name="more-vertical" size={20} color={C.text} /></Pressable>
         </View>
       </View>
+
+      {/* SSE reconnecting banner */}
+      {sseAttempt > 0 && <RetryingBanner attempt={sseAttempt} delay={sseDelay} />}
 
       {/* Messages */}
       {isLoading ? (
