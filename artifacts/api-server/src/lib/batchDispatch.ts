@@ -1,10 +1,19 @@
 import { EventEmitter } from "events";
-import type { IRouter } from "express";
+import type { Request, Response, NextFunction, IRouter } from "express";
 
-let _router: IRouter | null = null;
+/**
+ * Minimal interface for the Express router's internal dispatch method.
+ * IRouter does not expose handle() in its public type, so we define it
+ * separately and cast once at setRouter() time.
+ */
+interface RouterHandle {
+  handle(req: Request, res: Response, next: NextFunction): void;
+}
+
+let _router: RouterHandle | null = null;
 
 export function setRouter(router: IRouter): void {
-  _router = router;
+  _router = router as unknown as RouterHandle;
 }
 
 export interface DispatchResult {
@@ -105,7 +114,7 @@ export function dispatchInProcess(path: string, authHeader: string): Promise<Dis
     res.locals = {};
     const hdrs = new Map<string, string>();
 
-    res.status   = function(code)  { this.statusCode = code; return this; };
+    res.status    = function(code)  { this.statusCode = code; return this; };
     res.setHeader = function(name, value) { hdrs.set(name.toLowerCase(), value); return this; };
     res.getHeader = function(name)  { return hdrs.get(name.toLowerCase()); };
     res.removeHeader = function(name) { hdrs.delete(name.toLowerCase()); };
@@ -136,11 +145,15 @@ export function dispatchInProcess(path: string, authHeader: string): Promise<Dis
     };
     res.write = function() { return true; };
 
-    router.handle(req as any, res as any, (err?: Error) => {
-      settle(err ? 500 : 404, {
-        error: err ? "InternalError" : "NotFound",
-        message: err?.message ?? "Route not found",
-      });
-    });
+    router.handle(
+      req as unknown as Request,
+      res as unknown as Response,
+      (err?: unknown) => {
+        settle(err ? 500 : 404, {
+          error: err ? "InternalError" : "NotFound",
+          message: (err as Error)?.message ?? "Route not found",
+        });
+      },
+    );
   });
 }

@@ -13,6 +13,17 @@ interface BatchResponse {
   body: unknown;
 }
 
+/**
+ * Read-only GET endpoints fetched on startup.
+ *
+ * Push token registration is a mutation (POST) and is intentionally excluded.
+ * It fires independently from NotificationProvider on every launch, which is
+ * correct: it must always execute so the device mapping stays current even
+ * when startup cache is already warm.
+ *
+ * These five requests replace the individual useQuery round trips that would
+ * otherwise fire when each tab screen mounts.
+ */
 const STARTUP_REQUESTS: BatchRequest[] = [
   { id: "posts",         path: "/posts" },
   { id: "notifications", path: "/notifications" },
@@ -21,36 +32,58 @@ const STARTUP_REQUESTS: BatchRequest[] = [
   { id: "marketplace",   path: "/marketplace" },
 ];
 
+const STARTUP_QUERY_KEYS = [
+  ["posts"],
+  ["notifications"],
+  ["chatrooms"],
+  ["conversations"],
+  ["marketplace", "all"],
+] as const;
+
 /**
- * Fires a single /api/batch call once per auth session after auth has finished
- * loading, and pre-populates TanStack Query's cache with the results.
+ * Fires a single /api/batch call once per user session after auth has loaded,
+ * pre-populating TanStack Query's cache so tab screens mount with data.
  *
- * Returns { isReady } which is false until either:
- *   - the batch completes (success or failure), or
- *   - auth loads and no user is logged in.
+ * Returns { isReady } which is false until the batch completes (or fails) or
+ * the user is not logged in.  _layout.tsx holds the splash screen open while
+ * isReady is false so screens never mount before the cache is warm.
  *
- * _layout.tsx uses isReady to keep the splash screen visible while the batch
- * is in flight, ensuring tab screens mount with data already in the cache.
+ * Session tracking: the batch re-runs when user.id changes (e.g. one user logs
+ * out and another logs in).  Stale query data from the previous session is
+ * removed before the new batch runs to prevent cross-account data exposure.
  */
 export function useBatchStartup(): { isReady: boolean } {
   const { apiRequest, user, token, isLoading } = useAuth();
   const queryClient = useQueryClient();
   const [isReady, setIsReady] = useState(false);
-  const didRunRef = useRef(false);
+
+  // Track which userId the last completed batch was run for.
+  // Using a ref (not state) avoids triggering extra renders.
+  const lastBatchUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     // Wait for AsyncStorage auth to finish loading before deciding anything.
     if (isLoading) return;
 
-    // Not logged in — nothing to prefetch.
     if (!user || !token) {
+      // Not logged in — reset the session tracker so the next login runs fresh.
+      lastBatchUserIdRef.current = null;
       setIsReady(true);
       return;
     }
 
-    // Only run once per auth session.
-    if (didRunRef.current) return;
-    didRunRef.current = true;
+    // Same user, batch already completed for this session.
+    if (lastBatchUserIdRef.current === user.id) return;
+
+    // New user session — clear any stale startup data from a previous user to
+    // prevent cross-account data exposure via the TanStack Query cache.
+    for (const key of STARTUP_QUERY_KEYS) {
+      queryClient.removeQueries({ queryKey: key });
+    }
+
+    // Mark not-ready so _layout.tsx holds the splash open while we fetch.
+    setIsReady(false);
+    lastBatchUserIdRef.current = user.id;
 
     const run = async () => {
       console.time("[useBatchStartup]");
