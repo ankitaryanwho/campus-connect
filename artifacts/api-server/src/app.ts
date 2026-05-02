@@ -8,6 +8,21 @@ const app: Express = express();
 
 app.use(compression({ threshold: 0 }));
 app.use(cors());
+
+// Instruct clients and proxies to reuse TCP connections.
+app.use((_req, res, next) => {
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("Keep-Alive", "timeout=60");
+  if (process.env["NODE_ENV"] !== "production") {
+    res.on("finish", () => {
+      const reused = res.getHeader("Connection") === "keep-alive";
+      if (reused) {
+        console.debug(`[keep-alive] ${_req.method} ${_req.path} — connection reused`);
+      }
+    });
+  }
+  next();
+});
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 

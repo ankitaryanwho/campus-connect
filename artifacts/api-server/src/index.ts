@@ -39,10 +39,18 @@ async function start() {
   console.log("[startup] Seeding data...");
   await seedData();
 
-  app.listen(port, () => {
+  const server = app.listen(port, () => {
     console.log(`Server listening on port ${port}`);
     startKeepalive(port);
   });
+
+  // Keep TCP connections alive longer than Replit's proxy keepalive window
+  // so the mobile app can reuse connections across sequential API calls.
+  server.keepAliveTimeout = 65000;
+  // headersTimeout must exceed keepAliveTimeout to avoid a race condition
+  // where the proxy sends a new request on a reused connection just as the
+  // server is closing it.
+  server.headersTimeout = 66000;
 }
 
 start().catch((err) => {
