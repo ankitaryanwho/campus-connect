@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import createContextHook from "@nkzw/create-context-hook";
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { ApiError } from "@/lib/ApiError";
 
 export const API_BASE = process.env["EXPO_PUBLIC_API_URL"] || "https://campus-connect-app.replit.app/api";
 
@@ -113,7 +114,11 @@ const [AuthProvider, useAuth] = createContextHook<AuthState>(() => {
       return response;
     } catch (err: any) {
       if (err?.name === "AbortError") {
-        throw new Error("Request timed out. Please check your connection and try again.");
+        throw new ApiError({
+          isTimeout: true,
+          isNetworkError: true,
+          message: "Request timed out. Please check your connection and try again.",
+        });
       }
       throw err;
     } finally {

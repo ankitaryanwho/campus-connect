@@ -19,6 +19,7 @@ import { AuthorBadge } from "@/components/AuthorBadge";
 import { PostActionsMenu } from "@/components/PostActionsMenu";
 import { MarketplaceFeed } from "@/components/MarketplaceFeed";
 import { RetryableError } from "@/components/RetryableError";
+import { throwIfNotOk } from "@/lib/ApiError";
 
 const isWeb = Platform.OS === "web";
 
@@ -484,7 +485,7 @@ export default function FeedScreen() {
     queryKey: ["posts"],
     queryFn: async () => {
       const res = await apiRequest("/posts");
-      if (!res.ok) throw new Error("Failed");
+      throwIfNotOk(res);
       return res.json() as Promise<{ posts: Post[] }>;
     },
   });

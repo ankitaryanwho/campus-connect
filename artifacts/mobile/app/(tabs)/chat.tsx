@@ -15,6 +15,7 @@ import { useFocusEffect } from "expo-router";
 import Colors from "@/constants/colors";
 import { useAuth } from "@/contexts/AuthContext";
 import { RetryableError } from "@/components/RetryableError";
+import { throwIfNotOk } from "@/lib/ApiError";
 
 const isWeb = Platform.OS === "web";
 
@@ -112,6 +113,7 @@ export default function ChatScreen() {
     queryKey: ["conversations"],
     queryFn: async () => {
       const res = await apiRequest("/chat/conversations");
+      throwIfNotOk(res);
       return res.json() as Promise<{ conversations: any[] }>;
     },
     enabled: hasLoaded && mode === "dms",
@@ -121,6 +123,7 @@ export default function ChatScreen() {
     queryKey: ["chatrooms"],
     queryFn: async () => {
       const res = await apiRequest("/chat/chatrooms");
+      throwIfNotOk(res);
       return res.json() as Promise<{ chatrooms: any[] }>;
     },
     enabled: hasLoaded && mode === "rooms",

@@ -27,6 +27,7 @@ import { PostActionsMenu } from "@/components/PostActionsMenu";
 import { AuthorBadge } from "@/components/AuthorBadge";
 import { resolveBadge } from "@/constants/badges";
 import { RetryableError } from "@/components/RetryableError";
+import { throwIfNotOk } from "@/lib/ApiError";
 
 const isWeb = Platform.OS === "web";
 const { width: SW } = Dimensions.get("window");
@@ -85,6 +86,7 @@ export default function ProfileScreen() {
     queryKey: ["userPosts", user?.id],
     queryFn: async () => {
       const res = await apiRequest(`/users/${user?.id}/posts`);
+      throwIfNotOk(res);
       return res.json() as Promise<{ posts: any[] }>;
     },
     enabled: hasLoaded && !!user?.id,

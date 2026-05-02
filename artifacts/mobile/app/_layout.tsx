@@ -15,24 +15,22 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { ApiError } from "@/lib/ApiError";
 import { ToastProvider } from "@/contexts/ToastContext";
 import { NotificationProvider } from "@/contexts/NotificationContext";
 
 SplashScreen.preventAutoHideAsync();
 
-function isAuthError(error: unknown): boolean {
-  return error instanceof Error && /401|403|unauthorized|forbidden/i.test(error.message);
-}
-
-function isValidationError(error: unknown): boolean {
-  return error instanceof Error && /400|validation|invalid/i.test(error.message);
-}
-
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 60000,
-      retry: (count, error) => count < 3 && !isAuthError(error) && !isValidationError(error),
+      retry: (count, error) => {
+        if (error instanceof ApiError) {
+          return count < 3 && (error.isNetworkError || error.isTimeout);
+        }
+        return count < 3;
+      },
       retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
     },
   },
