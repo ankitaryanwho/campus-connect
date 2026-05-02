@@ -256,7 +256,7 @@ router.get("/conversations/:conversationId/stream", authMiddleware, async (req, 
 router.get("/conversations/:conversationId/messages", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { conversationId } = req.params;
+    const conversationId = req.params["conversationId"] as string;
     const cursor = req.query["cursor"] as string | undefined;
     const rawLimit = parseInt(req.query["limit"] as string || "30", 10);
     const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 50) : 30;
@@ -359,6 +359,8 @@ router.post("/conversations/:conversationId/messages", authMiddleware, async (re
       ...(metadata ? { metadata } : {}),
     });
     await db.update(conversationsTable).set({ updatedAt: new Date() }).where(eq(conversationsTable.id, conversationId));
+    // Invalidate immediately after the DB write so post-insert failures cannot leave stale pages
+    messagesPageCache.deleteByPrefix(dmInvalidationPrefix(conversationId));
 
     const msgs = await db.select().from(messagesTable).where(eq(messagesTable.id, msgId)).limit(1);
     const isSenderInitiator = msgs[0].senderId === conv.participant1Id;
@@ -371,8 +373,6 @@ router.post("/conversations/:conversationId/messages", authMiddleware, async (re
     }
 
     const messagePayload = { ...msgs[0], senderId: undefined, sender };
-    // Invalidate all cached pages for this conversation (all users) so the next read is fresh
-    messagesPageCache.deleteByPrefix(dmInvalidationPrefix(conversationId));
     pushSSE(conversationClients, conversationId, messagePayload);
     res.status(201).json({ ...messagePayload, isSelf: true });
   } catch (err) {
@@ -473,7 +473,7 @@ router.get("/chatrooms/:chatroomId/stream", authMiddleware, (req, res) => {
 
 router.get("/chatrooms/:chatroomId/messages", authMiddleware, async (req, res) => {
   try {
-    const { chatroomId } = req.params;
+    const chatroomId = req.params["chatroomId"] as string;
     const cursor = req.query["cursor"] as string | undefined;
     const rawLimit = parseInt(req.query["limit"] as string || "30", 10);
     const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 50) : 30;
@@ -545,13 +545,13 @@ router.post("/chatrooms/:chatroomId/messages", authMiddleware, async (req, res) 
     const msgId = generateId();
     await db.insert(messagesTable).values({ id: msgId, content, senderId: userId, chatroomId });
     await db.update(chatroomsTable).set({ updatedAt: new Date() }).where(eq(chatroomsTable.id, chatroomId));
+    // Invalidate immediately after the DB write so post-insert failures cannot leave stale pages
+    chatroomsCache.delete("all");
+    messagesPageCache.deleteByPrefix(chatroomInvalidationPrefix(chatroomId));
 
     const msgs = await db.select().from(messagesTable).where(eq(messagesTable.id, msgId)).limit(1);
     const sendersMap = await batchGetUsers([userId]);
     const chatroomPayload = { ...msgs[0], senderId: undefined, sender: pickMessageSender(sendersMap.get(userId)) };
-    chatroomsCache.delete("all");
-    // Invalidate all cached pages for this chatroom so the next read is fresh
-    messagesPageCache.deleteByPrefix(chatroomInvalidationPrefix(chatroomId));
     pushSSE(chatroomClients, chatroomId, chatroomPayload);
     res.status(201).json(chatroomPayload);
   } catch (err) {
