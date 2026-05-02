@@ -23,31 +23,25 @@ const app: Express = express();
 // This middleware is a redundant safety net in case app() is ever invoked
 // directly without the pre-restoration step.  It is a no-op when index.ts
 // has already run applyH2Descs (properties are already own).
+type AnyDescs = Record<string | symbol, PropertyDescriptor>;
+
 const H2_REQ_DESCS = Object.getOwnPropertyDescriptors(
   http2.Http2ServerRequest.prototype,
-);
+) as AnyDescs;
 const H2_RES_DESCS = Object.getOwnPropertyDescriptors(
   http2.Http2ServerResponse.prototype,
-);
+) as AnyDescs;
 
-function restoreH2Descriptors(
-  obj: object,
-  descs: ReturnType<typeof Object.getOwnPropertyDescriptors>,
-): void {
-  // Must iterate Symbol-keyed entries too — Object.entries() silently skips
-  // them.  Http2ServerResponse.prototype has Symbol(setHeader),
-  // Symbol(appendHeader), Symbol(begin-send) that methods call internally.
-  const allKeys: (string | symbol)[] = [
-    ...Object.keys(descs),
-    ...Object.getOwnPropertySymbols(descs),
-  ];
-  for (const key of allKeys) {
+function restoreH2Descriptors(obj: object, descs: AnyDescs): void {
+  // Reflect.ownKeys includes Symbol-keyed entries that Object.keys/entries skip.
+  // Http2ServerResponse.prototype has Symbol(setHeader), Symbol(appendHeader),
+  // Symbol(begin-send) that setHeader/appendHeader/end call internally.
+  for (const key of Reflect.ownKeys(descs)) {
     if (key === "constructor") continue;
-    const desc = (descs as any)[key] as PropertyDescriptor;
     try {
-      Object.defineProperty(obj, key, { ...desc, configurable: true });
+      Object.defineProperty(obj, key, { ...descs[key], configurable: true });
     } catch {
-      // Skip any own property that is already non-configurable on the instance.
+      // Non-configurable own property already on the instance — skip.
     }
   }
 }
