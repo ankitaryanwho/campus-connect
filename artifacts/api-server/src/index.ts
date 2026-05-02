@@ -144,8 +144,13 @@ async function start() {
   // ── Protocol-routing server on PORT ──────────────────────────────────────
   // Accumulates bytes until at least H2_PREFACE.length are available before
   // deciding — a single TCP segment may deliver fewer than 24 bytes.
+  // A 5-second timeout destroys sockets that never send data (slowloris).
+  const SNIFF_TIMEOUT_MS = 5_000;
+
   const routerServer = net.createServer((clientSocket) => {
     clientSocket.on("error", () => clientSocket.destroy());
+
+    const sniffTimer = setTimeout(() => clientSocket.destroy(), SNIFF_TIMEOUT_MS);
 
     const chunks: Buffer[] = [];
     let totalLen = 0;
@@ -155,6 +160,7 @@ async function start() {
       totalLen += chunk.length;
       if (totalLen < H2_PREFACE.length) return; // wait for more bytes
 
+      clearTimeout(sniffTimer);
       clientSocket.removeListener("data", onData);
       const head = Buffer.concat(chunks);
       const isH2 = head.subarray(0, H2_PREFACE.length).equals(H2_PREFACE);
@@ -186,14 +192,12 @@ async function start() {
     startKeepalive(port);
   });
 
-  // ── Development only: ALPN TLS on PORT+1 ─────────────────────────────────
-  // http2.createSecureServer with a self-signed cert for direct H2/ALPN
-  // testing (curl --http2, browser devtools).  Each H2 stream is proxied as
+  // ── ALPN TLS on PORT+1 ───────────────────────────────────────────────────
+  // http2.createSecureServer with ALPN negotiation (h2 + http/1.1 protocols).
+  // Available in all environments so production deployments can serve HTTP/2
+  // clients that connect directly to PORT+1.  Each H2 stream is proxied as
   // HTTP/1.1 to PORT, tagged x-h2-proxied:1 so app.ts labels the response h2.
-  // process.env.NODE_ENV is referenced directly (not via a const) so esbuild's
-  // define substitution can constant-fold and dead-code-eliminate this block
-  // from the production CJS bundle.
-  if (process.env.NODE_ENV !== "production") {
+  {
     const { DEV_KEY, DEV_CERT } = await import("./lib/dev-cert");
 
     const h2Port = port + 1;
