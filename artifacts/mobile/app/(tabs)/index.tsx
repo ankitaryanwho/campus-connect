@@ -397,7 +397,44 @@ const PostCard = React.memo(function PostCard({ post, C, onLike, onComment, isDa
   );
 });
 
-// Skeleton loader
+// Skeleton post card for the main feed
+function SkeletonPostCard({ isDark, C }: any) {
+  const opacity = useRef(new Animated.Value(0.4)).current;
+  React.useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, { toValue: 0.8, duration: 800, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 0.4, duration: 800, useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
+  const bg = { backgroundColor: isDark ? C.border : "#E7E5E4" };
+  return (
+    <Animated.View style={{
+      opacity, marginHorizontal: 14, borderRadius: 16, padding: 14,
+      backgroundColor: isDark ? C.surface : WARM.surface,
+      borderWidth: 0.5, borderColor: isDark ? C.border : WARM.border,
+      borderLeftWidth: 3, borderLeftColor: isDark ? C.border : WARM.border,
+    }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 12 }}>
+        <View style={[{ width: 40, height: 40, borderRadius: 20 }, bg]} />
+        <View style={{ flex: 1, gap: 6 }}>
+          <View style={[{ height: 11, width: "50%", borderRadius: 5 }, bg]} />
+          <View style={[{ height: 9, width: "35%", borderRadius: 5 }, bg]} />
+        </View>
+      </View>
+      <View style={[{ height: 11, width: "92%", borderRadius: 5, marginBottom: 7 }, bg]} />
+      <View style={[{ height: 11, width: "80%", borderRadius: 5, marginBottom: 7 }, bg]} />
+      <View style={[{ height: 11, width: "62%", borderRadius: 5, marginBottom: 16 }, bg]} />
+      <View style={{ flexDirection: "row", gap: 16 }}>
+        <View style={[{ height: 9, width: 44, borderRadius: 5 }, bg]} />
+        <View style={[{ height: 9, width: 44, borderRadius: 5 }, bg]} />
+      </View>
+    </Animated.View>
+  );
+}
+
+// Skeleton swim-lane strip
 function SkeletonStrip({ isDark, C }: any) {
   const opacity = useRef(new Animated.Value(0.4)).current;
   React.useEffect(() => {
@@ -643,7 +680,11 @@ export default function FeedScreen() {
           showsVerticalScrollIndicator={false}
           ItemSeparatorComponent={() => <View style={{ height: 10, backgroundColor: bg }} />}
           ListEmptyComponent={
-            !isLoading ? (
+            isLoading ? (
+              <View style={{ gap: 10, paddingTop: 4 }}>
+                {[1, 2, 3].map(i => <SkeletonPostCard key={i} isDark={isDark} C={C} />)}
+              </View>
+            ) : (
               <View style={styles.emptyState}>
                 <Text style={styles.emptyEmoji}>
                   {activeCategory === "study" ? "📚" : activeCategory === "events" ? "🎪" : activeCategory === "social" ? "💬" : "✦"}
@@ -662,7 +703,7 @@ export default function FeedScreen() {
                   <Text style={styles.emptyBtnText}>Create Post</Text>
                 </Pressable>
               </View>
-            ) : null
+            )
           }
         />
       )}

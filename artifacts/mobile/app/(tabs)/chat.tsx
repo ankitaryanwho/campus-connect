@@ -1,7 +1,7 @@
 import React, { useState, useRef } from "react";
 import {
   View, Text, FlatList, Pressable, StyleSheet,
-  useColorScheme, ActivityIndicator, Platform, TextInput,
+  useColorScheme, Platform, TextInput,
   TouchableOpacity, Animated,
 } from "react-native";
 import { Image } from "expo-image";
@@ -59,6 +59,29 @@ function GradientAvatar({ name, avatar, size = 50, online = false }: any) {
         <View style={{ position: "absolute", bottom: 2, right: 2, width: 12, height: 12, borderRadius: 6, backgroundColor: "#10B981", borderWidth: 2, borderColor: "#fff" }} />
       )}
     </View>
+  );
+}
+
+function SkeletonConversationRow({ C, isDark }: any) {
+  const opacity = useRef(new Animated.Value(0.4)).current;
+  React.useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, { toValue: 0.8, duration: 800, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 0.4, duration: 800, useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
+  const bg = { backgroundColor: isDark ? C.border : "#E7E5E4" };
+  return (
+    <Animated.View style={{ opacity, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 0.5, borderBottomColor: C.borderLight }}>
+      <View style={[{ width: 52, height: 52, borderRadius: 26 }, bg]} />
+      <View style={{ flex: 1, gap: 8 }}>
+        <View style={[{ height: 12, width: "45%", borderRadius: 6 }, bg]} />
+        <View style={[{ height: 10, width: "68%", borderRadius: 5 }, bg]} />
+      </View>
+      <View style={[{ height: 10, width: 28, borderRadius: 5 }, bg]} />
+    </Animated.View>
   );
 }
 
@@ -232,8 +255,10 @@ export default function ChatScreen() {
 
       {/* Content */}
       {isLoading ? (
-        <View style={styles.center}>
-          <ActivityIndicator color={C.primary} size="large" />
+        <View>
+          {[1, 2, 3, 4, 5, 6].map(i => (
+            <SkeletonConversationRow key={i} C={C} isDark={colorScheme === "dark"} />
+          ))}
         </View>
       ) : mode === "dms" ? (
         <FlatList

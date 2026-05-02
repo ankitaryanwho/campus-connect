@@ -31,6 +31,12 @@ function RootLayoutNav() {
   const segments = useSegments();
 
   useEffect(() => {
+    if (!isLoading) {
+      SplashScreen.hideAsync().catch(() => {});
+    }
+  }, [isLoading]);
+
+  useEffect(() => {
     if (isLoading) return;
     const inAuthGroup = segments[0] === "(auth)";
     if (!user && !inAuthGroup) {
@@ -53,41 +59,22 @@ function RootLayoutNav() {
   );
 }
 
-async function checkAndApplyUpdate(): Promise<boolean> {
-  if (__DEV__) return true;
-  try {
-    const update = await Updates.checkForUpdateAsync();
-    if (update.isAvailable) {
-      await Updates.fetchUpdateAsync();
-      await Updates.reloadAsync();
-      return false;
-    }
-  } catch {}
-  return true;
-}
-
 export default function RootLayout() {
-  const [fontsLoaded, fontError] = useFonts({
+  useFonts({
     Inter_400Regular,
     Inter_500Medium,
     Inter_600SemiBold,
     Inter_700Bold,
   });
-  const [updateChecked, setUpdateChecked] = React.useState(__DEV__);
 
   useEffect(() => {
-    checkAndApplyUpdate().then(done => {
-      if (done) setUpdateChecked(true);
-    });
+    if (__DEV__) return;
+    Updates.checkForUpdateAsync()
+      .then(update => {
+        if (update.isAvailable) return Updates.fetchUpdateAsync();
+      })
+      .catch(() => {});
   }, []);
-
-  useEffect(() => {
-    if (updateChecked) {
-      SplashScreen.hideAsync();
-    }
-  }, [updateChecked]);
-
-  if (!updateChecked) return null;
 
   return (
     <SafeAreaProvider>
