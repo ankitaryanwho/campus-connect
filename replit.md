@@ -93,6 +93,34 @@ Fully privacy-first anonymous posting with threaded comments, reply system, and 
 
 **API base for mobile**: `EXPO_PUBLIC_API_URL` env var, falling back to the deployed Replit app URL (`https://campus-connect-app.replit.app/api`). Backend changes therefore require redeploying the API server before OTA updates of the mobile bundle will exercise them.
 
+## HTTP/2 (Development)
+
+In development, the API server runs **two listeners simultaneously**:
+
+| Port | Protocol | Purpose |
+|------|----------|---------|
+| `$PORT` (8080) | HTTP/1.1 | Primary — Replit proxy, keepalive, all real traffic |
+| `$PORT+1` (8081) | HTTP/2 over TLS | H2 testing only — ALPN negotiation, stream multiplexing |
+
+The H2 server (`http2.createSecureServer`) proxies each incoming HTTP/2 stream to the HTTP/1.1 server via a loopback connection, adding `x-h2-proxied: 1` so Express middleware can set `x-protocol: h2` in the response.
+
+**Why not `allowHTTP1: true`?** Node.js 24's `allowHTTP1` compat layer constructs `ServerResponse` objects non-standardly, leaving all Symbol-keyed internals (`kOutHeaders`, `kChunkedBuffer`, `kSocket` …) as `undefined`. Every `OutgoingMessage` method call crashes. The two-server proxy avoids the compat layer entirely.
+
+**Why not `spdy` / `http2-express-bridge`?** `spdy` uses the removed `node:http_parser` native binding (broken on Node.js ≥ 12). `http2-express-bridge` patches `express.application.lazyrouter` which was removed in Express 5.
+
+In **production**, only the HTTP/1.1 server runs (`app.listen()`). The entire H2 block is dead-code-eliminated from the production CJS bundle by esbuild (`define: { "process.env.NODE_ENV": '"production"' }`).
+
+**Key files:**
+- `artifacts/api-server/src/index.ts` — two-server setup + H2 stream proxy
+- `artifacts/api-server/src/lib/dev-cert.ts` — embedded self-signed TLS cert (10-year, CN=localhost)
+- `artifacts/api-server/src/app.ts` — `x-protocol` header middleware (checks `x-h2-proxied` header)
+
+**Verify:**
+```bash
+curl -s http://localhost:8080/api/ping -I | grep x-protocol   # → http/1.1
+curl --http2 -sk https://localhost:8081/api/ping -I | grep x-protocol  # → h2
+```
+
 ## Stack
 
 - **Monorepo tool**: pnpm workspaces

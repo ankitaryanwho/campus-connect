@@ -16,6 +16,23 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 // Track sockets seen in dev to detect genuine TCP connection reuse.
 const seenSockets = new WeakSet<Socket>();
 
+// In development, expose the negotiated ALPN protocol so it can be confirmed
+// in devtools without needing a packet capture.
+// Direct H2 connections are proxied from the H2 server (port+1) to this
+// HTTP/1.1 server with an internal x-h2-proxied header; otherwise fall back
+// to the socket's ALPN protocol or plain http/1.1.
+if (process.env.NODE_ENV !== "production") {
+  app.use("/api", (_req, res, next) => {
+    if (_req.headers["x-h2-proxied"] === "1") {
+      res.setHeader("x-protocol", "h2");
+    } else {
+      const alpn = (_req.socket as unknown as { alpnProtocol?: string }).alpnProtocol;
+      res.setHeader("x-protocol", alpn ?? "http/1.1");
+    }
+    next();
+  });
+}
+
 // Scoped to /api: advertise keep-alive when the client permits it,
 // and honour explicit Connection: close requests from clients/proxies.
 app.use("/api", (req, res, next) => {
@@ -31,7 +48,7 @@ app.use("/api", (req, res, next) => {
     res.setHeader("Keep-Alive", "timeout=60");
   }
 
-  if (process.env["NODE_ENV"] !== "production") {
+  if (process.env.NODE_ENV !== "production") {
     const isReused = seenSockets.has(socket);
     if (!isReused) {
       seenSockets.add(socket);
