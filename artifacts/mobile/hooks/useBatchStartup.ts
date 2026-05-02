@@ -44,9 +44,10 @@ const STARTUP_QUERY_KEYS = [
  * Fires a single /api/batch call once per user session after auth has loaded,
  * pre-populating TanStack Query's cache so tab screens mount with data.
  *
- * Returns { isReady } which is false until the batch completes (or fails) or
- * the user is not logged in.  _layout.tsx holds the splash screen open while
- * isReady is false so screens never mount before the cache is warm.
+ * isReady is derived synchronously from `readyUserId` state rather than stored
+ * as separate boolean state.  This means isReady flips false the moment
+ * user.id changes (before any async effect runs), eliminating the post-login
+ * race where screens could mount with stale or empty cache.
  *
  * Session tracking: the batch re-runs when user.id changes (e.g. one user logs
  * out and another logs in).  Stale query data from the previous session is
@@ -55,35 +56,40 @@ const STARTUP_QUERY_KEYS = [
 export function useBatchStartup(): { isReady: boolean } {
   const { apiRequest, user, token, isLoading } = useAuth();
   const queryClient = useQueryClient();
-  const [isReady, setIsReady] = useState(false);
 
-  // Track which userId the last completed batch was run for.
-  // Using a ref (not state) avoids triggering extra renders.
-  const lastBatchUserIdRef = useRef<string | null>(null);
+  // Which user ID the cache was last warmed for.  null = "not yet warmed".
+  // State (not a ref) so isReady is always derived synchronously from it.
+  const [readyUserId, setReadyUserId] = useState<string | null>(null);
+
+  // Ref mirror used inside the effect to guard against concurrent runs without
+  // adding readyUserId to the effect dependency array.
+  const readyUserIdRef = useRef<string | null>(null);
+
+  // Synchronously derived: flips false immediately when user.id changes, before
+  // the async effect fires.  Logged-out users are always considered ready.
+  const isReady = !isLoading && (!user || readyUserId === user.id);
 
   useEffect(() => {
-    // Wait for AsyncStorage auth to finish loading before deciding anything.
     if (isLoading) return;
 
     if (!user || !token) {
-      // Not logged in — reset the session tracker so the next login runs fresh.
-      lastBatchUserIdRef.current = null;
-      setIsReady(true);
+      // Logged out — reset so the next login runs a fresh batch.
+      readyUserIdRef.current = null;
+      if (readyUserId !== null) setReadyUserId(null);
       return;
     }
 
-    // Same user, batch already completed for this session.
-    if (lastBatchUserIdRef.current === user.id) return;
+    // Batch already completed or is in progress for this user.
+    if (readyUserIdRef.current === user.id) return;
 
-    // New user session — clear any stale startup data from a previous user to
-    // prevent cross-account data exposure via the TanStack Query cache.
+    // Lock immediately to prevent concurrent runs on rapid re-renders.
+    readyUserIdRef.current = user.id;
+
+    // Clear stale startup data from the previous user before populating the
+    // cache for the new user (prevents cross-account data exposure).
     for (const key of STARTUP_QUERY_KEYS) {
       queryClient.removeQueries({ queryKey: key });
     }
-
-    // Mark not-ready so _layout.tsx holds the splash open while we fetch.
-    setIsReady(false);
-    lastBatchUserIdRef.current = user.id;
 
     const run = async () => {
       console.time("[useBatchStartup]");
@@ -126,7 +132,9 @@ export function useBatchStartup(): { isReady: boolean } {
         console.timeEnd("[useBatchStartup]");
         console.warn("[useBatchStartup] failed; screens will fetch independently:", err);
       } finally {
-        setIsReady(true);
+        // Mark ready whether or not the batch succeeded — screens fall back to
+        // individual fetches gracefully when the cache is empty.
+        setReadyUserId(user.id);
       }
     };
 
