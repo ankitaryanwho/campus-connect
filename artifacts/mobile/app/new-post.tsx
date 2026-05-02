@@ -104,7 +104,12 @@ export default function NewPostScreen() {
           <Pressable
             style={[styles.postBtn, { backgroundColor: canPost ? C.primary : C.backgroundSecondary }, createMutation.isPending && { opacity: 0.7 }]}
             onPress={() => {
-              if (!isOnline && mediaUris.length === 0 && content.trim()) {
+              if (!isOnline) {
+                if (mediaUris.length > 0) {
+                  showToast("Remove images to post while offline", "error");
+                  return;
+                }
+                if (!content.trim()) return;
                 enqueue("post", {
                   content: content.trim(),
                   mediaUrls: [],

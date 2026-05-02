@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import {
   View, Text, FlatList, TextInput, Pressable, StyleSheet,
   useColorScheme, ActivityIndicator, Platform,
@@ -88,7 +88,35 @@ export default function ChatroomScreen() {
   const inputRef = useRef<TextInput>(null);
   const isWeb = Platform.OS === "web";
 
-  const { isOnline, enqueue, retryItem } = useOfflineQueue();
+  const { isOnline, enqueue, retryItem, getQueuedMessages } = useOfflineQueue();
+
+  // Hydrate persisted queued messages into the cache after a cold-start.
+  useEffect(() => {
+    if (!id) return;
+    const queued = getQueuedMessages(id, "chatroom_message");
+    if (queued.length === 0) return;
+    queryClient.setQueryData(["chatroom-messages", id], (old: any) => {
+      const fp = old?.pages?.[0] ?? { messages: [], nextCursor: null };
+      const existing: any[] = fp.messages ?? [];
+      const existingIds = new Set(existing.map((m: any) => m.id));
+      const toInject = queued
+        .filter(q => !existingIds.has(q.id))
+        .map(q => ({
+          id: q.id,
+          content: q.payload.content,
+          createdAt: new Date().toISOString(),
+          sender: { id: q.payload.senderId, name: q.payload.senderName, avatar: q.payload.senderAvatar ?? null },
+          isSelf: true,
+          status: q.status,
+        }));
+      if (toInject.length === 0) return old;
+      const updated = [...toInject, ...existing];
+      if (!old?.pages) {
+        return { pages: [{ messages: updated, nextCursor: null }], pageParams: [null] };
+      }
+      return { ...old, pages: [{ ...fp, messages: updated }, ...old.pages.slice(1)] };
+    });
+  }, [id, getQueuedMessages, queryClient]);
 
   const handleRetry = useCallback((item: any) => {
     queryClient.setQueryData(["chatroom-messages", id], (old: any) => {
@@ -263,7 +291,13 @@ export default function ChatroomScreen() {
             const t = text.trim();
             if (!t) return;
             if (!isOnline) {
-              const tempId = enqueue("chatroom_message", { roomId: id, content: t });
+              const tempId = enqueue("chatroom_message", {
+                roomId: id,
+                content: t,
+                senderId: user?.id,
+                senderName: user?.name,
+                senderAvatar: user?.avatar ?? null,
+              });
               prependMessage({
                 id: tempId,
                 content: t,
