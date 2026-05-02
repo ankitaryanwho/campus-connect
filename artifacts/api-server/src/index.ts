@@ -13,6 +13,9 @@ if (process.env["SENTRY_DSN"]) {
     environment: process.env["NODE_ENV"] ?? "development",
   });
   console.log("[sentry] Initialised");
+  // Send a startup message so the first event appears in the Sentry dashboard
+  // immediately after the server boots, confirming the DSN is valid.
+  Sentry.captureMessage("[sentry] Server started — DSN verified", "info");
 }
 
 const rawPort = process.env["PORT"];
