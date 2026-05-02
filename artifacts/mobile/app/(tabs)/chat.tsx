@@ -11,6 +11,7 @@ import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
+import { useFocusEffect } from "expo-router";
 import Colors from "@/constants/colors";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -102,6 +103,9 @@ export default function ChatScreen() {
   const [mode, setMode] = useState<"dms" | "rooms">("dms");
   const [search, setSearch] = useState("");
   const tabAnim = useRef(new Animated.Value(0)).current;
+  const [hasLoaded, setHasLoaded] = useState(false);
+
+  useFocusEffect(React.useCallback(() => { setHasLoaded(true); }, []));
 
   const conversationsQuery = useQuery({
     queryKey: ["conversations"],
@@ -109,7 +113,7 @@ export default function ChatScreen() {
       const res = await apiRequest("/chat/conversations");
       return res.json() as Promise<{ conversations: any[] }>;
     },
-    enabled: mode === "dms",
+    enabled: hasLoaded && mode === "dms",
   });
 
   const chatroomsQuery = useQuery({
@@ -118,7 +122,7 @@ export default function ChatScreen() {
       const res = await apiRequest("/chat/chatrooms");
       return res.json() as Promise<{ chatrooms: any[] }>;
     },
-    enabled: mode === "rooms",
+    enabled: hasLoaded && mode === "rooms",
   });
 
   const switchMode = (m: "dms" | "rooms") => {

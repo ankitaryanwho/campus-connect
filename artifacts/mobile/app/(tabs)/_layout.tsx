@@ -47,6 +47,7 @@ function ClassicTabLayout() {
   return (
     <Tabs
       screenOptions={{
+        lazy: true,
         tabBarActiveTintColor: C.primary,
         tabBarInactiveTintColor: C.tabIconDefault,
         headerShown: false,

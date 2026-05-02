@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import {
   View, Text, ScrollView, Pressable, TextInput, StyleSheet,
   useColorScheme, ActivityIndicator, Modal, Platform, TouchableOpacity,
@@ -7,6 +7,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useFocusEffect } from "expo-router";
 import Colors from "@/constants/colors";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
@@ -76,6 +77,9 @@ export default function WalletScreen() {
   const [showAddMoney, setShowAddMoney] = useState(false);
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState("upi");
+  const [hasLoaded, setHasLoaded] = useState(false);
+
+  useFocusEffect(useCallback(() => { setHasLoaded(true); }, []));
 
   const walletQuery = useQuery({
     queryKey: ["wallet"],
@@ -83,6 +87,7 @@ export default function WalletScreen() {
       const res = await apiRequest("/wallet");
       return res.json();
     },
+    enabled: hasLoaded,
   });
 
   const txnQuery = useQuery({
@@ -91,6 +96,7 @@ export default function WalletScreen() {
       const res = await apiRequest("/wallet/transactions");
       return res.json() as Promise<{ transactions: any[] }>;
     },
+    enabled: hasLoaded,
   });
 
   const addMoneyMutation = useMutation({

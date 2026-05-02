@@ -2212,6 +2212,8 @@ export default function ServicesScreen() {
   };
 
   // ── Single combined query for all service categories ──────────────────────
+  const [hasLoaded, setHasLoaded] = useState(false);
+
   const { data: allData, isLoading, refetch: refetchAll } = useQuery({
     queryKey: ["services", "all"],
     queryFn: async () => {
@@ -2234,6 +2236,7 @@ export default function ServicesScreen() {
         bookings: b.bookings || [],
       };
     },
+    enabled: hasLoaded,
     // Background polling every 30 s is enough for passive freshness — fast
     // updates after the user OR another party makes a change come from:
     //   • optimistic cache updates inside actionMutation (instant)
@@ -2247,10 +2250,11 @@ export default function ServicesScreen() {
     retry: 1,
   });
 
-  // Refetch immediately when the user navigates to / refocuses this tab so we
-  // don't have to wait for the next poll interval to see fresh data.
+  // Set hasLoaded on first visit and refetch immediately on every revisit so
+  // we don't have to wait for the next poll interval to see fresh data.
   useFocusEffect(
     useCallback(() => {
+      setHasLoaded(true);
       refetchAll();
     }, [refetchAll])
   );

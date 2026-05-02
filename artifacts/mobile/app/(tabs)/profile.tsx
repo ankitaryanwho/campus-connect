@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -14,7 +14,7 @@ import {
 import { Image } from "expo-image";
 import { PLACEHOLDER_BLURHASH } from "@/constants/imagePlaceholder";
 import { LinearGradient } from "expo-linear-gradient";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -76,7 +76,9 @@ export default function ProfileScreen() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const { forceRegisterPushToken } = useNotifications();
+  const [hasLoaded, setHasLoaded] = useState(false);
 
+  useFocusEffect(useCallback(() => { setHasLoaded(true); }, []));
 
   const postsQuery = useQuery({
     queryKey: ["userPosts", user?.id],
@@ -84,7 +86,7 @@ export default function ProfileScreen() {
       const res = await apiRequest(`/users/${user?.id}/posts`);
       return res.json() as Promise<{ posts: any[] }>;
     },
-    enabled: !!user?.id,
+    enabled: hasLoaded && !!user?.id,
   });
 
   const earningsQuery = useQuery({
@@ -94,7 +96,7 @@ export default function ProfileScreen() {
       if (!res.ok) return { today: 0, yesterday: 0, thisWeek: 0, allTime: 0, total: 0, orders: 0, history: [] };
       return res.json();
     },
-    enabled: user?.role === "provider",
+    enabled: hasLoaded && user?.role === "provider",
   });
 
   const handleLogout = async () => {
