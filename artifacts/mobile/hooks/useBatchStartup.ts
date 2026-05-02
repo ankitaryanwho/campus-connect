@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useIsRestoring, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+  CACHE_OWNER_KEY,
+  PERSISTED_CACHE_STORAGE_KEY,
+  STARTUP_QUERY_KEYS,
+} from "@/lib/queryCache";
 
 interface BatchRequest {
   id: string;
@@ -13,17 +19,6 @@ interface BatchResponse {
   body: unknown;
 }
 
-/**
- * Read-only GET endpoints fetched on startup.
- *
- * Push token registration is a mutation (POST) and is intentionally excluded.
- * It fires independently from NotificationProvider on every launch, which is
- * correct: it must always execute so the device mapping stays current even
- * when startup cache is already warm.
- *
- * These five requests replace the individual useQuery round trips that would
- * otherwise fire when each tab screen mounts.
- */
 const STARTUP_REQUESTS: BatchRequest[] = [
   { id: "posts",         path: "/posts" },
   { id: "notifications", path: "/notifications" },
@@ -32,17 +27,34 @@ const STARTUP_REQUESTS: BatchRequest[] = [
   { id: "marketplace",   path: "/marketplace" },
 ];
 
-const STARTUP_QUERY_KEYS = [
-  ["posts"],
-  ["notifications"],
-  ["chatrooms"],
-  ["conversations"],
-  ["marketplace", "all"],
-] as const;
+/**
+ * Clear both the in-memory TanStack Query cache and its AsyncStorage
+ * persisted snapshot, and remove the cache-owner marker.  Called on logout
+ * and on any user-id mismatch detected at startup.
+ */
+async function clearPersistedCache(queryClient: ReturnType<typeof useQueryClient>) {
+  queryClient.clear();
+  await AsyncStorage.multiRemove([PERSISTED_CACHE_STORAGE_KEY, CACHE_OWNER_KEY]).catch(() => {});
+}
 
 /**
  * Fires a single /api/batch call once per user session after auth has loaded,
  * pre-populating TanStack Query's cache so tab screens mount with data.
+ *
+ * On repeat launches the cache is restored from AsyncStorage by
+ * PersistQueryClientProvider before this hook runs.  If the restored cache
+ * belongs to the currently authenticated user (verified via CACHE_OWNER_KEY)
+ * the hook immediately signals isReady so screens render with stale-while-
+ * revalidate data while the batch call refreshes in the background.
+ *
+ * If the restored cache belongs to a different user the entire cache is
+ * cleared before the batch runs, preventing cross-account data exposure.
+ * On logout the cache is also cleared eagerly so no data leaks to the next
+ * session.
+ *
+ * On a true cold start (no persisted data, or mismatched owner) the original
+ * behaviour is preserved: isReady waits for the batch call to complete before
+ * the splash screen hides.
  *
  * isReady is derived synchronously from `readyUserId` state rather than stored
  * as separate boolean state.  This means isReady flips false the moment
@@ -50,12 +62,16 @@ const STARTUP_QUERY_KEYS = [
  * race where screens could mount with stale or empty cache.
  *
  * Session tracking: the batch re-runs when user.id changes (e.g. one user logs
- * out and another logs in).  Stale query data from the previous session is
- * removed before the new batch runs to prevent cross-account data exposure.
+ * out and another logs in).
  */
 export function useBatchStartup(): { isReady: boolean } {
   const { apiRequest, user, token, isLoading } = useAuth();
   const queryClient = useQueryClient();
+
+  // True while PersistQueryClientProvider is restoring the cache from
+  // AsyncStorage.  We must wait for this to finish before checking whether
+  // cached data is present and verifying its ownership.
+  const isRestoring = useIsRestoring();
 
   // Which user ID the cache was last warmed for.  null = "not yet warmed".
   // State (not a ref) so isReady is always derived synchronously from it.
@@ -67,13 +83,15 @@ export function useBatchStartup(): { isReady: boolean } {
 
   // Synchronously derived: flips false immediately when user.id changes, before
   // the async effect fires.  Logged-out users are always considered ready.
-  const isReady = !isLoading && (!user || readyUserId === user.id);
+  const isReady = !isLoading && !isRestoring && (!user || readyUserId === user.id);
 
   useEffect(() => {
-    if (isLoading) return;
+    if (isLoading || isRestoring) return;
 
     if (!user || !token) {
-      // Logged out — reset so the next login runs a fresh batch.
+      // Logged out — clear the persisted cache so no data leaks to the next
+      // user session, then reset the ready tracker.
+      clearPersistedCache(queryClient);
       readyUserIdRef.current = null;
       if (readyUserId !== null) setReadyUserId(null);
       return;
@@ -85,14 +103,39 @@ export function useBatchStartup(): { isReady: boolean } {
     // Lock immediately to prevent concurrent runs on rapid re-renders.
     readyUserIdRef.current = user.id;
 
-    // Clear stale startup data from the previous user before populating the
-    // cache for the new user (prevents cross-account data exposure).
-    for (const key of STARTUP_QUERY_KEYS) {
-      queryClient.removeQueries({ queryKey: key });
-    }
-
     const run = async () => {
       console.time("[useBatchStartup]");
+
+      // Verify that the restored cache (if any) belongs to the current user.
+      // If the owner doesn't match, wipe everything before fetching fresh data.
+      let hasCachedData = false;
+      try {
+        const cacheOwner = await AsyncStorage.getItem(CACHE_OWNER_KEY);
+        if (cacheOwner === user.id) {
+          hasCachedData = STARTUP_QUERY_KEYS.some(
+            (key) => queryClient.getQueryData(key) != null,
+          );
+        } else if (cacheOwner !== null) {
+          // Cache belongs to a different user — clear it entirely.
+          await clearPersistedCache(queryClient);
+        }
+      } catch {
+        // AsyncStorage failure: treat as cold start and proceed normally.
+      }
+
+      if (hasCachedData) {
+        // Cache is verified to belong to this user: signal ready immediately
+        // so the splash screen hides and screens render with cached data while
+        // the batch call refreshes in the background.
+        setReadyUserId(user.id);
+      } else {
+        // Cold start or cross-user mismatch: clear any leftover startup data
+        // before populating the cache for the current user.
+        for (const key of STARTUP_QUERY_KEYS) {
+          queryClient.removeQueries({ queryKey: key });
+        }
+      }
+
       try {
         const res = await apiRequest("/batch", {
           method: "POST",
@@ -128,18 +171,23 @@ export function useBatchStartup(): { isReady: boolean } {
               break;
           }
         }
+
+        // Record ownership so the next launch can verify this cache belongs to
+        // the current user before showing it.
+        await AsyncStorage.setItem(CACHE_OWNER_KEY, user.id).catch(() => {});
       } catch (err) {
         console.timeEnd("[useBatchStartup]");
         console.warn("[useBatchStartup] failed; screens will fetch independently:", err);
       } finally {
         // Mark ready whether or not the batch succeeded — screens fall back to
         // individual fetches gracefully when the cache is empty.
+        // If hasCachedData was true this is a no-op state update (same value).
         setReadyUserId(user.id);
       }
     };
 
     run();
-  }, [isLoading, user?.id, token]);
+  }, [isLoading, isRestoring, user?.id, token]);
 
   return { isReady };
 }

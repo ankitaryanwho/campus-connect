@@ -5,7 +5,11 @@ import {
   Inter_700Bold,
   useFonts,
 } from "@expo-google-fonts/inter";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { QueryClient } from "@tanstack/react-query";
+import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister";
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
+import { CACHE_TTL_MS, PERSISTED_CACHE_STORAGE_KEY, STARTUP_QUERY_KEYS } from "@/lib/queryCache";
 import { router, Stack, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import * as Updates from "expo-updates";
@@ -39,6 +43,7 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 60000,
+      gcTime: CACHE_TTL_MS,
       retry: (count, error) => {
         if (error instanceof ApiError) {
           return count < 3 && (error.isNetworkError || error.isTimeout);
@@ -49,6 +54,16 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+const persister = createAsyncStoragePersister({
+  storage: AsyncStorage,
+  key: PERSISTED_CACHE_STORAGE_KEY,
+  throttleTime: 1000,
+});
+
+const startupQueryKeySet = new Set(
+  STARTUP_QUERY_KEYS.map((k) => JSON.stringify(k)),
+);
 
 function RootLayoutNav() {
   const { user, isLoading } = useAuth();
@@ -114,7 +129,17 @@ function RootLayout() {
   return (
     <SafeAreaProvider>
       <ErrorBoundary>
-        <QueryClientProvider client={queryClient}>
+        <PersistQueryClientProvider
+          client={queryClient}
+          persistOptions={{
+            persister,
+            maxAge: CACHE_TTL_MS,
+            dehydrateOptions: {
+              shouldDehydrateQuery: (query) =>
+                startupQueryKeySet.has(JSON.stringify(query.queryKey)),
+            },
+          }}
+        >
           <AuthProvider>
             <OfflineQueueProvider>
               <NotificationProvider>
@@ -128,7 +153,7 @@ function RootLayout() {
               </NotificationProvider>
             </OfflineQueueProvider>
           </AuthProvider>
-        </QueryClientProvider>
+        </PersistQueryClientProvider>
       </ErrorBoundary>
     </SafeAreaProvider>
   );
