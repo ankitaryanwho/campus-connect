@@ -18,6 +18,7 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { ApiError } from "@/lib/ApiError";
 import { ToastProvider } from "@/contexts/ToastContext";
 import { NotificationProvider } from "@/contexts/NotificationContext";
+import { OfflineQueueProvider } from "@/contexts/OfflineQueueContext";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -91,15 +92,17 @@ export default function RootLayout() {
       <ErrorBoundary>
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
-            <NotificationProvider>
-              <GestureHandlerRootView style={{ flex: 1 }}>
-                <KeyboardProvider>
-                  <ToastProvider>
-                    <RootLayoutNav />
-                  </ToastProvider>
-                </KeyboardProvider>
-              </GestureHandlerRootView>
-            </NotificationProvider>
+            <OfflineQueueProvider>
+              <NotificationProvider>
+                <GestureHandlerRootView style={{ flex: 1 }}>
+                  <KeyboardProvider>
+                    <ToastProvider>
+                      <RootLayoutNav />
+                    </ToastProvider>
+                  </KeyboardProvider>
+                </GestureHandlerRootView>
+              </NotificationProvider>
+            </OfflineQueueProvider>
           </AuthProvider>
         </QueryClientProvider>
       </ErrorBoundary>

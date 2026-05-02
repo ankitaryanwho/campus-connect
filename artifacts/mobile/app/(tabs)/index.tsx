@@ -20,6 +20,7 @@ import { PostActionsMenu } from "@/components/PostActionsMenu";
 import { MarketplaceFeed } from "@/components/MarketplaceFeed";
 import { RetryableError, RetryingBanner } from "@/components/RetryableError";
 import { throwIfNotOk } from "@/lib/ApiError";
+import { useOfflineQueue } from "@/contexts/OfflineQueueContext";
 
 const isWeb = Platform.OS === "web";
 
@@ -223,7 +224,9 @@ function CategoryStrip({ categoryId, posts, onSeeAll }: { categoryId: CategoryId
 }
 
 // Full-width post card (for the feed section)
-const PostCard = React.memo(function PostCard({ post, C, onLike, onComment, isDark }: any) {
+const PostCard = React.memo(function PostCard({ post, C, onLike, onComment, isDark, onRetryPending }: any) {
+  const isPendingPost = (post as any)._pending === true;
+  const isFailedPost = (post as any)._failed === true;
   const [liked, setLiked] = useState(post.isLiked);
   const [likes, setLikes] = useState(post.likesCount);
   const [saved, setSaved] = useState(false);
@@ -313,6 +316,12 @@ const PostCard = React.memo(function PostCard({ post, C, onLike, onComment, isDa
                 <Text style={{ fontSize: 9, color: "#B45309", fontFamily: "Inter_600SemiBold" }}>HIDDEN</Text>
               </View>
             )}
+            {isPendingPost && (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: isFailedPost ? "#FEE2E2" : "#FEF9C3", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                <Feather name={isFailedPost ? "alert-circle" : "clock"} size={9} color={isFailedPost ? "#DC2626" : "#A16207"} />
+                <Text style={{ fontSize: 9, color: isFailedPost ? "#DC2626" : "#A16207", fontFamily: "Inter_600SemiBold" }}>{isFailedPost ? "FAILED" : "PENDING"}</Text>
+              </View>
+            )}
           </View>
           <Text style={[styles.postMeta, { color: isDark ? C.textTertiary : WARM.textTertiary }]}>
             {displayMeta} · {timeAgo(post.createdAt)}
@@ -375,15 +384,25 @@ const PostCard = React.memo(function PostCard({ post, C, onLike, onComment, isDa
         </View>
       )}
 
+      {/* Tap to retry for failed pending posts */}
+      {isPendingPost && isFailedPost && onRetryPending && (
+        <Pressable
+          onPress={() => onRetryPending((post as any)._queueId)}
+          style={{ marginHorizontal: 14, marginBottom: 10, paddingVertical: 8, borderRadius: 10, backgroundColor: "#FEE2E2", alignItems: "center" }}
+        >
+          <Text style={{ fontSize: 13, color: "#DC2626", fontFamily: "Inter_600SemiBold" }}>Tap to retry</Text>
+        </Pressable>
+      )}
+
       {/* Actions */}
       <View style={[styles.postActions, { borderTopColor: isDark ? C.borderLight : WARM.borderLight }]}>
-        <TouchableOpacity style={styles.actionBtn} onPress={handleLike} activeOpacity={0.7}>
-          <Animated.View style={{ transform: [{ scale: heartScale }] }}>
+        <TouchableOpacity style={styles.actionBtn} onPress={isPendingPost ? undefined : handleLike} activeOpacity={isPendingPost ? 1 : 0.7}>
+          <Animated.View style={{ transform: [{ scale: heartScale }], opacity: isPendingPost ? 0.4 : 1 }}>
             <Feather name="heart" size={19} color={liked ? "#EF4444" : (isDark ? C.textTertiary : WARM.textTertiary)} />
           </Animated.View>
           {likes > 0 && <Text style={[styles.actionCount, { color: liked ? "#EF4444" : (isDark ? C.textTertiary : WARM.textTertiary) }]}>{likes}</Text>}
         </TouchableOpacity>
-        <TouchableOpacity style={styles.actionBtn} onPress={() => onComment(post.id)} activeOpacity={0.7}>
+        <TouchableOpacity style={styles.actionBtn} onPress={isPendingPost ? undefined : () => onComment(post.id)} activeOpacity={isPendingPost ? 1 : 0.7}>
           <Feather name="message-circle" size={19} color={isDark ? C.textTertiary : WARM.textTertiary} />
           {post.commentsCount > 0 && <Text style={[styles.actionCount, { color: isDark ? C.textTertiary : WARM.textTertiary }]}>{post.commentsCount}</Text>}
         </TouchableOpacity>
@@ -474,6 +493,7 @@ export default function FeedScreen() {
   const { apiRequest, user } = useAuth();
   const queryClient = useQueryClient();
   const [activeCategory, setActiveCategory] = useState<CategoryId>("all");
+  const { pendingPosts, retryItem: retryQueueItem } = useOfflineQueue();
 
   const bg = isDark ? C.background : WARM.bg;
   const surfaceBg = isDark ? C.surface : WARM.surface;
@@ -521,15 +541,55 @@ export default function FeedScreen() {
     return groups;
   }, [posts]);
 
+  // Build pending post objects from queue
+  const pendingPostItems = React.useMemo<Post[]>(() => {
+    return pendingPosts.map(item => ({
+      id: item.id,
+      content: item.payload.content ?? "",
+      mediaUrls: item.payload.mediaUrls ?? [],
+      isAnonymous: item.payload.isAnonymous ?? false,
+      isOwnPost: true,
+      hidden: false,
+      editedAt: null,
+      likesCount: 0,
+      commentsCount: 0,
+      isLiked: false,
+      createdAt: new Date().toISOString(),
+      author: {
+        id: user?.id ?? "",
+        name: user?.name ?? "You",
+        avatar: user?.avatar ?? undefined,
+        program: (user as any)?.program ?? undefined,
+        college: (user as any)?.college ?? undefined,
+      },
+      _pending: true,
+      _failed: item.status === "failed",
+      _queueId: item.id,
+    } as any));
+  }, [pendingPosts, user]);
+
   // Filtered posts for the feed section
   const feedPosts = React.useMemo(() => {
-    if (activeCategory === "all") return posts.filter(p => !p.isAnonymous);
-    if (activeCategory === "confessions") return postsByCategory.confessions;
-    return postsByCategory[activeCategory] ?? [];
-  }, [posts, postsByCategory, activeCategory]);
+    const filtered: Post[] = activeCategory === "all"
+      ? posts.filter(p => !p.isAnonymous)
+      : activeCategory === "confessions"
+        ? postsByCategory.confessions
+        : postsByCategory[activeCategory] ?? [];
+    const relevantPending = pendingPostItems.filter(p => {
+      const cat = (p as any)._pending ? (p as any).isAnonymous ? "confessions" : "social" : null;
+      if (activeCategory === "all") return !(p as any).isAnonymous;
+      if (activeCategory === "confessions") return (p as any).isAnonymous;
+      return cat === activeCategory;
+    });
+    return [...relevantPending, ...filtered];
+  }, [posts, postsByCategory, activeCategory, pendingPostItems]);
 
   const handleLike = useCallback((id: string) => likeMutation.mutate(id), [likeMutation.mutate]);
   const handleComment = useCallback((id: string) => router.push(`/post/${id}`), []);
+
+  const handleRetryPending = useCallback((queueId: string) => {
+    retryQueueItem(queueId);
+  }, [retryQueueItem]);
 
   const renderPost = useCallback(({ item }: { item: Post }) => (
     <PostCard
@@ -538,8 +598,9 @@ export default function FeedScreen() {
       isDark={isDark}
       onLike={handleLike}
       onComment={handleComment}
+      onRetryPending={handleRetryPending}
     />
-  ), [C, isDark, handleLike, handleComment]);
+  ), [C, isDark, handleLike, handleComment, handleRetryPending]);
 
   const ListHeader = () => (
     <View style={{ backgroundColor: bg }}>

@@ -13,6 +13,7 @@ import * as ImagePicker from "expo-image-picker";
 import Colors from "@/constants/colors";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
+import { useOfflineQueue } from "@/contexts/OfflineQueueContext";
 
 export default function NewPostScreen() {
   const insets = useSafeAreaInsets();
@@ -21,6 +22,7 @@ export default function NewPostScreen() {
   const { apiRequest, user } = useAuth();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
+  const { isOnline, enqueue } = useOfflineQueue();
   const { forceAnonymous, category: categoryParam } = useLocalSearchParams<{ forceAnonymous?: string; category?: string }>();
   const isConfessionsMode = forceAnonymous === "1";
   const postCategory = isConfessionsMode ? "confessions" : (categoryParam || "social");
@@ -101,7 +103,20 @@ export default function NewPostScreen() {
           </Text>
           <Pressable
             style={[styles.postBtn, { backgroundColor: canPost ? C.primary : C.backgroundSecondary }, createMutation.isPending && { opacity: 0.7 }]}
-            onPress={() => createMutation.mutate()}
+            onPress={() => {
+              if (!isOnline && mediaUris.length === 0 && content.trim()) {
+                enqueue("post", {
+                  content: content.trim(),
+                  mediaUrls: [],
+                  isAnonymous,
+                  category: isAnonymous ? "confessions" : postCategory,
+                });
+                showToast("Post queued — will publish when you're back online", "success");
+                router.back();
+                return;
+              }
+              createMutation.mutate();
+            }}
             disabled={!canPost || createMutation.isPending}
           >
             {createMutation.isPending ? (

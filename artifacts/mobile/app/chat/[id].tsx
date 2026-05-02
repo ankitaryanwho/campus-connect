@@ -12,6 +12,7 @@ import { Feather } from "@expo/vector-icons";
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Colors from "@/constants/colors";
 import { useAuth, API_BASE } from "@/contexts/AuthContext";
+import { useOfflineQueue } from "@/contexts/OfflineQueueContext";
 import { useSSE } from "@/hooks/useSSE";
 
 const isWeb = Platform.OS === "web";
@@ -74,9 +75,11 @@ function buildChatItems(messages: any[]): ChatItem[] {
 }
 
 const MessageBubble = React.memo(function MessageBubble({
-  msg, isMe, showAvatar, C,
-}: { msg: any; isMe: boolean; showAvatar: boolean; C: any }) {
+  msg, isMe, showAvatar, C, onRetry,
+}: { msg: any; isMe: boolean; showAvatar: boolean; C: any; onRetry?: (msg: any) => void }) {
   const orderCtx = msg.metadata?.orderContext ?? null;
+  const isPending = msg.status === "pending";
+  const isFailed = msg.status === "failed";
   return (
     <View style={[styles.messageRow, isMe ? styles.messageRowRight : styles.messageRowLeft, { marginBottom: 3 }]}>
       {!isMe && (
@@ -102,16 +105,30 @@ const MessageBubble = React.memo(function MessageBubble({
           style={[
             styles.bubble,
             isMe
-              ? { backgroundColor: C.primary, borderBottomRightRadius: 5 }
+              ? { backgroundColor: isPending ? "#7C9AC9" : isFailed ? "#9B7070" : C.primary, borderBottomRightRadius: 5 }
               : { backgroundColor: C.surface, borderColor: C.border, borderWidth: 0.5, borderBottomLeftRadius: 5 },
             orderCtx && { borderTopLeftRadius: 5, borderTopRightRadius: 5 },
           ]}
         >
           <Text style={[styles.bubbleText, { color: isMe ? "#fff" : C.text }]}>{msg.content}</Text>
-          <Text style={[styles.bubbleTime, { color: isMe ? "rgba(255,255,255,0.65)" : C.textTertiary }]}>
-            {formatTime(msg.createdAt)}
-          </Text>
+          <View style={{ flexDirection: "row", justifyContent: "flex-end", alignItems: "center", gap: 4, marginTop: 3 }}>
+            <Text style={[styles.bubbleTime, { color: isMe ? "rgba(255,255,255,0.65)" : C.textTertiary, marginTop: 0 }]}>
+              {formatTime(msg.createdAt)}
+            </Text>
+            {isMe && (isPending || isFailed) && (
+              <Feather
+                name={isFailed ? "alert-circle" : "clock"}
+                size={10}
+                color={isFailed ? "#FCA5A5" : "rgba(255,255,255,0.6)"}
+              />
+            )}
+          </View>
         </View>
+        {isMe && isFailed && onRetry && (
+          <Pressable onPress={() => onRetry(msg)} hitSlop={6} style={{ marginTop: 3, paddingHorizontal: 4 }}>
+            <Text style={{ fontSize: 11, color: C.error, fontFamily: "Inter_500Medium" }}>Tap to retry</Text>
+          </Pressable>
+        )}
       </View>
     </View>
   );
@@ -127,6 +144,21 @@ export default function ChatDetailScreen() {
   const [text, setText] = useState("");
   const keyboardVisible = useKeyboardState((s) => s.isVisible);
   const inputRef = useRef<TextInput>(null);
+
+  const { isOnline, enqueue, retryItem } = useOfflineQueue();
+
+  const handleRetry = useCallback((msg: any) => {
+    queryClient.setQueryData(["messages", id], (old: any) => {
+      if (!old?.pages) return old;
+      const fp = old.pages[0];
+      if (!fp) return old;
+      const messages = (fp.messages ?? []).map((m: any) =>
+        m.id === msg.id ? { ...m, status: "pending" } : m,
+      );
+      return { ...old, pages: [{ ...fp, messages }, ...old.pages.slice(1)] };
+    });
+    retryItem(msg.id);
+  }, [queryClient, id, retryItem]);
 
   const convQuery = useQuery({
     queryKey: ["conversation", id],
@@ -246,7 +278,7 @@ export default function ChatDetailScreen() {
     const prevItem = chatItems[index - 1];
     const prevMsg = prevItem?.type === "message" ? prevItem.data : null;
     const showAvatar = !isMe && (!prevMsg || prevMsg.sender?.id !== msg.sender?.id || getDateKey(prevMsg.createdAt) !== getDateKey(msg.createdAt));
-    return <MessageBubble msg={msg} isMe={isMe} showAvatar={showAvatar} C={C} />;
+    return <MessageBubble msg={msg} isMe={isMe} showAvatar={showAvatar} C={C} onRetry={handleRetry} />;
   }, [chatItems, user?.id, C]);
 
   return (
@@ -333,7 +365,25 @@ export default function ChatDetailScreen() {
         />
         <Pressable
           style={[styles.iconBtn, { backgroundColor: text.trim() ? C.primary : C.backgroundSecondary }]}
-          onPress={() => { const t = text.trim(); if (t) sendMutation.mutate(t); }}
+          onPress={() => {
+            const t = text.trim();
+            if (!t) return;
+            if (!isOnline) {
+              const tempId = enqueue("dm_message", { conversationId: id, content: t });
+              prependMessage({
+                id: tempId,
+                content: t,
+                createdAt: new Date().toISOString(),
+                sender: { id: user?.id, name: user?.name, avatar: user?.avatar ?? null },
+                isSelf: true,
+                status: "pending",
+              });
+              setText("");
+              inputRef.current?.focus();
+            } else {
+              sendMutation.mutate(t);
+            }
+          }}
           disabled={!text.trim() || sendMutation.isPending}
         >
           {sendMutation.isPending
