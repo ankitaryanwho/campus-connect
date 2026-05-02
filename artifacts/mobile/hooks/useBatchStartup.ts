@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useIsRestoring, useQueryClient } from "@tanstack/react-query";
+import * as Sentry from "@sentry/react-native";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   CACHE_OWNER_KEY,
@@ -137,10 +138,13 @@ export function useBatchStartup(): { isReady: boolean } {
       }
 
       try {
-        const res = await apiRequest("/batch", {
-          method: "POST",
-          body: JSON.stringify({ requests: STARTUP_REQUESTS }),
-        });
+        const res = await Sentry.startSpan(
+          { name: "batch.startup", op: "http.client" },
+          () => apiRequest("/batch", {
+            method: "POST",
+            body: JSON.stringify({ requests: STARTUP_REQUESTS }),
+          }),
+        );
 
         console.timeEnd("[useBatchStartup]");
 

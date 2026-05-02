@@ -1,4 +1,5 @@
 import { Router } from "express";
+import * as Sentry from "@sentry/node";
 import { authMiddleware } from "../lib/auth";
 import { dispatchInProcess } from "../lib/batchDispatch";
 
@@ -73,22 +74,43 @@ router.post("/batch", authMiddleware, async (req, res) => {
   const authHeader = (req.headers["authorization"] as string) ?? "";
   const t0 = Date.now();
 
-  const responses = await Promise.all(
-    (requests as Array<{ id: string; path: string }>).map(async (r) => {
-      try {
-        const result = await dispatchInProcess(r.path, authHeader);
-        return { id: r.id, status: result.status, body: result.body };
-      } catch (err: unknown) {
-        return {
-          id: r.id,
-          status: 503,
-          body: {
-            error: "BatchSubrequestFailed",
-            message: (err as Error)?.message ?? "Subrequest failed",
-          },
-        };
-      }
-    }),
+  const responses = await Sentry.startSpan(
+    {
+      name: "batch.startup",
+      op: "batch",
+      attributes: { "batch.count": requests.length },
+    },
+    async () =>
+      Promise.all(
+        (requests as Array<{ id: string; path: string }>).map(async (r) =>
+          Sentry.startSpan(
+            { name: `subrequest ${r.path}`, op: "batch.subrequest", attributes: { "batch.id": r.id } },
+            async (span) => {
+              const subStart = Date.now();
+              try {
+                const result = await dispatchInProcess(r.path, authHeader);
+                const elapsed = Date.now() - subStart;
+                if (elapsed > 500) {
+                  span.setAttribute("batch.slow", true);
+                  console.warn(`[batch] slow subrequest: ${r.path} took ${elapsed}ms`);
+                }
+                span.setAttribute("http.status_code", result.status);
+                return { id: r.id, status: result.status, body: result.body };
+              } catch (err: unknown) {
+                span.setAttribute("error", true);
+                return {
+                  id: r.id,
+                  status: 503,
+                  body: {
+                    error: "BatchSubrequestFailed",
+                    message: (err as Error)?.message ?? "Subrequest failed",
+                  },
+                };
+              }
+            },
+          ),
+        ),
+      ),
   );
 
   console.log(`[batch] ${requests.length} subrequest(s) completed in ${Date.now() - t0}ms`);
