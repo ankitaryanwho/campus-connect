@@ -93,32 +93,44 @@ Fully privacy-first anonymous posting with threaded comments, reply system, and 
 
 **API base for mobile**: `EXPO_PUBLIC_API_URL` env var, falling back to the deployed Replit app URL (`https://campus-connect-app.replit.app/api`). Backend changes therefore require redeploying the API server before OTA updates of the mobile bundle will exercise them.
 
-## HTTP/2 (Development)
+## HTTP/2
 
-In development, the API server runs **two listeners simultaneously**:
+The API server uses a **net-level protocol router** on `$PORT` that peeks at the first bytes of every TCP connection and routes it to the correct inner server — no third-party libraries, no monkey-patching.
 
 | Port | Protocol | Purpose |
 |------|----------|---------|
-| `$PORT` (8080) | HTTP/1.1 | Primary — Replit proxy, keepalive, all real traffic |
-| `$PORT+1` (8081) | HTTP/2 over TLS | H2 testing only — ALPN negotiation, stream multiplexing |
+| `$PORT` (8080) | H2C + HTTP/1.1 (router) | All production traffic — Replit proxy, clients, keepalive |
+| `$PORT+1` (8081) | HTTP/2 over TLS (ALPN) | Dev-only — direct TLS/H2 testing (dead-code eliminated in prod bundle) |
+| `$PORT+2` (8082) | H2C internal | Inner h2cServer — only reachable via loopback from the router |
 
-The H2 server (`http2.createSecureServer`) proxies each incoming HTTP/2 stream to the HTTP/1.1 server via a loopback connection, adding `x-h2-proxied: 1` so Express middleware can set `x-protocol: h2` in the response.
+**How it works:**
+1. `net.createServer()` on `$PORT` reads the first ≥24 bytes of each connection.
+2. If they match the HTTP/2 client preface (`PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n`), the socket is forwarded via `net.createConnection` to `h2cServer` on `127.0.0.1:$PORT+2` (a real OS-level TCP socket — `.emit('connection')` breaks nghttp2's libuv handle).
+3. All other connections (HTTP/1.1) are injected directly into `h1Server` via `socket.emit('connection')` after unshifting the peeked bytes back into the readable stream.
+4. A dev TLS server on `$PORT+1` uses `http2.createSecureServer` for ALPN-negotiated H2 — guarded by `process.env.NODE_ENV !== "production"` so esbuild tree-shakes it from the prod bundle.
 
-**Why not `allowHTTP1: true`?** Node.js 24's `allowHTTP1` compat layer constructs `ServerResponse` objects non-standardly, leaving all Symbol-keyed internals (`kOutHeaders`, `kChunkedBuffer`, `kSocket` …) as `undefined`. Every `OutgoingMessage` method call crashes. The two-server proxy avoids the compat layer entirely.
+**Express 5 + H2 compatibility (`applyH2Descs`):**
+Express 5's `init` middleware calls `setPrototypeOf(req, app.request)` / `setPrototypeOf(res, app.response)`, replacing the prototype chain with HTTP/1.1 classes. Three layers of damage:
+- H2-specific getters (`httpVersionMajor`, `socket`, `_read`) resolve from wrong class
+- Symbol-keyed internals (`kStream`, `kSetHeader`, `kState`) detach from instance
+- `Http2ServerResponse.prototype` has 3 Symbol-keyed functions (`Symbol(setHeader)`, `Symbol(appendHeader)`, `Symbol(begin-send)`) that `setHeader`/`appendHeader`/`end` call — `Object.entries()` skips Symbol keys so naive descriptor-copy misses them
 
-**Why not `spdy` / `http2-express-bridge`?** `spdy` uses the removed `node:http_parser` native binding (broken on Node.js ≥ 12). `http2-express-bridge` patches `express.application.lazyrouter` which was removed in Express 5.
+**Fix:** `applyH2Descs(rawReq, H2_REQ_DESCS)` + `applyH2Descs(rawRes, H2_RES_DESCS)` runs **before** `app()` in `h2cServer`'s request handler. Iterates **both** `Object.keys()` and `Object.getOwnPropertySymbols()` of the descriptor map so all string and Symbol-keyed methods become own properties — which survive `setPrototypeOf`. A redundant safety-net pass runs in `app.ts` first-middleware as a no-op for the normal case.
 
-In **production**, only the HTTP/1.1 server runs (`app.listen()`). The entire H2 block is dead-code-eliminated from the production CJS bundle by esbuild (`define: { "process.env.NODE_ENV": '"production"' }`).
+**Why not `allowHTTP1: true`?** Node 24's compat layer leaves Symbol-keyed internals (`kOutHeaders`, `kChunkedBuffer`, `kSocket`) as `undefined` — every `setHeader`/`write` call crashes. `assignSocket()` also fails (garbled HTTP/0.9). The net-level router gives each protocol a clean, properly-constructed server with no shared socket ownership.
+
+**Why not `spdy` / `http2-express-bridge`?** `spdy` uses the removed `node:http_parser` binding (broken on Node ≥ 12). `http2-express-bridge` patches `express.application.lazyrouter` which was removed in Express 5.
 
 **Key files:**
-- `artifacts/api-server/src/index.ts` — two-server setup + H2 stream proxy
+- `artifacts/api-server/src/index.ts` — net router + h2cServer (port+2) + h1Server + applyH2Descs + dev TLS (port+1)
+- `artifacts/api-server/src/app.ts` — safety-net H2 descriptor restoration middleware + `x-protocol` header
 - `artifacts/api-server/src/lib/dev-cert.ts` — embedded self-signed TLS cert (10-year, CN=localhost)
-- `artifacts/api-server/src/app.ts` — `x-protocol` header middleware (checks `x-h2-proxied` header)
 
 **Verify:**
 ```bash
-curl -s http://localhost:8080/api/ping -I | grep x-protocol   # → http/1.1
-curl --http2 -sk https://localhost:8081/api/ping -I | grep x-protocol  # → h2
+curl -s http://localhost:8080/api/ping -I | grep x-protocol              # → http/1.1
+curl --http2-prior-knowledge -s http://localhost:8080/api/ping -I | grep x-protocol  # → h2
+curl --http2 -sk https://localhost:8081/api/ping -I | grep x-protocol    # → h2
 ```
 
 ## Stack

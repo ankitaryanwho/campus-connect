@@ -1,6 +1,7 @@
 import * as Sentry from "@sentry/node";
 import http from "node:http";
 import http2 from "node:http2";
+import net from "node:net";
 import app from "./app";
 import { runStartupMigrations } from "./lib/migrate";
 import { runProductionImport } from "./lib/production-import";
@@ -30,9 +31,16 @@ if (Number.isNaN(port) || port <= 0) {
 
 const PING_INTERVAL_MS = 4 * 60 * 1000;
 
-function startKeepalive(port: number) {
+// Use http.request so Node.js sends a plain HTTP/1.1 keepalive — not an h2c
+// upgrade — to the internal HTTP/1.1 server on the routing port.
+function startKeepalive(port: number): void {
   setInterval(() => {
-    fetch(`http://localhost:${port}/api/ping`).catch(() => { /* silently ignore */ });
+    const req = http.request(
+      { hostname: "127.0.0.1", port, path: "/api/ping" },
+      (res) => { res.resume(); },
+    );
+    req.on("error", () => { /* silently ignore */ });
+    req.end();
   }, PING_INTERVAL_MS);
 }
 
@@ -47,36 +55,191 @@ async function start() {
   console.log("[startup] Seeding data...");
   await seedData();
 
-  // Primary server: standard HTTP/1.1.
-  // In development this is the server the Replit reverse-proxy reaches; in
-  // production it is the only server (TLS is terminated by Replit's edge).
-  const server = app.listen(port, () => {
-    console.log(`Server listening on port ${port}`);
+  // ── Architecture overview ────────────────────────────────────────────────
+  //
+  // A single net.createServer() on PORT peeks at the first bytes of every
+  // TCP connection and routes it to one of two purpose-built inner servers:
+  //
+  //   h2cServer  — http2.createServer() (no TLS, cleartext H2)
+  //                Receives connections whose first bytes match the HTTP/2
+  //                client preface.  Http2ServerRequest / Http2ServerResponse
+  //                objects are passed to Express; app.ts first-middleware
+  //                restores Http2ServerResponse property descriptors after
+  //                Express init overwrites the prototype chain.
+  //
+  //   h1Server   — http.createServer()
+  //                Receives all HTTP/1.1 connections (Replit reverse-proxy,
+  //                health-checks, keepalive pings, etc.).  Standard
+  //                IncomingMessage / ServerResponse objects with no quirks.
+  //
+  // Why not http2.createServer({ allowHTTP1: true })?
+  //   Node.js 24's allowHTTP1 compat path creates ServerResponse objects
+  //   whose Symbol-keyed internals (kOutHeaders, kChunkedBuffer, kSocket …)
+  //   are undefined rather than null/[].  Every method that touches those
+  //   fields (setHeader, removeHeader, _writeRaw …) crashes.  The socket is
+  //   owned by the http2 session so replacing the response object via
+  //   assignSocket() also fails (garbled HTTP/0.9 output).  Routing at the
+  //   net layer gives each protocol a clean, properly-constructed server with
+  //   no shared socket-ownership conflicts.
+  //
+  // Why not http2.createSecureServer (TLS) on PORT?
+  //   Replit's reverse-proxy terminates TLS at its edge and reaches our
+  //   server over plain TCP; a TLS listener on PORT would be unreachable.
+  //   In development a second TLS server on PORT+1 enables ALPN-negotiated
+  //   H2 testing; in production the edge proxy handles TLS for clients.
+  //
+  // spdy: relies on the removed node:http_parser binding (dead on Node ≥ 12).
+  // http2-express-bridge: patches express.application.lazyrouter (Express 4).
+  // ────────────────────────────────────────────────────────────────────────
+
+  // HTTP/2 connection preface — first 24 bytes of any H2 client connection.
+  const H2_PREFACE = Buffer.from("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n");
+
+  // ── Inner H2C server ─────────────────────────────────────────────────────
+  // Listens on an internal loopback port (port+2).  H2 connections from the
+  // external router are forwarded via net.createConnection so that nghttp2
+  // gets a real OS-level TCP socket handle — .emit('connection', socket)
+  // gives nghttp2 an injected stream which it cannot attach to libuv, causing
+  // GOAWAY INTERNAL_ERROR before any stream is opened.
+  const h2cPort = port + 2;
+  const h2cServer = http2.createServer();
+
+  // ── H2 compat: materialise Http2ServerRequest/Response descriptors ───────
+  // Express 5's init middleware calls setPrototypeOf(req, app.request) and
+  // setPrototypeOf(res, app.response).  Both swap Http2ServerRequest /
+  // Http2ServerResponse's prototype chain for an http.IncomingMessage /
+  // http.ServerResponse chain, making every H2-specific method and getter
+  // (_read, socket, httpVersionMajor, removeHeader, end, …) resolve from
+  // the wrong class — causing crashes.
+  //
+  // Restoring descriptors inside a middleware (after init) is too late:
+  // the httpVersionMajor GETTER lives only on Http2ServerRequest.prototype;
+  // once setPrototypeOf removes that class from the chain, the getter becomes
+  // inaccessible and the guard "req.httpVersionMajor === 2" returns undefined.
+  //
+  // Solution: restore BEFORE calling app() so that all H2 descriptors are
+  // own properties on the instance.  Own properties survive setPrototypeOf.
+  // The redundant pass in app.ts first-middleware is now a safe no-op.
+  const H2_REQ_DESCS = Object.getOwnPropertyDescriptors(
+    http2.Http2ServerRequest.prototype,
+  );
+  const H2_RES_DESCS = Object.getOwnPropertyDescriptors(
+    http2.Http2ServerResponse.prototype,
+  );
+
+  function applyH2Descs(
+    obj: object,
+    descs: ReturnType<typeof Object.getOwnPropertyDescriptors>,
+  ): void {
+    // Object.entries() silently skips Symbol-keyed properties.
+    // Http2ServerResponse.prototype has 3 critical Symbol-keyed functions
+    // (Symbol('setHeader'), Symbol('appendHeader'), Symbol('begin-send')) that
+    // setHeader / appendHeader / end call via this[kXxx].  After Express's
+    // setPrototypeOf removes Http2ServerResponse.prototype from the chain those
+    // Symbols become unreachable — we must copy them as own properties too.
+    const allKeys: (string | symbol)[] = [
+      ...Object.keys(descs),
+      ...Object.getOwnPropertySymbols(descs),
+    ];
+    for (const key of allKeys) {
+      if (key === "constructor") continue;
+      const desc = (descs as any)[key] as PropertyDescriptor;
+      try {
+        Object.defineProperty(obj, key, { ...desc, configurable: true });
+      } catch {
+        // A handful of instance-level non-configurable props cannot be
+        // redefined; they keep their original values which is correct.
+      }
+    }
+  }
+
+  h2cServer.on("request", (rawReq: any, rawRes: any) => {
+    // Materialise all Http2ServerRequest / Http2ServerResponse prototype
+    // properties as own instance properties BEFORE Express's init runs
+    // setPrototypeOf and removes them from the prototype chain.
+    applyH2Descs(rawReq, H2_REQ_DESCS);
+    applyH2Descs(rawRes, H2_RES_DESCS);
+
+    app(rawReq, rawRes);
+  });
+
+  h2cServer.on("error", (err: Error) => {
+    console.error("[h2c] Error:", err.message);
+  });
+
+  h2cServer.keepAliveTimeout = 65000;
+  h2cServer.headersTimeout   = 66000;
+
+  await new Promise<void>((resolve) => h2cServer.listen(h2cPort, "127.0.0.1", resolve));
+  console.log(`HTTP/2 h2c server listening on internal port ${h2cPort}`);
+
+  // ── Inner HTTP/1.1 server ─────────────────────────────────────────────────
+  // Does not need to listen — sockets are injected via .emit('connection').
+  // Standard http.createServer gives properly-initialised ServerResponse
+  // objects; no Symbol-field patching needed.
+  const h1Server = http.createServer();
+
+  h1Server.on("request", app);
+
+  h1Server.on("error", (err: Error) => {
+    console.error("[h1] Error:", err.message);
+  });
+
+  h1Server.keepAliveTimeout = 65000;
+  h1Server.headersTimeout   = 66000;
+
+  // ── Protocol-routing server on PORT ──────────────────────────────────────
+  const routerServer = net.createServer((clientSocket) => {
+    clientSocket.on("error", () => { /* prevent unhandled crash */ });
+
+    clientSocket.once("data", (firstChunk) => {
+      // Determine protocol from first bytes of the connection.
+      const isH2 = firstChunk
+        .slice(0, H2_PREFACE.length)
+        .equals(H2_PREFACE);
+
+      if (isH2) {
+        // H2: forward via a real loopback TCP connection so nghttp2 gets a
+        // native socket handle.  Write the first chunk immediately (it contains
+        // the HTTP/2 client preface + SETTINGS) then pipe the rest.
+        const h2cSocket = net.createConnection(h2cPort, "127.0.0.1");
+        h2cSocket.on("error", () => clientSocket.destroy());
+        clientSocket.on("error", () => h2cSocket.destroy());
+        h2cSocket.write(firstChunk);
+        clientSocket.pipe(h2cSocket);
+        h2cSocket.pipe(clientSocket);
+      } else {
+        // HTTP/1.1: inject directly into h1Server via .emit('connection').
+        // Pause first so the buffer is stable while the http parser attaches
+        // its read handler, then resume to start the flow.
+        clientSocket.pause();
+        clientSocket.unshift(firstChunk);
+        h1Server.emit("connection", clientSocket);
+        clientSocket.resume();
+      }
+    });
+  });
+
+  routerServer.on("error", (err: Error) => {
+    console.error("[router] Error:", err.message);
+  });
+
+  routerServer.listen(port, () => {
+    console.log(`Server listening on port ${port} (HTTP/2 h2c + HTTP/1.1)`);
     startKeepalive(port);
   });
 
-  server.keepAliveTimeout = 65000;
-  server.headersTimeout = 66000;
-
-  // Development only: HTTP/2 over TLS on port+1.
+  // ── Development only: ALPN-negotiated H2 over TLS on PORT+1 ─────────────
   //
-  // Node.js 24's http2 allowHTTP1 compatibility layer constructs ServerResponse
-  // objects without calling the OutgoingMessage constructor, leaving all
-  // Symbol-keyed internals (kOutHeaders, kChunkedBuffer, kSocket …) as
-  // undefined. Using allowHTTP1 is therefore not viable; instead we run a
-  // dedicated H2-only TLS server on a secondary port and proxy each H2 stream
-  // to the HTTP/1.1 Express server on the primary port via a loopback
-  // connection. This gives genuine ALPN-negotiated HTTP/2 without touching
-  // the compat layer and keeps the primary port fully HTTP/1.1 backward-
-  // compatible.
+  // Allows testing ALPN negotiation and H2 headers with curl --http2 and
+  // browser devtools against a real TLS endpoint without configuring the
+  // Replit proxy.  Each TLS/H2 stream is proxied as HTTP/1.1 to PORT where
+  // it is routed by h1Server and handled by Express.  The x-h2-proxied: 1
+  // tag makes the x-protocol middleware in app.ts label the response "h2".
   //
-  // spdy was also evaluated: it relies on the removed node:http_parser native
-  // binding and does not load on Node.js ≥ 12. http2-express-bridge patches
-  // express.application.lazyrouter which was removed in Express 5.
-  //
-  // Using process.env.NODE_ENV directly (not via a const variable) so that
-  // esbuild's define substitution constant-folds the condition to false and
-  // dead-code-eliminates this entire block from the production CJS bundle.
+  // Using process.env.NODE_ENV directly in the condition (not via a const
+  // variable) so esbuild's define substitution constant-folds it to false
+  // and dead-code-eliminates this entire block from the production CJS bundle.
   if (process.env.NODE_ENV !== "production") {
     const { DEV_KEY, DEV_CERT } = await import("./lib/dev-cert");
 
@@ -92,20 +255,20 @@ async function start() {
         const method  = String(headers[":method"] ?? "GET");
         const rawPath = String(headers[":path"]   ?? "/");
 
-        // Build HTTP/1.1 request headers, dropping H2 pseudo-headers.
         const fwdHeaders: Record<string, string> = {};
         for (const [k, v] of Object.entries(headers)) {
           if (!k.startsWith(":") && typeof v === "string") {
             fwdHeaders[k] = v;
           }
         }
-        // Tag the proxied request so Express middleware can set x-protocol: h2
         fwdHeaders["x-h2-proxied"] = "1";
 
         const proxyReq = http.request(
           { hostname: "127.0.0.1", port, method, path: rawPath, headers: fwdHeaders },
           (proxyRes) => {
-            const resHeaders: http2.OutgoingHttpHeaders = { ":status": proxyRes.statusCode ?? 200 };
+            const resHeaders: http2.OutgoingHttpHeaders = {
+              ":status": proxyRes.statusCode ?? 200,
+            };
 
             // HTTP/2 forbids connection-specific headers (RFC 7540 §8.1.2.2).
             const h1Only = new Set([
@@ -132,17 +295,16 @@ async function start() {
           }
         });
 
-        // Pipe request body from H2 stream to the proxy request.
         stream.pipe(proxyReq);
       },
     );
 
-    h2Server.on("error", (err) => {
-      console.error("[h2] Server error:", err.message);
+    h2Server.on("error", (err: Error) => {
+      console.error("[h2-tls] Server error:", err.message);
     });
 
     h2Server.listen(h2Port, () => {
-      console.log(`HTTP/2 server listening on port ${h2Port} (TLS, H2)`);
+      console.log(`HTTP/2 TLS server listening on port ${h2Port} (ALPN, H2)`);
     });
   }
 }
