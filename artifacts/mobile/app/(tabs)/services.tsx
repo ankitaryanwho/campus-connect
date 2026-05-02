@@ -7,6 +7,7 @@ import {
   TextInput, Linking, Animated, RefreshControl, Share,
 } from "react-native";
 import { Image } from "expo-image";
+import { PLACEHOLDER_BLURHASH } from "@/constants/imagePlaceholder";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -933,6 +934,8 @@ function DeliveryCard({ item, C, currentUser, onAction, onRate, isPending }: any
               style={{ width: "100%", height: 220, borderRadius: 10 }}
               contentFit="cover"
               cachePolicy="disk"
+              placeholder={PLACEHOLDER_BLURHASH}
+              transition={200}
             />
           </View>
           {item.selfieTimestamp && (
@@ -959,6 +962,8 @@ function DeliveryCard({ item, C, currentUser, onAction, onRate, isPending }: any
               style={{ width: "100%", height: 220, borderRadius: 10 }}
               contentFit="cover"
               cachePolicy="disk"
+              placeholder={PLACEHOLDER_BLURHASH}
+              transition={200}
             />
           </View>
           {item.locationPhotoTimestamp && (
@@ -979,7 +984,7 @@ function DeliveryCard({ item, C, currentUser, onAction, onRate, isPending }: any
               : "Agent has shared their UPI QR. Pay from the order card."}
           </Text>
           <View style={{ backgroundColor: "#fff", borderRadius: 10, overflow: "hidden", alignItems: "center", padding: 8 }}>
-            <Image source={{ uri: item.qrImageUrl }} style={{ width: 180, height: 180, borderRadius: 8 }} contentFit="contain" cachePolicy="disk" />
+            <Image source={{ uri: item.qrImageUrl }} style={{ width: 180, height: 180, borderRadius: 8 }} contentFit="contain" cachePolicy="disk" placeholder={PLACEHOLDER_BLURHASH} transition={200} />
             <Text style={{ fontSize: 11, color: "#78716C", paddingBottom: 8, paddingTop: 4 }}>Scan to pay</Text>
           </View>
           {item.chargeStatus === "screenshot_uploaded" && (
@@ -3219,7 +3224,7 @@ export default function ServicesScreen() {
               {paymentItem?.qrImageUrl && (
                 <View style={{ alignItems: "center", marginBottom: 16, backgroundColor: C.backgroundSecondary, borderRadius: 16, padding: 16 }}>
                   <Text style={{ color: C.textSecondary, fontSize: 13, marginBottom: 10 }}>Scan this QR to pay</Text>
-                  <Image source={{ uri: paymentItem.qrImageUrl }} style={{ width: 200, height: 200, borderRadius: 12 }} contentFit="contain" cachePolicy="disk" />
+                  <Image source={{ uri: paymentItem.qrImageUrl }} style={{ width: 200, height: 200, borderRadius: 12 }} contentFit="contain" cachePolicy="disk" placeholder={PLACEHOLDER_BLURHASH} transition={200} />
                   {paymentItem?.subtotal && (
                     <Text style={{ color: C.text, fontFamily: "Inter_700Bold", fontSize: 20, marginTop: 10 }}>
                       ₹{parseFloat(paymentItem.subtotal).toFixed(0)}
@@ -3368,6 +3373,8 @@ export default function ServicesScreen() {
                   style={{ width: "100%", height: 260 }}
                   contentFit="contain"
                   cachePolicy="disk"
+                  placeholder={PLACEHOLDER_BLURHASH}
+                  transition={200}
                 />
               ) : (
                 <View style={{ height: 200, alignItems: "center", justifyContent: "center" }}>
@@ -3436,6 +3443,8 @@ export default function ServicesScreen() {
               style={{ flex: 1, width: "100%", height: "100%" }}
               contentFit="contain"
               cachePolicy="disk"
+              placeholder={PLACEHOLDER_BLURHASH}
+              transition={200}
             />
           )}
         </View>

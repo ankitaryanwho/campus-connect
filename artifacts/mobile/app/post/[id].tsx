@@ -5,6 +5,7 @@ import {
   KeyboardAvoidingView, TouchableOpacity,
 } from "react-native";
 import { Image } from "expo-image";
+import { PLACEHOLDER_BLURHASH } from "@/constants/imagePlaceholder";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
@@ -54,7 +55,7 @@ function Avatar({ user, size = 40, C }: any) {
       <Feather name="user-x" size={size * 0.45} color="#fff" />
     </View>
   );
-  if (user.avatar) return <Image source={{ uri: user.avatar }} style={{ width: size, height: size, borderRadius: size / 2 }} cachePolicy="disk" />;
+  if (user.avatar) return <Image source={{ uri: user.avatar }} style={{ width: size, height: size, borderRadius: size / 2 }} cachePolicy="disk" placeholder={PLACEHOLDER_BLURHASH} transition={200} />;
   const grad = getGrad(user.name || "?");
   return (
     <LinearGradient colors={grad} style={{ width: size, height: size, borderRadius: size / 2, alignItems: "center", justifyContent: "center" }}>
@@ -371,11 +372,11 @@ export default function PostDetailScreen() {
               {post.mediaUrls?.length > 0 && (
                 <View style={{ marginBottom: 12 }}>
                   {post.mediaUrls.length === 1 ? (
-                    <Image source={{ uri: post.mediaUrls[0] }} style={{ width: "100%", height: 280 }} contentFit="cover" cachePolicy="disk" />
+                    <Image source={{ uri: post.mediaUrls[0] }} style={{ width: "100%", height: 280 }} contentFit="cover" cachePolicy="disk" placeholder={PLACEHOLDER_BLURHASH} transition={200} />
                   ) : (
                     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 2 }}>
                       {post.mediaUrls.slice(0, 4).map((uri: string, i: number) => (
-                        <Image key={i} source={{ uri }} style={{ width: "49.5%", height: 150 }} contentFit="cover" cachePolicy="disk" />
+                        <Image key={i} source={{ uri }} style={{ width: "49.5%", height: 150 }} contentFit="cover" cachePolicy="disk" placeholder={PLACEHOLDER_BLURHASH} transition={200} />
                       ))}
                     </View>
                   )}

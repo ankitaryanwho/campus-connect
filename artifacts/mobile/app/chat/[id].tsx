@@ -4,6 +4,7 @@ import {
   useColorScheme, ActivityIndicator, Platform,
 } from "react-native";
 import { Image } from "expo-image";
+import { PLACEHOLDER_BLURHASH } from "@/constants/imagePlaceholder";
 import { KeyboardAvoidingView, useKeyboardState } from "react-native-keyboard-controller";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -21,7 +22,7 @@ function getInitials(name: string) {
 
 function Avatar({ name, avatar, size = 36, C }: any) {
   if (avatar)
-    return <Image source={{ uri: avatar }} style={{ width: size, height: size, borderRadius: size / 2 }} cachePolicy="disk" />;
+    return <Image source={{ uri: avatar }} style={{ width: size, height: size, borderRadius: size / 2 }} cachePolicy="disk" placeholder={PLACEHOLDER_BLURHASH} transition={200} />;
   return (
     <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: C.primary, alignItems: "center", justifyContent: "center" }}>
       <Text style={{ color: "#fff", fontFamily: "Inter_600SemiBold", fontSize: size * 0.35 }}>{getInitials(name || "?")}</Text>

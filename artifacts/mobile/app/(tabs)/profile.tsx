@@ -12,6 +12,7 @@ import {
   Dimensions,
 } from "react-native";
 import { Image } from "expo-image";
+import { PLACEHOLDER_BLURHASH } from "@/constants/imagePlaceholder";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -300,6 +301,8 @@ export default function ProfileScreen() {
                       source={{ uri: user.avatar }}
                       style={styles.avatar}
                       cachePolicy="disk"
+                      placeholder={PLACEHOLDER_BLURHASH}
+                      transition={200}
                     />
                   ) : (
                     <LinearGradient
@@ -660,6 +663,8 @@ export default function ProfileScreen() {
                     style={styles.postThumb}
                     contentFit="cover"
                     cachePolicy="disk"
+                    placeholder={PLACEHOLDER_BLURHASH}
+                    transition={200}
                   />
                 )}
                 {/* 3-dot menu — owner-only on own profile, so always shown */}

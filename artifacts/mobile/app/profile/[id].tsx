@@ -11,6 +11,7 @@ import {
   TouchableOpacity,
 } from "react-native";
 import { Image } from "expo-image";
+import { PLACEHOLDER_BLURHASH } from "@/constants/imagePlaceholder";
 import { LinearGradient } from "expo-linear-gradient";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -213,6 +214,8 @@ export default function UserProfileScreen() {
                     source={{ uri: profile.avatar }}
                     style={styles.avatar}
                     cachePolicy="disk"
+                    placeholder={PLACEHOLDER_BLURHASH}
+                    transition={200}
                   />
                 ) : (
                   <LinearGradient
@@ -498,6 +501,8 @@ export default function UserProfileScreen() {
                         style={styles.mediaSingle}
                         contentFit="cover"
                         cachePolicy="disk"
+                        placeholder={PLACEHOLDER_BLURHASH}
+                        transition={200}
                       />
                     ) : (
                       <View style={styles.mediaGrid}>
@@ -515,6 +520,8 @@ export default function UserProfileScreen() {
                               ]}
                               contentFit="cover"
                               cachePolicy="disk"
+                              placeholder={PLACEHOLDER_BLURHASH}
+                              transition={200}
                             />
                           ))}
                       </View>

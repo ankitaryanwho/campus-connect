@@ -5,6 +5,7 @@ import {
   TouchableOpacity, KeyboardAvoidingView, Platform, Alert,
 } from "react-native";
 import { Image } from "expo-image";
+import { PLACEHOLDER_BLURHASH } from "@/constants/imagePlaceholder";
 import { Feather } from "@expo/vector-icons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as ImagePicker from "expo-image-picker";
@@ -100,7 +101,7 @@ function MiniAvatar({ name, avatar, size = 32 }: { name: string; avatar?: string
   const hue = [...(name || "")].reduce((a, c) => a + c.charCodeAt(0), 0) % 360;
   if (avatar) {
     return (
-      <Image source={{ uri: avatar }} style={{ width: size, height: size, borderRadius: size / 2 }} cachePolicy="disk" />
+      <Image source={{ uri: avatar }} style={{ width: size, height: size, borderRadius: size / 2 }} cachePolicy="disk" placeholder={PLACEHOLDER_BLURHASH} transition={200} />
     );
   }
   return (
@@ -142,7 +143,7 @@ function MarketplaceCard({
       {/* Hero image / placeholder */}
       <View style={cardStyles.heroWrap}>
         {photo ? (
-          <Image source={{ uri: photo }} style={cardStyles.heroImg} contentFit="cover" cachePolicy="disk" />
+          <Image source={{ uri: photo }} style={cardStyles.heroImg} contentFit="cover" cachePolicy="disk" placeholder={PLACEHOLDER_BLURHASH} transition={200} />
         ) : (
           <View style={[cardStyles.heroPlaceholder, { backgroundColor: isRent ? "#F0FDF4" : "#FFFBEB" }]}>
             <Text style={cardStyles.heroEmoji}>{catInfo?.emoji ?? "📦"}</Text>

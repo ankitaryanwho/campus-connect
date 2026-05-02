@@ -5,6 +5,7 @@ import {
   Animated, TouchableOpacity, ScrollView,
 } from "react-native";
 import { Image } from "expo-image";
+import { PLACEHOLDER_BLURHASH } from "@/constants/imagePlaceholder";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -108,7 +109,7 @@ function detectCategory(content: string): CategoryId {
 function GradientAvatar({ name, avatar, size = 44 }: { name: string; avatar?: string; size?: number }) {
   const grad = getGradient(name || "?");
   if (avatar) {
-    return <Image source={{ uri: avatar }} style={{ width: size, height: size, borderRadius: size / 2 }} cachePolicy="disk" />;
+    return <Image source={{ uri: avatar }} style={{ width: size, height: size, borderRadius: size / 2 }} cachePolicy="disk" placeholder={PLACEHOLDER_BLURHASH} transition={200} />;
   }
   return (
     <LinearGradient colors={grad as any} style={{ width: size, height: size, borderRadius: size / 2, alignItems: "center", justifyContent: "center" }}>
@@ -353,7 +354,7 @@ const PostCard = React.memo(function PostCard({ post, C, onLike, onComment, isDa
       {post.mediaUrls?.length > 0 && (
         <View style={styles.mediaContainer}>
           {post.mediaUrls.length === 1 ? (
-            <Image source={{ uri: post.mediaUrls[0] }} style={styles.mediaSingle} contentFit="cover" cachePolicy="disk" />
+            <Image source={{ uri: post.mediaUrls[0] }} style={styles.mediaSingle} contentFit="cover" cachePolicy="disk" placeholder={PLACEHOLDER_BLURHASH} transition={200} />
           ) : (
             <View style={styles.mediaGrid}>
               {post.mediaUrls.slice(0, 4).map((uri: string, i: number) => (
@@ -363,6 +364,8 @@ const PostCard = React.memo(function PostCard({ post, C, onLike, onComment, isDa
                   style={[styles.mediaGridItem, post.mediaUrls.length === 2 ? { width: "49.5%", height: 180 } : { width: "49.5%", height: 120 }]}
                   contentFit="cover"
                   cachePolicy="disk"
+                  placeholder={PLACEHOLDER_BLURHASH}
+                  transition={200}
                 />
               ))}
             </View>

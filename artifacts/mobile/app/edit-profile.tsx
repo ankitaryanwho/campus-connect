@@ -12,6 +12,7 @@ import {
   UIManager,
 } from "react-native";
 import { Image } from "expo-image";
+import { PLACEHOLDER_BLURHASH } from "@/constants/imagePlaceholder";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
@@ -213,7 +214,7 @@ export default function EditProfileScreen() {
           >
             <View style={styles.avatarRing}>
               {user.avatar ? (
-                <Image source={{ uri: user.avatar }} style={styles.avatarImg} cachePolicy="disk" />
+                <Image source={{ uri: user.avatar }} style={styles.avatarImg} cachePolicy="disk" placeholder={PLACEHOLDER_BLURHASH} transition={200} />
               ) : (
                 <LinearGradient
                   colors={["#5B4FE8", "#9B8FFF"]}
