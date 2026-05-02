@@ -155,6 +155,10 @@ export default function ChatroomScreen() {
   const messages = (data?.pages.flatMap(p => p.messages) ?? []).slice().reverse();
   const room = roomQuery.data;
 
+  const renderItem = useCallback(({ item }: { item: any }) => (
+    <ChatroomBubble item={item} userId={user?.id} C={C} />
+  ), [user?.id, C]);
+
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: C.background }} behavior="padding" keyboardVerticalOffset={0}>
       <View style={[styles.header, { paddingTop: isWeb ? 67 : insets.top + 8, backgroundColor: C.background, borderBottomColor: C.border }]}>
@@ -192,7 +196,7 @@ export default function ChatroomScreen() {
               <ActivityIndicator size="small" color={C.primary} />
             </View>
           ) : null}
-          renderItem={({ item }) => <ChatroomBubble item={item} userId={user?.id} C={C} />}
+          renderItem={renderItem}
           ListEmptyComponent={
             <View style={styles.empty}>
               <Feather name="hash" size={40} color={C.textTertiary} />
