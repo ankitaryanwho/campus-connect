@@ -48,7 +48,7 @@ function GradientAvatar({ name, avatar, size = 50, online = false }: any) {
   return (
     <View>
       {avatar
-        ? <Image source={{ uri: avatar }} style={{ width: size, height: size, borderRadius: size / 2 }} cachePolicy="disk" placeholder={PLACEHOLDER_BLURHASH} transition={200} />
+        ? <Image source={{ uri: avatar }} style={{ width: size, height: size, borderRadius: size / 2 }} contentFit="cover" cachePolicy="disk" placeholder={PLACEHOLDER_BLURHASH} transition={200} />
         : (
           <LinearGradient colors={grad as any} style={{ width: size, height: size, borderRadius: size / 2, alignItems: "center", justifyContent: "center" }}>
             <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: size * 0.36 }}>{getInitials(name || "?")}</Text>

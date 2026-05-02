@@ -109,7 +109,7 @@ function detectCategory(content: string): CategoryId {
 function GradientAvatar({ name, avatar, size = 44 }: { name: string; avatar?: string; size?: number }) {
   const grad = getGradient(name || "?");
   if (avatar) {
-    return <Image source={{ uri: avatar }} style={{ width: size, height: size, borderRadius: size / 2 }} cachePolicy="disk" placeholder={PLACEHOLDER_BLURHASH} transition={200} />;
+    return <Image source={{ uri: avatar }} style={{ width: size, height: size, borderRadius: size / 2 }} contentFit="cover" cachePolicy="disk" placeholder={PLACEHOLDER_BLURHASH} transition={200} />;
   }
   return (
     <LinearGradient colors={grad as any} style={{ width: size, height: size, borderRadius: size / 2, alignItems: "center", justifyContent: "center" }}>
