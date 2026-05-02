@@ -610,12 +610,26 @@ function ListingCreateSheet({
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
+      const resolvedPhotos = await Promise.all(
+        photos.map(async (uri) => {
+          if (!uri.startsWith("data:image/")) return uri;
+          const uploadRes = await apiRequest("/upload", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ base64: uri, folder: "campusconnect/marketplace" }),
+          });
+          if (!uploadRes.ok) throw new Error("Failed to upload one or more photos");
+          const { url } = await uploadRes.json();
+          return url as string;
+        }),
+      );
+
       const res = await apiRequest("/marketplace", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           listingType, itemCategory: category, title: title.trim(),
-          description: description.trim(), photos,
+          description: description.trim(), photos: resolvedPhotos,
           price: parseFloat(price),
           rentalUnit: listingType === "rent" ? rentalUnit : undefined,
         }),
