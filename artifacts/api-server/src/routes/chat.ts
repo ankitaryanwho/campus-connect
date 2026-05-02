@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db, pool } from "@workspace/db";
 import { conversationsTable, messagesTable, usersTable, chatroomsTable } from "@workspace/db/schema";
-import { eq, or, and, desc, lt, gt, inArray } from "drizzle-orm";
+import { eq, or, and, desc, lt, gt, gte, inArray } from "drizzle-orm";
 import { authMiddleware } from "../lib/auth";
 import { generateId } from "../lib/id";
 import { pickConversationUser, pickMessageSender } from "../lib/userFields";
@@ -237,59 +237,41 @@ router.get("/conversations/:conversationId/stream", authMiddleware, async (req, 
   res.setHeader("Connection", "keep-alive");
   res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders();
+  res.write(": connected\n\n");
 
-  // Capture original write before any patching so replay/connected frames
-  // always bypass the buffer regardless of call site.
-  const originalWrite = res.write.bind(res);
-  const pendingFrames: string[] = [];
-  let isReplaying = !!since;
-
-  if (isReplaying) {
-    (res as any).write = (chunk: string) => {
-      if (isReplaying) { pendingFrames.push(chunk); return true; }
-      return originalWrite(chunk);
-    };
+  try {
+    if (since) {
+      const sinceRows = await db.select({ createdAt: messagesTable.createdAt })
+        .from(messagesTable)
+        .where(and(eq(messagesTable.id, since), eq(messagesTable.conversationId, conversationId)))
+        .limit(1);
+      if (sinceRows.length) {
+        const missed = await db.select().from(messagesTable)
+          .where(and(
+            eq(messagesTable.conversationId, conversationId),
+            gte(messagesTable.createdAt, sinceRows[0].createdAt),
+          ))
+          .orderBy(messagesTable.createdAt, messagesTable.id);
+        if (missed.length) {
+          const sendersMap = await batchGetUsers(missed.map(m => m.senderId));
+          for (const m of missed) {
+            const isSenderInitiator = m.senderId === conv.participant1Id;
+            const isSelf = m.senderId === userId;
+            const sender = (conv.isAnonymous && isSenderInitiator && !isSelf)
+              ? { id: "anonymous", name: "Hidden Profile", avatar: null }
+              : pickMessageSender(sendersMap.get(m.senderId));
+            res.write(`data: ${JSON.stringify({ ...m, senderId: undefined, sender, isSelf })}\n\n`);
+          }
+        }
+      }
+    }
+  } catch {
+    res.end();
+    return;
   }
 
   if (!conversationClients.has(conversationId)) conversationClients.set(conversationId, new Set());
   conversationClients.get(conversationId)!.add(res);
-
-  originalWrite(": connected\n\n");
-
-  if (since) {
-    const sinceRows = await db.select({ createdAt: messagesTable.createdAt })
-      .from(messagesTable)
-      .where(and(eq(messagesTable.id, since), eq(messagesTable.conversationId, conversationId)))
-      .limit(1);
-    if (sinceRows.length) {
-      const missed = await db.select().from(messagesTable)
-        .where(and(
-          eq(messagesTable.conversationId, conversationId),
-          or(
-            gt(messagesTable.createdAt, sinceRows[0].createdAt),
-            and(eq(messagesTable.createdAt, sinceRows[0].createdAt), gt(messagesTable.id, since)),
-          ),
-        ))
-        .orderBy(messagesTable.createdAt, messagesTable.id);
-      if (missed.length) {
-        const sendersMap = await batchGetUsers(missed.map(m => m.senderId));
-        for (const m of missed) {
-          const isSenderInitiator = m.senderId === conv.participant1Id;
-          const isSelf = m.senderId === userId;
-          const sender = (conv.isAnonymous && isSenderInitiator && !isSelf)
-            ? { id: "anonymous", name: "Hidden Profile", avatar: null }
-            : pickMessageSender(sendersMap.get(m.senderId));
-          originalWrite(`data: ${JSON.stringify({ ...m, senderId: undefined, sender, isSelf })}\n\n`);
-        }
-      }
-    }
-  }
-
-  if (isReplaying) {
-    isReplaying = false;
-    delete (res as any).write;
-    for (const frame of pendingFrames) res.write(frame);
-  }
 
   const heartbeat = setInterval(() => {
     try { res.write(": ping\n\n"); } catch { clearInterval(heartbeat); }
@@ -504,53 +486,37 @@ router.get("/chatrooms/:chatroomId/stream", authMiddleware, async (req, res) => 
   res.setHeader("Connection", "keep-alive");
   res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders();
+  res.write(": connected\n\n");
 
-  const originalWrite = res.write.bind(res);
-  const pendingFrames: string[] = [];
-  let isReplaying = !!since;
-
-  if (isReplaying) {
-    (res as any).write = (chunk: string) => {
-      if (isReplaying) { pendingFrames.push(chunk); return true; }
-      return originalWrite(chunk);
-    };
+  try {
+    if (since) {
+      const sinceRows = await db.select({ createdAt: messagesTable.createdAt })
+        .from(messagesTable)
+        .where(and(eq(messagesTable.id, since), eq(messagesTable.chatroomId, chatroomId)))
+        .limit(1);
+      if (sinceRows.length) {
+        const missed = await db.select().from(messagesTable)
+          .where(and(
+            eq(messagesTable.chatroomId, chatroomId),
+            gte(messagesTable.createdAt, sinceRows[0].createdAt),
+          ))
+          .orderBy(messagesTable.createdAt, messagesTable.id);
+        if (missed.length) {
+          const sendersMap = await batchGetUsers(missed.map(m => m.senderId));
+          for (const m of missed) {
+            const payload = { ...m, senderId: undefined, sender: pickMessageSender(sendersMap.get(m.senderId)) };
+            res.write(`data: ${JSON.stringify(payload)}\n\n`);
+          }
+        }
+      }
+    }
+  } catch {
+    res.end();
+    return;
   }
 
   if (!chatroomClients.has(chatroomId)) chatroomClients.set(chatroomId, new Set());
   chatroomClients.get(chatroomId)!.add(res);
-
-  originalWrite(": connected\n\n");
-
-  if (since) {
-    const sinceRows = await db.select({ createdAt: messagesTable.createdAt })
-      .from(messagesTable)
-      .where(and(eq(messagesTable.id, since), eq(messagesTable.chatroomId, chatroomId)))
-      .limit(1);
-    if (sinceRows.length) {
-      const missed = await db.select().from(messagesTable)
-        .where(and(
-          eq(messagesTable.chatroomId, chatroomId),
-          or(
-            gt(messagesTable.createdAt, sinceRows[0].createdAt),
-            and(eq(messagesTable.createdAt, sinceRows[0].createdAt), gt(messagesTable.id, since)),
-          ),
-        ))
-        .orderBy(messagesTable.createdAt, messagesTable.id);
-      if (missed.length) {
-        const sendersMap = await batchGetUsers(missed.map(m => m.senderId));
-        for (const m of missed) {
-          const payload = { ...m, senderId: undefined, sender: pickMessageSender(sendersMap.get(m.senderId)) };
-          originalWrite(`data: ${JSON.stringify(payload)}\n\n`);
-        }
-      }
-    }
-  }
-
-  if (isReplaying) {
-    isReplaying = false;
-    delete (res as any).write;
-    for (const frame of pendingFrames) res.write(frame);
-  }
 
   const heartbeat = setInterval(() => {
     try { res.write(": ping\n\n"); } catch { clearInterval(heartbeat); }
