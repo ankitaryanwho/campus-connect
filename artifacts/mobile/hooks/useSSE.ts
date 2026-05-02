@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
-const INITIAL_DELAY   = 1_000;
-const MAX_DELAY       = 30_000;
+const INITIAL_DELAY    = 1_000;
+const MAX_DELAY        = 30_000;
 const STABLE_THRESHOLD = 10_000;
 const HEARTBEAT_TIMEOUT = 35_000;
 
@@ -10,15 +10,17 @@ const HEARTBEAT_TIMEOUT = 35_000;
  *
  * Features:
  *  - Exponential backoff: 1 s → 2 s → 4 s → … → 30 s max.
- *  - Stable-connection reset: delay resets to 1 s if the connection lasted > 10 s.
- *  - Heartbeat watchdog: if no bytes arrive for 35 s the stream is considered
+ *    Delay doubles on every disconnect. Only resets to 1 s if the previous
+ *    connection remained alive for > 10 s — a single received byte does NOT
+ *    count as "stable" (that would defeat back-off during flapping streams).
+ *  - Heartbeat watchdog: if no bytes arrive for 35 s the stream is treated as
  *    stale and a reconnect is triggered (catches silently-dropped TCP streams).
- *  - Missed-message recovery: the ID of the last received message is tracked
- *    and appended as `?since=<id>` on every reconnect so the server can replay
- *    any frames that arrived while the client was disconnected.
+ *  - Missed-message recovery: the ID of the last received message is tracked and
+ *    appended as `?since=<id>` on every reconnect so the server can replay any
+ *    frames that arrived while the client was disconnected.
  *
  * Returns `{ attempt, nextDelay }` for displaying a reconnecting banner.
- * `attempt` resets to 0 as soon as a new connection starts delivering data.
+ * `attempt` is 0 while connected (banner hidden) and > 0 while waiting to reconnect.
  */
 export function useSSE(
   url: string | null,
@@ -39,9 +41,13 @@ export function useSSE(
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
 
+    // Backoff state — these persist across reconnects and are only reset when
+    // a disconnect follows a stable connection (> STABLE_THRESHOLD ms of uptime).
     let delay          = INITIAL_DELAY;
     let attemptCount   = 0;
-    let connectedAt    = 0;
+
+    // Per-connection tracking
+    let connectedAt: number = 0;   // set on first byte; 0 means not yet connected
     let lastMessageId: string | null = null;
 
     function clearHeartbeat() {
@@ -53,23 +59,30 @@ export function useSSE(
       heartbeatTimer = setTimeout(() => {
         // No bytes for 35 s — stream is stale; force a reconnect.
         xhr?.abort();
-        onDisconnect(false);
+        onDisconnect();
       }, HEARTBEAT_TIMEOUT);
     }
 
-    function onDisconnect(fromError: boolean) {
+    function onDisconnect() {
       clearHeartbeat();
       if (aborted) return;
-      const age = connectedAt ? Date.now() - connectedAt : 0;
-      const wasStable = age > STABLE_THRESHOLD;
-      if (wasStable) delay = INITIAL_DELAY;
+
+      // If the connection was stable for > STABLE_THRESHOLD, reset backoff.
+      // A connectedAt of 0 means we never received a byte — do NOT reset.
+      const age = connectedAt > 0 ? Date.now() - connectedAt : 0;
+      if (age > STABLE_THRESHOLD) {
+        delay = INITIAL_DELAY;
+      }
+
       const currentDelay = delay;
       delay = Math.min(delay * 2, MAX_DELAY);
       attemptCount += 1;
+
       if (!aborted) {
         setAttempt(attemptCount);
         setNextDelay(currentDelay);
       }
+
       reconnectTimer = setTimeout(connect, currentDelay);
     }
 
@@ -85,37 +98,31 @@ export function useSSE(
       xhr = new XMLHttpRequest();
       let lastLen = 0;
       let receiveBuffer = "";
-      let firstData = true;
-      connectedAt = 0;
+      connectedAt = 0;      // reset; will be set on first byte of THIS connection
 
       xhr.open("GET", buildUrl(), true);
       xhr.setRequestHeader("Authorization", `Bearer ${token}`);
       xhr.setRequestHeader("Accept", "text/event-stream");
       xhr.setRequestHeader("Cache-Control", "no-cache");
 
-      // `receiveBuffer` persists across onprogress calls so split frames are reassembled.
-      // SSE frames are separated by "\n\n"; lines within a frame start with "data: ".
-      // Comment frames (e.g. `: ping`) still trigger onprogress — enough to reset the watchdog.
       xhr.onprogress = () => {
         // Reset the silence watchdog on every byte arrival (data OR ping comment).
         resetHeartbeat();
 
-        if (firstData) {
-          firstData = false;
+        // Record the time we first received data on this connection.
+        // Note: we do NOT reset `delay` or `attemptCount` here — that would
+        // defeat backoff for flapping connections. We only hide the banner.
+        if (connectedAt === 0) {
           connectedAt = Date.now();
-          // Connection (re-)established — hide the retrying banner.
-          if (!aborted) { setAttempt(0); }
-          // Delay resets on the NEXT disconnect based on connection age (handled in onDisconnect).
-          delay = INITIAL_DELAY;
-          attemptCount = 0;
+          if (!aborted) setAttempt(0);
         }
 
         receiveBuffer += xhr!.responseText.slice(lastLen);
         lastLen = xhr!.responseText.length;
 
-        // Split on frame boundaries (double newline)
+        // Split on SSE frame boundaries (double newline)
         const frames = receiveBuffer.split("\n\n");
-        // The last element may be incomplete — keep it in the buffer
+        // Last element may be an incomplete frame — keep it in the buffer
         receiveBuffer = frames.pop() ?? "";
 
         for (const frame of frames) {
@@ -132,9 +139,9 @@ export function useSSE(
         }
       };
 
-      xhr.onerror   = () => onDisconnect(true);
-      xhr.ontimeout = () => onDisconnect(true);
-      xhr.onload    = () => { clearHeartbeat(); if (!aborted) onDisconnect(false); };
+      xhr.onerror   = () => { clearHeartbeat(); if (!aborted) onDisconnect(); };
+      xhr.ontimeout = () => { clearHeartbeat(); if (!aborted) onDisconnect(); };
+      xhr.onload    = () => { clearHeartbeat(); if (!aborted) onDisconnect(); };
 
       xhr.send();
       resetHeartbeat();

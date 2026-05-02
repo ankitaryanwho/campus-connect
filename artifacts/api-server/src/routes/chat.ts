@@ -238,6 +238,12 @@ router.get("/conversations/:conversationId/stream", authMiddleware, async (req, 
   res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders();
 
+  // Register BEFORE replay so no live message falls into the gap between
+  // the replay query completing and the client being subscribed.
+  // Clients deduplicate by ID, so receiving a message via both paths is safe.
+  if (!conversationClients.has(conversationId)) conversationClients.set(conversationId, new Set());
+  conversationClients.get(conversationId)!.add(res);
+
   // Replay messages sent while the client was disconnected
   if (since) {
     const sinceRows = await db.select({ createdAt: messagesTable.createdAt })
@@ -263,9 +269,6 @@ router.get("/conversations/:conversationId/stream", authMiddleware, async (req, 
   }
 
   res.write(": connected\n\n");
-
-  if (!conversationClients.has(conversationId)) conversationClients.set(conversationId, new Set());
-  conversationClients.get(conversationId)!.add(res);
 
   const heartbeat = setInterval(() => {
     try { res.write(": ping\n\n"); } catch { clearInterval(heartbeat); }
@@ -481,6 +484,12 @@ router.get("/chatrooms/:chatroomId/stream", authMiddleware, async (req, res) => 
   res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders();
 
+  // Register BEFORE replay so no live message falls into the gap between
+  // the replay query completing and the client being subscribed.
+  // Clients deduplicate by ID, so receiving a message via both paths is safe.
+  if (!chatroomClients.has(chatroomId)) chatroomClients.set(chatroomId, new Set());
+  chatroomClients.get(chatroomId)!.add(res);
+
   // Replay messages sent while the client was disconnected
   if (since) {
     const sinceRows = await db.select({ createdAt: messagesTable.createdAt })
@@ -502,9 +511,6 @@ router.get("/chatrooms/:chatroomId/stream", authMiddleware, async (req, res) => 
   }
 
   res.write(": connected\n\n");
-
-  if (!chatroomClients.has(chatroomId)) chatroomClients.set(chatroomId, new Set());
-  chatroomClients.get(chatroomId)!.add(res);
 
   const heartbeat = setInterval(() => {
     try { res.write(": ping\n\n"); } catch { clearInterval(heartbeat); }
