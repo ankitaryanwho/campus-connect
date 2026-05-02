@@ -23,40 +23,37 @@ export function isCloudinaryConfigured(): boolean {
   );
 }
 
-async function toBuffer(base64DataUri: string): Promise<Buffer> {
-  const commaIdx = base64DataUri.indexOf(",");
-  const raw = commaIdx !== -1 ? base64DataUri.slice(commaIdx + 1) : base64DataUri;
+function isAvatarFolder(folder: string): boolean {
+  return folder === "avatars" || folder.endsWith("/avatars");
+}
+
+function toInputBuffer(input: string | Buffer): Buffer {
+  if (Buffer.isBuffer(input)) return input;
+  const commaIdx = input.indexOf(",");
+  const raw = commaIdx !== -1 ? input.slice(commaIdx + 1) : input;
   return Buffer.from(raw, "base64");
 }
 
-async function processImage(base64DataUri: string, folder: string): Promise<string> {
-  const input = await toBuffer(base64DataUri);
+async function processImage(input: string | Buffer, folder: string): Promise<string> {
+  const buf = toInputBuffer(input);
 
-  let pipeline: sharp.Sharp;
-  if (folder === "avatars") {
-    pipeline = sharp(input).resize(400, 400, { fit: "cover", withoutEnlargement: true }).webp({ quality: 85 });
-  } else {
-    pipeline = sharp(input).resize({ width: 1080, withoutEnlargement: true }).webp({ quality: 82 });
-  }
+  const pipeline: sharp.Sharp = isAvatarFolder(folder)
+    ? sharp(buf).resize(400, 400, { fit: "cover", withoutEnlargement: true }).webp({ quality: 85 })
+    : sharp(buf).resize({ width: 1080, withoutEnlargement: true }).webp({ quality: 82 });
 
   const webpBuffer = await pipeline.toBuffer();
   return `data:image/webp;base64,${webpBuffer.toString("base64")}`;
 }
 
 export async function uploadImage(
-  base64DataUri: string,
+  input: string | Buffer,
   folder = "campusconnect",
 ): Promise<string> {
   const { cloudName, apiKey, apiSecret } = getConfig();
 
   cloudinary.config({ cloud_name: cloudName, api_key: apiKey, api_secret: apiSecret });
 
-  let dataUri = base64DataUri;
-  try {
-    dataUri = await processImage(base64DataUri, folder);
-  } catch (err) {
-    console.warn("[cloudinary] sharp processing failed, uploading original:", err);
-  }
+  const dataUri = await processImage(input, folder);
 
   const result = await cloudinary.uploader.upload(dataUri, {
     folder,
