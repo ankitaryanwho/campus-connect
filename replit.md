@@ -107,7 +107,7 @@ The API server uses a **net-level protocol router** on `$PORT` that peeks at the
 1. `net.createServer()` on `$PORT` reads the first ≥24 bytes of each connection.
 2. If they match the HTTP/2 client preface (`PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n`), the socket is forwarded via `net.createConnection` to `h2cServer` on `127.0.0.1:$PORT+2` (a real OS-level TCP socket — `.emit('connection')` breaks nghttp2's libuv handle).
 3. All other connections (HTTP/1.1) are injected directly into `h1Server` via `socket.emit('connection')` after unshifting the peeked bytes back into the readable stream.
-4. A dev TLS server on `$PORT+1` uses `http2.createSecureServer` for ALPN-negotiated H2 — guarded by `process.env.NODE_ENV !== "production"` so esbuild tree-shakes it from the prod bundle.
+4. A dev-only TLS server on `$PORT+1` uses `http2.createSecureServer` (self-signed cert) for ALPN-negotiated H2 testing — guarded by `process.env.NODE_ENV !== "production"` so esbuild tree-shakes it from the prod bundle. The embedded private key must not be exposed in production.
 
 **Express 5 + H2 compatibility (`applyH2Descs`):**
 Express 5's `init` middleware calls `setPrototypeOf(req, app.request)` / `setPrototypeOf(res, app.response)`, replacing the prototype chain with HTTP/1.1 classes. Three layers of damage:

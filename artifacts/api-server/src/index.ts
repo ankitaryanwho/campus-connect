@@ -192,12 +192,13 @@ async function start() {
     startKeepalive(port);
   });
 
-  // ── ALPN TLS on PORT+1 ───────────────────────────────────────────────────
-  // http2.createSecureServer with ALPN negotiation (h2 + http/1.1 protocols).
-  // Available in all environments so production deployments can serve HTTP/2
-  // clients that connect directly to PORT+1.  Each H2 stream is proxied as
-  // HTTP/1.1 to PORT, tagged x-h2-proxied:1 so app.ts labels the response h2.
-  {
+  // ── Dev-only: ALPN TLS on PORT+1 ─────────────────────────────────────────
+  // http2.createSecureServer with a self-signed cert for ALPN testing with
+  // curl --http2 and browser devtools.  Dev-only: the embedded private key
+  // must not be exposed in production.  process.env.NODE_ENV is referenced
+  // directly so esbuild's define constant-folds it to false and dead-code-
+  // eliminates this block from the production CJS bundle.
+  if (process.env.NODE_ENV !== "production") {
     const { DEV_KEY, DEV_CERT } = await import("./lib/dev-cert");
 
     const h2Port = port + 1;
