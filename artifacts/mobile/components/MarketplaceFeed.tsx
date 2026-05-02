@@ -1,9 +1,10 @@
 import React, { useState, useCallback, useEffect } from "react";
 import {
   View, Text, StyleSheet, Pressable, Modal, ScrollView,
-  TextInput, Image, ActivityIndicator, FlatList, Linking,
+  TextInput, ActivityIndicator, FlatList, Linking,
   TouchableOpacity, KeyboardAvoidingView, Platform, Alert,
 } from "react-native";
+import { Image } from "expo-image";
 import { Feather } from "@expo/vector-icons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as ImagePicker from "expo-image-picker";
@@ -99,7 +100,7 @@ function MiniAvatar({ name, avatar, size = 32 }: { name: string; avatar?: string
   const hue = [...(name || "")].reduce((a, c) => a + c.charCodeAt(0), 0) % 360;
   if (avatar) {
     return (
-      <Image source={{ uri: avatar }} style={{ width: size, height: size, borderRadius: size / 2 }} />
+      <Image source={{ uri: avatar }} style={{ width: size, height: size, borderRadius: size / 2 }} cachePolicy="disk" />
     );
   }
   return (
@@ -141,7 +142,7 @@ function MarketplaceCard({
       {/* Hero image / placeholder */}
       <View style={cardStyles.heroWrap}>
         {photo ? (
-          <Image source={{ uri: photo }} style={cardStyles.heroImg} resizeMode="cover" />
+          <Image source={{ uri: photo }} style={cardStyles.heroImg} contentFit="cover" cachePolicy="disk" />
         ) : (
           <View style={[cardStyles.heroPlaceholder, { backgroundColor: isRent ? "#F0FDF4" : "#FFFBEB" }]}>
             <Text style={cardStyles.heroEmoji}>{catInfo?.emoji ?? "📦"}</Text>
@@ -726,7 +727,7 @@ function ListingCreateSheet({
               <View style={createStyles.photosRow}>
                 {photos.map((uri, i) => (
                   <View key={i} style={createStyles.photoThumb}>
-                    <Image source={{ uri }} style={{ width: "100%", height: "100%", borderRadius: 10 }} resizeMode="cover" />
+                    <Image source={{ uri }} style={{ width: "100%", height: "100%", borderRadius: 10 }} contentFit="cover" />
                     <Pressable style={createStyles.removePhotoBtn} onPress={() => removePhoto(i)}>
                       <Feather name="x" size={11} color="#fff" />
                     </Pressable>
@@ -822,7 +823,7 @@ function ListingCreateSheet({
 
             <View style={createStyles.reviewCard}>
               {photos[0] ? (
-                <Image source={{ uri: photos[0] }} style={createStyles.reviewPhoto} resizeMode="cover" />
+                <Image source={{ uri: photos[0] }} style={createStyles.reviewPhoto} contentFit="cover" />
               ) : (
                 <View style={[createStyles.reviewPhoto, { backgroundColor: "#FEF9C3", alignItems: "center", justifyContent: "center" }]}>
                   <Text style={{ fontSize: 48 }}>{ITEM_CATEGORIES.find(c => c.id === category)?.emoji ?? "📦"}</Text>

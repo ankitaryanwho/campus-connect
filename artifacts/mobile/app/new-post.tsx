@@ -2,8 +2,9 @@ import React, { useState } from "react";
 import {
   View, Text, TextInput, Pressable, StyleSheet,
   useColorScheme, ActivityIndicator, Platform,
-  Image, ScrollView, KeyboardAvoidingView, Switch,
+  ScrollView, KeyboardAvoidingView, Switch,
 } from "react-native";
+import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";

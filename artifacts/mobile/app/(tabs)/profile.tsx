@@ -7,11 +7,11 @@ import {
   StyleSheet,
   useColorScheme,
   ActivityIndicator,
-  Image,
   Platform,
   TouchableOpacity,
   Dimensions,
 } from "react-native";
+import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -299,6 +299,7 @@ export default function ProfileScreen() {
                     <Image
                       source={{ uri: user.avatar }}
                       style={styles.avatar}
+                      cachePolicy="disk"
                     />
                   ) : (
                     <LinearGradient
@@ -657,7 +658,8 @@ export default function ProfileScreen() {
                   <Image
                     source={{ uri: post.mediaUrls[0] }}
                     style={styles.postThumb}
-                    resizeMode="cover"
+                    contentFit="cover"
+                    cachePolicy="disk"
                   />
                 )}
                 {/* 3-dot menu — owner-only on own profile, so always shown */}

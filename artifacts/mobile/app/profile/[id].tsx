@@ -7,10 +7,10 @@ import {
   StyleSheet,
   useColorScheme,
   ActivityIndicator,
-  Image,
   Platform,
   TouchableOpacity,
 } from "react-native";
+import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -212,6 +212,7 @@ export default function UserProfileScreen() {
                   <Image
                     source={{ uri: profile.avatar }}
                     style={styles.avatar}
+                    cachePolicy="disk"
                   />
                 ) : (
                   <LinearGradient
@@ -495,7 +496,8 @@ export default function UserProfileScreen() {
                       <Image
                         source={{ uri: post.mediaUrls[0] }}
                         style={styles.mediaSingle}
-                        resizeMode="cover"
+                        contentFit="cover"
+                        cachePolicy="disk"
                       />
                     ) : (
                       <View style={styles.mediaGrid}>
@@ -511,7 +513,8 @@ export default function UserProfileScreen() {
                                   ? { width: "49.5%", height: 160 }
                                   : { width: "49.5%", height: 110 },
                               ]}
-                              resizeMode="cover"
+                              contentFit="cover"
+                              cachePolicy="disk"
                             />
                           ))}
                       </View>
