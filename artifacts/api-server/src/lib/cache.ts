@@ -1,14 +1,15 @@
 import { LRUCache } from "lru-cache";
 import Redis from "ioredis";
 
-const REDIS_URL = process.env["REDIS_URL"];
+// Strip surrounding quotes that may appear when a secret is pasted with quotes included.
+const REDIS_URL = process.env["REDIS_URL"]?.replace(/^["']|["']$/g, "") || undefined;
 const IS_DEV    = process.env.NODE_ENV === "development";
 
 /** Which cache backend is active — exposed via GET /api/ping. */
 export const cacheBackend: "redis" | "memory" = REDIS_URL ? "redis" : "memory";
 
 const redisClient: Redis | null = REDIS_URL
-  ? new Redis(REDIS_URL, { maxRetriesPerRequest: 3, enableReadyCheck: false })
+  ? new Redis(REDIS_URL, { maxRetriesPerRequest: 3, enableReadyCheck: false, lazyConnect: false })
   : null;
 
 redisClient?.on("error", (err: Error) => {

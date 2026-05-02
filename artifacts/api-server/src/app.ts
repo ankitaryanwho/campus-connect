@@ -129,7 +129,7 @@ app.use("/api", (req, res, next) => {
     const duration = Date.now() - start;
     if (duration > 1000) {
       console.warn(`[slow-api] ${req.method} ${req.path} took ${duration}ms`);
-      if (process.env["SENTRY_DSN"]) {
+      if (process.env["SENTRY_DSN"]?.replace(/^["']|["']$/g, "")) {
         Sentry.captureMessage("Slow API response", {
           level: "warning",
           extra: { path: req.path, method: req.method, duration },
