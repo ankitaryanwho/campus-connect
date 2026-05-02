@@ -12,16 +12,45 @@ export interface DispatchResult {
   body: unknown;
 }
 
+interface MockReq {
+  method: string;
+  url: string;
+  originalUrl: string;
+  baseUrl: string;
+  path: string;
+  headers: Record<string, string>;
+  body: Record<string, never>;
+  query: Record<string, string>;
+  params: Record<string, string>;
+  httpVersionMajor: number;
+  _body: boolean;
+  socket: { remoteAddress: string; encrypted: boolean };
+  get(name: string): string | undefined;
+  header(name: string): string | undefined;
+  is(): boolean;
+  accepts(): string;
+}
+
+interface MockRes extends EventEmitter {
+  statusCode: number;
+  headersSent: boolean;
+  writableEnded: boolean;
+  locals: Record<string, unknown>;
+  status(code: number): this;
+  setHeader(name: string, value: string): this;
+  getHeader(name: string): string | undefined;
+  removeHeader(name: string): void;
+  json(obj: unknown): this;
+  send(body: unknown): this;
+  end(body?: unknown): this;
+  write(): boolean;
+}
+
 /**
- * Dispatch a GET sub-request directly through the Express router — no TCP round
- * trip, no loopback socket.  All real middleware (auth, DB, cache) runs in-
- * process, only the compression / CORS / body-parser app-level middleware is
- * skipped (irrelevant for cached GET responses).
+ * Dispatch a GET sub-request directly through the Express router without an
+ * HTTP round trip.  Real auth, DB, and cache middleware all execute in-process.
  */
-export function dispatchInProcess(
-  path: string,
-  authHeader: string,
-): Promise<DispatchResult> {
+export function dispatchInProcess(path: string, authHeader: string): Promise<DispatchResult> {
   const router = _router;
   if (!router) {
     return Promise.resolve({
@@ -34,12 +63,9 @@ export function dispatchInProcess(
     const qIdx = path.indexOf("?");
     const pathname = qIdx === -1 ? path : path.slice(0, qIdx);
     const search   = qIdx === -1 ? "" : path.slice(qIdx + 1);
-
     const query: Record<string, string> = {};
     if (search) {
-      for (const [k, v] of new URLSearchParams(search)) {
-        query[k] = v;
-      }
+      for (const [k, v] of new URLSearchParams(search)) query[k] = v;
     }
 
     let settled = false;
@@ -49,8 +75,7 @@ export function dispatchInProcess(
       resolve({ status, body });
     };
 
-    // ── Mock request ───────────────────────────────────────────────────────────
-    const req: Record<string, unknown> = {
+    const req: MockReq = {
       method: "GET",
       url: path,
       originalUrl: path,
@@ -67,77 +92,55 @@ export function dispatchInProcess(
       httpVersionMajor: 1,
       _body: true,
       socket: { remoteAddress: "127.0.0.1", encrypted: false },
-      get(name: string): string | undefined {
-        return (this.headers as Record<string, string>)[name.toLowerCase()];
-      },
-      header(name: string): string | undefined {
-        return (this.headers as Record<string, string>)[name.toLowerCase()];
-      },
-      is(): boolean { return false; },
-      accepts(): string { return "*/*"; },
+      get(name) { return this.headers[name.toLowerCase()]; },
+      header(name) { return this.headers[name.toLowerCase()]; },
+      is() { return false; },
+      accepts() { return "*/*"; },
     };
 
-    // ── Mock response ──────────────────────────────────────────────────────────
-    const res: Record<string, unknown> = new EventEmitter() as unknown as Record<string, unknown>;
-    (res as any).statusCode = 200;
-    (res as any).headersSent = false;
-    (res as any).writableEnded = false;
-    (res as any).locals = {};
-    const _headers = new Map<string, string>();
+    const res = new EventEmitter() as MockRes;
+    res.statusCode = 200;
+    res.headersSent = false;
+    res.writableEnded = false;
+    res.locals = {};
+    const hdrs = new Map<string, string>();
 
-    (res as any).status = function(code: number) {
-      (res as any).statusCode = code;
-      return res;
+    res.status   = function(code)  { this.statusCode = code; return this; };
+    res.setHeader = function(name, value) { hdrs.set(name.toLowerCase(), value); return this; };
+    res.getHeader = function(name)  { return hdrs.get(name.toLowerCase()); };
+    res.removeHeader = function(name) { hdrs.delete(name.toLowerCase()); };
+
+    res.json = function(obj) {
+      this.headersSent = true;
+      this.writableEnded = true;
+      settle(this.statusCode, obj);
+      return this;
     };
-    (res as any).setHeader = function(name: string, value: string) {
-      _headers.set(name.toLowerCase(), value);
-      return res;
-    };
-    (res as any).getHeader = function(name: string): string | undefined {
-      return _headers.get(name.toLowerCase());
-    };
-    (res as any).removeHeader = function(name: string) {
-      _headers.delete(name.toLowerCase());
-    };
-    (res as any).json = function(obj: unknown) {
-      (res as any).headersSent = true;
-      (res as any).writableEnded = true;
-      settle((res as any).statusCode, obj);
-      return res;
-    };
-    (res as any).send = function(body: unknown) {
-      (res as any).headersSent = true;
-      (res as any).writableEnded = true;
+    res.send = function(body) {
+      this.headersSent = true;
+      this.writableEnded = true;
       if (body !== null && typeof body === "object") {
-        settle((res as any).statusCode, body);
+        settle(this.statusCode, body);
       } else if (typeof body === "string") {
-        try { settle((res as any).statusCode, JSON.parse(body)); }
-        catch { settle((res as any).statusCode, body); }
+        try { settle(this.statusCode, JSON.parse(body)); } catch { settle(this.statusCode, body); }
       } else {
-        settle((res as any).statusCode, body ?? null);
+        settle(this.statusCode, body ?? null);
       }
-      return res;
+      return this;
     };
-    (res as any).end = function(body?: unknown) {
-      (res as any).headersSent = true;
-      (res as any).writableEnded = true;
-      settle((res as any).statusCode, body ?? null);
-      return res;
+    res.end = function(body?) {
+      this.headersSent = true;
+      this.writableEnded = true;
+      settle(this.statusCode, body ?? null);
+      return this;
     };
-    (res as any).write = function(): boolean { return true; };
+    res.write = function() { return true; };
 
-    router.handle(
-      req as any,
-      res as any,
-      (err?: Error) => {
-        settle(
-          err ? 500 : 404,
-          {
-            error: err ? "InternalError" : "NotFound",
-            message: err?.message ?? "Route not found in batch dispatch",
-          },
-        );
-      },
-    );
+    router.handle(req as any, res as any, (err?: Error) => {
+      settle(err ? 500 : 404, {
+        error: err ? "InternalError" : "NotFound",
+        message: err?.message ?? "Route not found",
+      });
+    });
   });
 }

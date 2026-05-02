@@ -18,25 +18,31 @@ const STARTUP_REQUESTS: BatchRequest[] = [
   { id: "notifications", path: "/notifications" },
   { id: "chatrooms",     path: "/chat/chatrooms" },
   { id: "conversations", path: "/chat/conversations" },
+  { id: "marketplace",   path: "/marketplace" },
 ];
 
 /**
- * Fires a single /api/batch call immediately after auth is confirmed and
- * pre-populates TanStack Query's cache with the results.  Individual screens
- * will hit the cache on first mount rather than making separate network calls.
+ * Fires a single /api/batch call once per auth session after auth has finished
+ * loading, and pre-populates TanStack Query's cache with the results.
  *
- * Returns `isReady: true` once the batch completes (success or failure) or when
- * the user is not logged in.  The root layout uses this to delay hiding the
- * splash screen so that the tab screens always mount with data already cached.
+ * Returns { isReady } which is false until either:
+ *   - the batch completes (success or failure), or
+ *   - auth loads and no user is logged in.
+ *
+ * _layout.tsx uses isReady to keep the splash screen visible while the batch
+ * is in flight, ensuring tab screens mount with data already in the cache.
  */
 export function useBatchStartup(): { isReady: boolean } {
-  const { apiRequest, user, token } = useAuth();
+  const { apiRequest, user, token, isLoading } = useAuth();
   const queryClient = useQueryClient();
   const [isReady, setIsReady] = useState(false);
   const didRunRef = useRef(false);
 
   useEffect(() => {
-    // Not logged in — nothing to prefetch; mark ready so the splash can hide.
+    // Wait for AsyncStorage auth to finish loading before deciding anything.
+    if (isLoading) return;
+
+    // Not logged in — nothing to prefetch.
     if (!user || !token) {
       setIsReady(true);
       return;
@@ -78,19 +84,21 @@ export function useBatchStartup(): { isReady: boolean } {
             case "conversations":
               queryClient.setQueryData(["conversations"], r.body);
               break;
+            case "marketplace":
+              queryClient.setQueryData(["marketplace", "all"], r.body);
+              break;
           }
         }
       } catch (err) {
         console.timeEnd("[useBatchStartup]");
         console.warn("[useBatchStartup] failed; screens will fetch independently:", err);
       } finally {
-        // Always mark ready — either we pre-loaded the cache or screens fall back.
         setIsReady(true);
       }
     };
 
     run();
-  }, [user?.id, token]);
+  }, [isLoading, user?.id, token]);
 
   return { isReady };
 }
