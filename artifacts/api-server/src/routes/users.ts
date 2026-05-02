@@ -14,7 +14,7 @@ router.get("/:userId", authMiddleware, async (req, res) => {
     const { userId } = req.params;
 
     // Cache only the user profile (not isFollowing — that is viewer-specific)
-    let u = usersCache.get(userId) as ReturnType<typeof pickFullUser> | undefined;
+    let u = await usersCache.get(userId) as ReturnType<typeof pickFullUser> | undefined;
     if (!u) {
       const users = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
       if (!users.length) {
@@ -22,7 +22,7 @@ router.get("/:userId", authMiddleware, async (req, res) => {
         return;
       }
       u = pickFullUser(users[0]);
-      usersCache.set(userId, u);
+      await usersCache.set(userId, u);
     }
 
     const isFollowingRows = await db.select().from(followsTable)
@@ -52,16 +52,16 @@ router.post("/:userId/follow", authMiddleware, async (req, res) => {
       );
       await db.update(usersTable).set({ followersCount: sql`${usersTable.followersCount} - 1` }).where(eq(usersTable.id, userId));
       await db.update(usersTable).set({ followingCount: sql`${usersTable.followingCount} - 1` }).where(eq(usersTable.id, currentUserId));
-      usersCache.delete(userId);
-      usersCache.delete(currentUserId);
+      await usersCache.delete(userId);
+      await usersCache.delete(currentUserId);
       const target = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
       res.json({ following: false, followersCount: target[0].followersCount });
     } else {
       await db.insert(followsTable).values({ followerId: currentUserId, followingId: userId });
       await db.update(usersTable).set({ followersCount: sql`${usersTable.followersCount} + 1` }).where(eq(usersTable.id, userId));
       await db.update(usersTable).set({ followingCount: sql`${usersTable.followingCount} + 1` }).where(eq(usersTable.id, currentUserId));
-      usersCache.delete(userId);
-      usersCache.delete(currentUserId);
+      await usersCache.delete(userId);
+      await usersCache.delete(currentUserId);
       const target = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
       res.json({ following: true, followersCount: target[0].followersCount });
     }
@@ -113,7 +113,7 @@ router.put("/me/profile", authMiddleware, async (req, res) => {
     if (phone !== undefined) update.phone = phone.trim() || null;
 
     await db.update(usersTable).set(update).where(eq(usersTable.id, userId));
-    usersCache.delete(userId);
+    await usersCache.delete(userId);
     const users = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
     res.json(pickFullUser(users[0]));
   } catch (err) {

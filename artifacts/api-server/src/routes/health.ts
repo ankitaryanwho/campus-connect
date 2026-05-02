@@ -1,6 +1,7 @@
 import * as Sentry from "@sentry/node";
 import { Router, type IRouter } from "express";
 import { HealthCheckResponse } from "@workspace/api-zod";
+import { cacheBackend } from "../lib/cache";
 
 const router: IRouter = Router();
 
@@ -10,7 +11,7 @@ router.get("/healthz", (_req, res) => {
 });
 
 router.get("/ping", (_req, res) => {
-  res.json({ ok: true, ts: Date.now() });
+  res.json({ ok: true, ts: Date.now(), cache: cacheBackend });
 });
 
 // Test endpoint: sends a test error to Sentry so you can verify the DSN is

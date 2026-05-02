@@ -1,67 +1,150 @@
 import { LRUCache } from "lru-cache";
+import Redis from "ioredis";
 
-const IS_DEV = process.env.NODE_ENV === "development";
+const REDIS_URL = process.env["REDIS_URL"];
+const IS_DEV    = process.env.NODE_ENV === "development";
 
-class TrackedCache<V extends object> {
-  private readonly inner: LRUCache<string, V>;
-  private hits = 0;
+/** Which cache backend is active — exposed via GET /api/ping. */
+export const cacheBackend: "redis" | "memory" = REDIS_URL ? "redis" : "memory";
+
+const redisClient: Redis | null = REDIS_URL
+  ? new Redis(REDIS_URL, { maxRetriesPerRequest: 3, enableReadyCheck: false })
+  : null;
+
+redisClient?.on("error", (err: Error) => {
+  if (IS_DEV) console.warn("[redis] Connection error:", err.message);
+});
+
+// ─── Shared interface ─────────────────────────────────────────────────────────
+
+interface AppCache {
+  get(key: string): Promise<object | undefined>;
+  set(key: string, value: object): Promise<void>;
+  delete(key: string): Promise<void>;
+  deleteByPrefix(prefix: string): Promise<void>;
+  clear(): Promise<void>;
+}
+
+// ─── In-memory backend ────────────────────────────────────────────────────────
+
+class MemoryCache implements AppCache {
+  private readonly inner: LRUCache<string, object>;
+  private hits   = 0;
   private misses = 0;
-  private readonly name: string;
 
-  constructor(name: string, max: number, ttlSeconds: number) {
-    this.name = name;
-    this.inner = new LRUCache<string, V>({ max, ttl: ttlSeconds * 1000 });
+  constructor(
+    private readonly name: string,
+    max: number,
+    ttlSeconds: number,
+  ) {
+    this.inner = new LRUCache({ max, ttl: ttlSeconds * 1000 });
   }
 
-  get(key: string): V | undefined {
+  async get(key: string): Promise<object | undefined> {
     const val = this.inner.get(key);
     if (IS_DEV) {
       val !== undefined ? this.hits++ : this.misses++;
-      const total = this.hits + this.misses;
-      const hitRate  = total ? ((this.hits   / total) * 100).toFixed(1) : "0.0";
-      const missRate = total ? ((this.misses / total) * 100).toFixed(1) : "0.0";
+      const total   = this.hits + this.misses;
+      const hitRate = total ? ((this.hits / total) * 100).toFixed(1) : "0.0";
       console.log(
         `[cache:${this.name}] ${val !== undefined ? "HIT" : "MISS"} ` +
-        `key="${key}" hitRate=${hitRate}% missRate=${missRate}% (${this.hits}h/${this.misses}m/${total}t) size=${this.inner.size}`,
+        `key="${key}" hitRate=${hitRate}% (${this.hits}h/${this.misses}m) size=${this.inner.size}`,
       );
     }
     return val;
   }
 
-  set(key: string, value: V): this {
+  async set(key: string, value: object): Promise<void> {
     this.inner.set(key, value);
-    return this;
   }
 
-  delete(key: string): boolean {
-    return this.inner.delete(key);
+  async delete(key: string): Promise<void> {
+    this.inner.delete(key);
   }
 
-  /** Delete all entries whose key starts with the given prefix. */
-  deleteByPrefix(prefix: string): void {
+  async deleteByPrefix(prefix: string): Promise<void> {
     for (const key of this.inner.keys()) {
       if (key.startsWith(prefix)) this.inner.delete(key);
     }
   }
 
-  clear(): void {
+  async clear(): Promise<void> {
     this.inner.clear();
-  }
-
-  get size(): number {
-    return this.inner.size;
   }
 }
 
-export const postsCache     = new TrackedCache<object>("posts",     200, 120);
-export const chatroomsCache = new TrackedCache<object>("chatrooms",  50, 180);
-export const usersCache     = new TrackedCache<object>("users",     500, 300);
+// ─── Redis backend ────────────────────────────────────────────────────────────
 
-// Paginated message pages.
-// DM pages are user-specific (isSelf flag, anonymous masking) so userId is part of the key.
-// Chatroom pages are not user-specific.
-// 60-second TTL — fresh enough to avoid stale reads, old enough to serve repeated scroll-ups.
-export const messagesPageCache = new TrackedCache<object>("messages", 500, 60);
+class RedisCache implements AppCache {
+  constructor(
+    private readonly client: Redis,
+    private readonly keyPrefix: string,
+    private readonly ttlSeconds: number,
+  ) {}
+
+  private k(key: string): string {
+    return `${this.keyPrefix}${key}`;
+  }
+
+  async get(key: string): Promise<object | undefined> {
+    try {
+      const raw = await this.client.get(this.k(key));
+      return raw ? (JSON.parse(raw) as object) : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  async set(key: string, value: object): Promise<void> {
+    try {
+      await this.client.set(this.k(key), JSON.stringify(value), "EX", this.ttlSeconds);
+    } catch {}
+  }
+
+  async delete(key: string): Promise<void> {
+    try {
+      await this.client.del(this.k(key));
+    } catch {}
+  }
+
+  async deleteByPrefix(prefix: string): Promise<void> {
+    try {
+      const pattern = `${this.keyPrefix}${prefix}*`;
+      let cursor = "0";
+      do {
+        const [next, keys] = await this.client.scan(cursor, "MATCH", pattern, "COUNT", "100");
+        cursor = next;
+        if (keys.length) await this.client.del(...keys);
+      } while (cursor !== "0");
+    } catch {}
+  }
+
+  async clear(): Promise<void> {
+    await this.deleteByPrefix("");
+  }
+}
+
+// ─── Factory ──────────────────────────────────────────────────────────────────
+
+function makeCache(
+  name: string,
+  redisKeyPrefix: string,
+  memMax: number,
+  ttlSeconds: number,
+): AppCache {
+  if (redisClient) return new RedisCache(redisClient, redisKeyPrefix, ttlSeconds);
+  return new MemoryCache(name, memMax, ttlSeconds);
+}
+
+// ─── Exported cache instances ─────────────────────────────────────────────────
+// TTLs: posts 120 s, users 300 s, chatrooms 180 s, messages 60 s
+
+export const postsCache        = makeCache("posts",     "cc:posts:",      200, 120);
+export const usersCache        = makeCache("users",     "cc:users:",      500, 300);
+export const chatroomsCache    = makeCache("chatrooms", "cc:chat:rooms:",  50, 180);
+export const messagesPageCache = makeCache("messages",  "cc:chat:msg:",   500,  60);
+
+// ─── Cache key helpers ────────────────────────────────────────────────────────
 
 /** Cache key for a paginated DM conversation page (user-specific). */
 export function dmPageKey(conversationId: string, userId: string, cursor: string | undefined, limit: number): string {
@@ -78,7 +161,7 @@ export function dmInvalidationPrefix(conversationId: string): string {
   return `conversation:${conversationId}|`;
 }
 
-/** Prefix used to invalidate all cached chatroom pages. */
+/** Prefix used to invalidate all cached chatroom message pages. */
 export function chatroomInvalidationPrefix(chatroomId: string): string {
   return `chatroom:${chatroomId}|`;
 }

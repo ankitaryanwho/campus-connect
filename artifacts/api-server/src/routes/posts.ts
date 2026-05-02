@@ -97,7 +97,7 @@ router.get("/", authMiddleware, async (req, res) => {
     const cursor = (req.query.cursor as string) || "";
     const cacheKey = `posts:${userId}:${cursor}:${limit}`;
 
-    const cached = postsCache.get(cacheKey);
+    const cached = await postsCache.get(cacheKey);
     if (cached) {
       res.json(cached);
       return;
@@ -121,7 +121,7 @@ router.get("/", authMiddleware, async (req, res) => {
     const formattedPosts = await formatPosts(data, userId);
 
     const payload = { posts: formattedPosts, nextCursor: hasMore ? data[data.length - 1].id : null };
-    postsCache.set(cacheKey, payload);
+    await postsCache.set(cacheKey, payload);
     res.json(payload);
   } catch (err) {
     console.error(err);
@@ -158,7 +158,7 @@ router.post("/", authMiddleware, async (req, res) => {
 
     const post = await db.select().from(postsTable).where(eq(postsTable.id, postId)).limit(1);
     const formatted = await formatPost(post[0], userId);
-    postsCache.clear();
+    await postsCache.clear();
     res.status(201).json(formatted);
   } catch (err) {
     console.error(err);
@@ -263,7 +263,7 @@ router.delete("/:postId", authMiddleware, async (req, res) => {
     await db.delete(commentsTable).where(eq(commentsTable.postId, postId));
     await db.delete(postsTable).where(eq(postsTable.id, postId));
     await db.update(usersTable).set({ postsCount: sql`${usersTable.postsCount} - 1` }).where(eq(usersTable.id, userId));
-    postsCache.clear();
+    await postsCache.clear();
     res.json({ success: true, message: "Post deleted" });
   } catch (err) {
     console.error(err);

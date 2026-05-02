@@ -312,7 +312,7 @@ router.get("/conversations/:conversationId/messages", authMiddleware, async (req
 
     // User-scoped key: isSelf and anonymous masking are requester-specific
     const cacheKey = dmPageKey(conversationId, userId, cursor, limit);
-    const cached = messagesPageCache.get(cacheKey);
+    const cached = await messagesPageCache.get(cacheKey);
     if (cached) {
       res.json(cached);
       return;
@@ -340,7 +340,7 @@ router.get("/conversations/:conversationId/messages", authMiddleware, async (req
 
     if (!msgs.length) {
       const payload = { messages: [], nextCursor: null };
-      messagesPageCache.set(cacheKey, payload);
+      await messagesPageCache.set(cacheKey, payload);
       res.json(payload);
       return;
     }
@@ -361,7 +361,7 @@ router.get("/conversations/:conversationId/messages", authMiddleware, async (req
     // nextCursor = oldest message ID on this page; null when no further pages exist
     const nextCursor = hasMore ? msgs[msgs.length - 1].id : null;
     const payload = { messages: formatted, nextCursor };
-    messagesPageCache.set(cacheKey, payload);
+    await messagesPageCache.set(cacheKey, payload);
     res.json(payload);
   } catch (err) {
     res.status(500).json({ error: "ServerError", message: "Failed to get messages" });
@@ -397,7 +397,7 @@ router.post("/conversations/:conversationId/messages", authMiddleware, async (re
     });
     await db.update(conversationsTable).set({ updatedAt: new Date() }).where(eq(conversationsTable.id, conversationId));
     // Invalidate immediately after the DB write so post-insert failures cannot leave stale pages
-    messagesPageCache.deleteByPrefix(dmInvalidationPrefix(conversationId));
+    await messagesPageCache.deleteByPrefix(dmInvalidationPrefix(conversationId));
 
     const msgs = await db.select().from(messagesTable).where(eq(messagesTable.id, msgId)).limit(1);
     const isSenderInitiator = msgs[0].senderId === conv.participant1Id;
@@ -422,7 +422,7 @@ router.post("/conversations/:conversationId/messages", authMiddleware, async (re
 
 router.get("/chatrooms", authMiddleware, async (req, res) => {
   try {
-    const cached = chatroomsCache.get("all");
+    const cached = await chatroomsCache.get("all");
     if (cached) {
       res.json(cached);
       return;
@@ -432,7 +432,7 @@ router.get("/chatrooms", authMiddleware, async (req, res) => {
 
     if (!chatrooms.length) {
       const payload = { chatrooms: [] };
-      chatroomsCache.set("all", payload);
+      await chatroomsCache.set("all", payload);
       res.json(payload);
       return;
     }
@@ -476,7 +476,7 @@ router.get("/chatrooms", authMiddleware, async (req, res) => {
     });
 
     const payload = { chatrooms: formatted };
-    chatroomsCache.set("all", payload);
+    await chatroomsCache.set("all", payload);
     res.json(payload);
   } catch (err) {
     res.status(500).json({ error: "ServerError", message: "Failed to get chatrooms" });
@@ -577,7 +577,7 @@ router.get("/chatrooms/:chatroomId/messages", authMiddleware, async (req, res) =
 
     if (!msgs.length) {
       const payload = { messages: [], nextCursor: null };
-      messagesPageCache.set(cacheKey, payload);
+      await messagesPageCache.set(cacheKey, payload);
       res.json(payload);
       return;
     }
@@ -595,7 +595,7 @@ router.get("/chatrooms/:chatroomId/messages", authMiddleware, async (req, res) =
     // nextCursor = oldest message ID on this page; null when no further pages exist
     const nextCursor = hasMore ? msgs[msgs.length - 1].id : null;
     const payload = { messages: formatted, nextCursor };
-    messagesPageCache.set(cacheKey, payload);
+    await messagesPageCache.set(cacheKey, payload);
     res.json(payload);
   } catch (err) {
     res.status(500).json({ error: "ServerError", message: "Failed to get chatroom messages" });
@@ -616,8 +616,8 @@ router.post("/chatrooms/:chatroomId/messages", authMiddleware, async (req, res) 
     await db.insert(messagesTable).values({ id: msgId, content, senderId: userId, chatroomId });
     await db.update(chatroomsTable).set({ updatedAt: new Date() }).where(eq(chatroomsTable.id, chatroomId));
     // Invalidate immediately after the DB write so post-insert failures cannot leave stale pages
-    chatroomsCache.delete("all");
-    messagesPageCache.deleteByPrefix(chatroomInvalidationPrefix(chatroomId));
+    await chatroomsCache.delete("all");
+    await messagesPageCache.deleteByPrefix(chatroomInvalidationPrefix(chatroomId));
 
     const msgs = await db.select().from(messagesTable).where(eq(messagesTable.id, msgId)).limit(1);
     const sendersMap = await batchGetUsers([userId]);
