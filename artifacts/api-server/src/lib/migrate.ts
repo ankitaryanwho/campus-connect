@@ -3,49 +3,16 @@ import fs from "node:fs";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import path from "path";
-import { fileURLToPath } from "url";
 import { pool } from "@workspace/db";
 
-// Walk up from the executing file's directory to locate the monorepo root
-// (the directory that contains pnpm-workspace.yaml). This works whether the
-// server is started via tsx from the source tree (src/lib/migrate.ts) or via
-// node from a compiled bundle (dist/index.cjs) at any working directory.
-function resolveWorkspaceRoot(startDir: string): string {
-  let dir = startDir;
-  for (let i = 0; i < 10; i++) {
-    if (fs.existsSync(path.join(dir, "pnpm-workspace.yaml"))) {
-      return dir;
-    }
-    const parent = path.dirname(dir);
-    if (parent === dir) {
-      break;
-    }
-    dir = parent;
-  }
-  throw new Error(`Cannot locate monorepo root (pnpm-workspace.yaml) starting from ${startDir}`);
-}
-
-const MIGRATIONS_FOLDER = path.join(
-  resolveWorkspaceRoot(path.dirname(fileURLToPath(import.meta.url))),
-  "lib/db/migrations"
-);
+// pnpm always sets cwd to the package directory (artifacts/api-server/) when
+// running scripts, so this path is stable in both dev (tsx) and production
+// (node dist/index.cjs).
+const MIGRATIONS_FOLDER = path.resolve(process.cwd(), "../../lib/db/migrations");
 
 export async function runStartupMigrations() {
   const client = await pool.connect();
   try {
-    // ── Drizzle migration runner ──────────────────────────────────────────────
-    // This project was originally set up with drizzle-kit push (no migration
-    // files). Migration 0000 is a full schema bootstrap; it cannot run on
-    // existing databases because the tables already exist. We baseline it by
-    // checking for the `users` table so Drizzle can take ownership of schema
-    // state going forward.
-    //
-    // Migration 0001 uses CREATE INDEX IF NOT EXISTS throughout, so it is safe
-    // to run on any database regardless of prior state — no baselining needed.
-    //
-    // Baseline hashes and timestamps are computed from the migration files on
-    // disk — no hardcoded values.
-
     await client.query(`CREATE SCHEMA IF NOT EXISTS drizzle;`);
     await client.query(`
       CREATE TABLE IF NOT EXISTS drizzle.__drizzle_migrations (
@@ -65,12 +32,10 @@ export async function runStartupMigrations() {
     const trackedTimestamps = new Set(migrationRows.map((r) => Number(r.created_at)));
 
     for (const entry of journal.entries) {
-      if (trackedTimestamps.has(entry.when)) {
-        continue; // Already tracked — skip
-      }
+      if (trackedTimestamps.has(entry.when)) continue;
 
-      // Only baseline 0000: it uses plain CREATE TABLE which fails if tables
-      // already exist. Check for the `users` table as a sentinel.
+      // 0000 uses plain CREATE TABLE; baseline it on existing databases so
+      // Drizzle does not attempt to re-run it.
       if (entry.idx === 0) {
         const { rows } = await client.query<{ exists: boolean }>(`
           SELECT EXISTS (
@@ -79,11 +44,8 @@ export async function runStartupMigrations() {
           ) AS exists;
         `);
         if (rows[0]?.exists) {
-          const migSql = fs.readFileSync(
-            path.join(MIGRATIONS_FOLDER, `${entry.tag}.sql`),
-            "utf8"
-          );
-          const hash = crypto.createHash("sha256").update(migSql).digest("hex");
+          const sql = fs.readFileSync(path.join(MIGRATIONS_FOLDER, `${entry.tag}.sql`), "utf8");
+          const hash = crypto.createHash("sha256").update(sql).digest("hex");
           await client.query(
             `INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES ($1, $2);`,
             [hash, entry.when]
@@ -91,19 +53,12 @@ export async function runStartupMigrations() {
           console.log(`[migrate] Baselined existing migration: ${entry.tag}`);
         }
       }
-      // 0001 and any future index-only migrations use IF NOT EXISTS and are
-      // safe to run unconditionally — Drizzle's migrate() handles them below.
+      // 0001 uses CREATE INDEX IF NOT EXISTS throughout — safe to run on any
+      // database, so no baselining is needed; Drizzle's migrate() handles it.
     }
 
-    // Run any migrations not yet tracked (e.g. new ones added after the initial
-    // baseline, or the full 0000→0001 sequence on a fresh database).
     const db = drizzle(client);
     await migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
-
-    // ── Legacy / supplemental raw SQL ─────────────────────────────────────────
-    // Tables and columns added before Drizzle migration tracking was
-    // introduced. All statements are idempotent (IF NOT EXISTS / ADD COLUMN IF
-    // NOT EXISTS) and coexist safely with the Drizzle runner above.
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS order_messages (
@@ -125,7 +80,6 @@ export async function runStartupMigrations() {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS phone text;
     `);
 
-    // ── Marketplace ───────────────────────────────────────────────────────────
     await client.query(`
       CREATE TABLE IF NOT EXISTS marketplace_listings (
         id text PRIMARY KEY,
