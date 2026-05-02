@@ -30,13 +30,15 @@
     "nanoid": "^5.1.7",
     "nodemailer": "^8.0.3",
     "pg": "^8.20.0",
-    "resend": "4.0.0"
+    "resend": "4.0.0",
+    "sharp": "^0.34.5"
   },
   "devDependencies": {
     "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "catalog:",
+    "@types/sharp": "^0.32.0",
     "esbuild": "^0.27.3",
     "tsx": "catalog:"
   }
