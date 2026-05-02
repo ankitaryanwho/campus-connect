@@ -23,8 +23,9 @@ export interface QueueItem {
 
 interface OfflineQueueContextValue {
   isOnline: boolean;
+  queue: QueueItem[];
   pendingPosts: QueueItem[];
-  enqueue: (type: QueueItemType, payload: any) => string;
+  enqueue: (type: QueueItemType, payload: any, existingId?: string) => string;
   retryItem: (id: string) => void;
   getItemStatus: (id: string) => "pending" | "failed" | null;
   getQueuedMessages: (
@@ -282,8 +283,8 @@ export function OfflineQueueProvider({ children }: { children: React.ReactNode }
   // ─── Public API ──────────────────────────────────────────────────────────────
 
   const enqueue = useCallback(
-    (type: QueueItemType, payload: any): string => {
-      const id = `q-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    (type: QueueItemType, payload: any, existingId?: string): string => {
+      const id = existingId ?? `q-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
       const item: QueueItem = { id, type, payload, status: "pending", retries: 0 };
       updateQueue(prev => [...prev, item]);
       // Send immediately if already online
@@ -333,7 +334,7 @@ export function OfflineQueueProvider({ children }: { children: React.ReactNode }
 
   return (
     <OfflineQueueContext.Provider
-      value={{ isOnline, pendingPosts, enqueue, retryItem, getItemStatus, getQueuedMessages }}
+      value={{ isOnline, queue, pendingPosts, enqueue, retryItem, getItemStatus, getQueuedMessages }}
     >
       {children}
     </OfflineQueueContext.Provider>

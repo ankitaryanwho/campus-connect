@@ -240,7 +240,7 @@ const PostCard = React.memo(function PostCard({ post, C, onLike, onComment, isDa
   const handleLike = () => {
     if (Platform.OS !== "web") ExpoHaptics.impactAsync(ExpoHaptics.ImpactFeedbackStyle.Light);
     setLiked(!liked);
-    setLikes(l => liked ? l - 1 : l + 1);
+    setLikes((l: number) => liked ? l - 1 : l + 1);
     onLike(post.id);
     Animated.sequence([
       Animated.spring(heartScale, { toValue: 1.3, useNativeDriver: true }),
@@ -253,7 +253,7 @@ const PostCard = React.memo(function PostCard({ post, C, onLike, onComment, isDa
     if (taps.current === 2) {
       if (tapRef.current) clearTimeout(tapRef.current);
       taps.current = 0;
-      if (!liked) { setLiked(true); setLikes(l => l + 1); onLike(post.id); }
+      if (!liked) { setLiked(true); setLikes((l: number) => l + 1); onLike(post.id); }
       if (Platform.OS !== "web") ExpoHaptics.impactAsync(ExpoHaptics.ImpactFeedbackStyle.Medium);
     } else {
       tapRef.current = setTimeout(() => {
@@ -565,6 +565,7 @@ export default function FeedScreen() {
       _pending: true,
       _failed: item.status === "failed",
       _queueId: item.id,
+      _category: item.payload.category ?? "social",
     } as any));
   }, [pendingPosts, user]);
 
@@ -576,9 +577,12 @@ export default function FeedScreen() {
         ? postsByCategory.confessions
         : postsByCategory[activeCategory] ?? [];
     const relevantPending = pendingPostItems.filter(p => {
-      const cat = (p as any)._pending ? (p as any).isAnonymous ? "confessions" : "social" : null;
-      if (activeCategory === "all") return !(p as any).isAnonymous;
-      if (activeCategory === "confessions") return (p as any).isAnonymous;
+      if (!(p as any)._pending) return false;
+      if ((p as any).isAnonymous) {
+        return activeCategory === "all" || activeCategory === "confessions";
+      }
+      const cat: string = (p as any)._category ?? "social";
+      if (activeCategory === "all") return true;
       return cat === activeCategory;
     });
     return [...relevantPending, ...filtered];
@@ -623,7 +627,7 @@ export default function FeedScreen() {
             <Feather name="user-x" size={17} color="#fff" />
           </View>
         ) : (
-          <GradientAvatar name={user?.name || "?"} avatar={user?.avatar} size={36} />
+          <GradientAvatar name={user?.name || "?"} avatar={user?.avatar ?? undefined} size={36} />
         )}
         <View style={[styles.createInput, { backgroundColor: isDark ? C.backgroundSecondary : "#F5F3EF", borderColor: borderCol }]}>
           <Text style={[styles.createPlaceholder, { color: mutedCol }]}>

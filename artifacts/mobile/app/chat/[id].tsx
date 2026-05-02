@@ -145,13 +145,15 @@ export default function ChatDetailScreen() {
   const keyboardVisible = useKeyboardState((s) => s.isVisible);
   const inputRef = useRef<TextInput>(null);
 
-  const { isOnline, enqueue, retryItem, getQueuedMessages } = useOfflineQueue();
+  const { isOnline, queue, enqueue, retryItem } = useOfflineQueue();
 
-  // Hydrate persisted queued messages into the cache after a cold-start so
-  // pending/failed bubbles are visible even before the user sends anything.
+  // Hydrate queued messages into the cache reactively — re-runs whenever the
+  // queue changes (including initial load from AsyncStorage on cold start).
   useEffect(() => {
     if (!id) return;
-    const queued = getQueuedMessages(id, "dm_message");
+    const queued = queue.filter(
+      i => i.type === "dm_message" && i.payload.conversationId === id,
+    );
     if (queued.length === 0) return;
     queryClient.setQueryData(["messages", id], (old: any) => {
       const fp = old?.pages?.[0] ?? { messages: [], nextCursor: null };
@@ -174,7 +176,7 @@ export default function ChatDetailScreen() {
       }
       return { ...old, pages: [{ ...fp, messages: updated }, ...old.pages.slice(1)] };
     });
-  }, [id, getQueuedMessages, queryClient]);
+  }, [id, queue, queryClient]);
 
   const handleRetry = useCallback((msg: any) => {
     queryClient.setQueryData(["messages", id], (old: any) => {
@@ -276,10 +278,30 @@ export default function ChatDetailScreen() {
         return { ...old, pages: [{ ...firstPage, messages: updated }, ...old.pages.slice(1)] };
       });
     },
-    onError: (_err, _content, context) => {
-      if (context?.previous) {
-        queryClient.setQueryData(["messages", id], context.previous);
+    onError: (_err, content, context) => {
+      if (!context?.tempId) {
+        if (context?.previous) queryClient.setQueryData(["messages", id], context.previous);
+        return;
       }
+      // Network/server failure while seemingly online: keep the bubble as
+      // "pending" and hand it to the offline queue for retry instead of
+      // reverting so the user never loses their message.
+      queryClient.setQueryData(["messages", id], (old: any) => {
+        if (!old?.pages) return old;
+        const fp = old.pages[0];
+        if (!fp) return old;
+        const messages = (fp.messages ?? []).map((m: any) =>
+          m.id === context.tempId ? { ...m, status: "pending" } : m,
+        );
+        return { ...old, pages: [{ ...fp, messages }, ...old.pages.slice(1)] };
+      });
+      enqueue("dm_message", {
+        conversationId: id,
+        content,
+        senderId: user?.id,
+        senderName: user?.name,
+        senderAvatar: user?.avatar ?? null,
+      }, context.tempId);
     },
   });
 
