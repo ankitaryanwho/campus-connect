@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db, pool } from "@workspace/db";
 import { conversationsTable, messagesTable, usersTable, chatroomsTable } from "@workspace/db/schema";
-import { eq, or, and, desc, lt, gt, gte, inArray } from "drizzle-orm";
+import { eq, or, and, desc, lt, gte, inArray } from "drizzle-orm";
 import { authMiddleware } from "../lib/auth";
 import { generateId } from "../lib/id";
 import { pickConversationUser, pickMessageSender } from "../lib/userFields";
@@ -249,7 +249,13 @@ router.get("/conversations/:conversationId/stream", authMiddleware, async (req, 
         const missed = await db.select().from(messagesTable)
           .where(and(
             eq(messagesTable.conversationId, conversationId),
-            gte(messagesTable.createdAt, sinceRows[0].createdAt),
+            or(
+              gte(messagesTable.createdAt, new Date(sinceRows[0].createdAt.getTime() + 1)),
+              and(
+                eq(messagesTable.createdAt, sinceRows[0].createdAt),
+                gte(messagesTable.id, since as string),
+              ),
+            ),
           ))
           .orderBy(messagesTable.createdAt, messagesTable.id);
         if (missed.length) {
@@ -498,7 +504,13 @@ router.get("/chatrooms/:chatroomId/stream", authMiddleware, async (req, res) => 
         const missed = await db.select().from(messagesTable)
           .where(and(
             eq(messagesTable.chatroomId, chatroomId),
-            gte(messagesTable.createdAt, sinceRows[0].createdAt),
+            or(
+              gte(messagesTable.createdAt, new Date(sinceRows[0].createdAt.getTime() + 1)),
+              and(
+                eq(messagesTable.createdAt, sinceRows[0].createdAt),
+                gte(messagesTable.id, since as string),
+              ),
+            ),
           ))
           .orderBy(messagesTable.createdAt, messagesTable.id);
         if (missed.length) {
