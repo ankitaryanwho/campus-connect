@@ -57,12 +57,28 @@ export const postsCache     = new TrackedCache<object>("posts",     200, 120);
 export const chatroomsCache = new TrackedCache<object>("chatrooms",  50, 180);
 export const usersCache     = new TrackedCache<object>("users",     500, 300);
 
-// Paginated message pages keyed by `{conversationId|chatroomId}|{cursor}|{limit}`.
-// 60-second TTL — fresh enough to avoid stale reads, old enough to serve repeated
-// scroll-ups without hitting the database.
+// Paginated message pages.
+// DM pages are user-specific (isSelf flag, anonymous masking) so userId is part of the key.
+// Chatroom pages are not user-specific.
+// 60-second TTL — fresh enough to avoid stale reads, old enough to serve repeated scroll-ups.
 export const messagesPageCache = new TrackedCache<object>("messages", 500, 60);
 
-/** Build the cache key for a paginated message page. */
-export function messagePageKey(channelId: string, cursor: string | undefined, limit: number): string {
-  return `${channelId}|${cursor ?? ""}|${limit}`;
+/** Cache key for a paginated DM conversation page (user-specific). */
+export function dmPageKey(conversationId: string, userId: string, cursor: string | undefined, limit: number): string {
+  return `conversation:${conversationId}|${userId}|${cursor ?? ""}|${limit}`;
+}
+
+/** Cache key for a paginated chatroom message page (shared across users). */
+export function chatroomPageKey(chatroomId: string, cursor: string | undefined, limit: number): string {
+  return `chatroom:${chatroomId}|${cursor ?? ""}|${limit}`;
+}
+
+/** Prefix used to invalidate all cached DM pages for a conversation (all users). */
+export function dmInvalidationPrefix(conversationId: string): string {
+  return `conversation:${conversationId}|`;
+}
+
+/** Prefix used to invalidate all cached chatroom pages. */
+export function chatroomInvalidationPrefix(chatroomId: string): string {
+  return `chatroom:${chatroomId}|`;
 }

@@ -5,7 +5,7 @@ import { eq, or, and, desc, lt, inArray } from "drizzle-orm";
 import { authMiddleware } from "../lib/auth";
 import { generateId } from "../lib/id";
 import { pickConversationUser, pickMessageSender } from "../lib/userFields";
-import { chatroomsCache, messagesPageCache, messagePageKey } from "../lib/cache";
+import { chatroomsCache, messagesPageCache, dmPageKey, chatroomPageKey, dmInvalidationPrefix, chatroomInvalidationPrefix } from "../lib/cache";
 
 const router = Router();
 
@@ -261,15 +261,25 @@ router.get("/conversations/:conversationId/messages", authMiddleware, async (req
     const rawLimit = parseInt(req.query["limit"] as string || "30", 10);
     const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 50) : 30;
 
-    const cacheKey = messagePageKey(conversationId, cursor, limit);
+    // Authorization: fetch and validate participation before touching the cache
+    const convRows = await db.select().from(conversationsTable).where(eq(conversationsTable.id, conversationId)).limit(1);
+    const conv = convRows[0];
+    if (!conv) {
+      res.status(404).json({ error: "NotFound", message: "Conversation not found" });
+      return;
+    }
+    if (conv.participant1Id !== userId && conv.participant2Id !== userId) {
+      res.status(403).json({ error: "Forbidden", message: "Not a participant" });
+      return;
+    }
+
+    // User-scoped key: isSelf and anonymous masking are requester-specific
+    const cacheKey = dmPageKey(conversationId, userId, cursor, limit);
     const cached = messagesPageCache.get(cacheKey);
     if (cached) {
       res.json(cached);
       return;
     }
-
-    const convRows = await db.select().from(conversationsTable).where(eq(conversationsTable.id, conversationId)).limit(1);
-    const conv = convRows[0];
 
     // Resolve cursor to a timestamp — scoped to this conversation to prevent cross-thread leakage
     let cursorDate: Date | undefined;
@@ -361,8 +371,8 @@ router.post("/conversations/:conversationId/messages", authMiddleware, async (re
     }
 
     const messagePayload = { ...msgs[0], senderId: undefined, sender };
-    // Invalidate all cached pages for this conversation so the next read is fresh
-    messagesPageCache.deleteByPrefix(`${conversationId}|`);
+    // Invalidate all cached pages for this conversation (all users) so the next read is fresh
+    messagesPageCache.deleteByPrefix(dmInvalidationPrefix(conversationId));
     pushSSE(conversationClients, conversationId, messagePayload);
     res.status(201).json({ ...messagePayload, isSelf: true });
   } catch (err) {
@@ -468,7 +478,7 @@ router.get("/chatrooms/:chatroomId/messages", authMiddleware, async (req, res) =
     const rawLimit = parseInt(req.query["limit"] as string || "30", 10);
     const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 50) : 30;
 
-    const cacheKey = messagePageKey(chatroomId, cursor, limit);
+    const cacheKey = chatroomPageKey(chatroomId, cursor, limit);
     const cached = messagesPageCache.get(cacheKey);
     if (cached) {
       res.json(cached);
@@ -541,7 +551,7 @@ router.post("/chatrooms/:chatroomId/messages", authMiddleware, async (req, res) 
     const chatroomPayload = { ...msgs[0], senderId: undefined, sender: pickMessageSender(sendersMap.get(userId)) };
     chatroomsCache.delete("all");
     // Invalidate all cached pages for this chatroom so the next read is fresh
-    messagesPageCache.deleteByPrefix(`${chatroomId}|`);
+    messagesPageCache.deleteByPrefix(chatroomInvalidationPrefix(chatroomId));
     pushSSE(chatroomClients, chatroomId, chatroomPayload);
     res.status(201).json(chatroomPayload);
   } catch (err) {
