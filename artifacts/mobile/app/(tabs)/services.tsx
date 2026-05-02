@@ -2250,8 +2250,12 @@ export default function ServicesScreen() {
     retry: 1,
   });
 
-  // Set hasLoaded on first visit and refetch immediately on every revisit so
-  // we don't have to wait for the next poll interval to see fresh data.
+  // Services is intentionally exempt from the 60 s staleTime tab-revisit
+  // contract used by Chat, Wallet, and Profile. Order statuses change in
+  // real time so we always want the latest data when the user returns to
+  // this tab rather than serving a potentially 59-second-old snapshot.
+  // Task #32 will make this conditional on actual staleness rather than
+  // firing on every focus unconditionally.
   useFocusEffect(
     useCallback(() => {
       setHasLoaded(true);
