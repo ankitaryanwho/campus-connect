@@ -32,7 +32,6 @@
     "nodemailer": "^8.0.3",
     "pg": "^8.20.0",
     "resend": "4.0.0",
-    "@sentry/node": "^8",
     "sharp": "^0.34.5"
   },
   "devDependencies": {
