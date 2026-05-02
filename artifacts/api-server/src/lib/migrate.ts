@@ -3,12 +3,33 @@ import fs from "node:fs";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import path from "path";
+import { fileURLToPath } from "url";
 import { pool } from "@workspace/db";
 
-// pnpm always sets cwd to the package directory (artifacts/api-server/) when
-// running scripts, so this path is stable in both dev (tsx) and production
-// (node dist/index.cjs).
-const MIGRATIONS_FOLDER = path.resolve(process.cwd(), "../../lib/db/migrations");
+// Walk up from a directory until pnpm-workspace.yaml is found.
+function findWorkspaceRoot(start: string): string {
+  let dir = start;
+  for (let i = 0; i < 10; i++) {
+    if (fs.existsSync(path.join(dir, "pnpm-workspace.yaml"))) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  throw new Error(`pnpm-workspace.yaml not found from ${start}`);
+}
+
+// In ESM (tsx dev), import.meta.url is the source file path; walk up from there.
+// In esbuild CJS bundles, import.meta is an empty object so .url is undefined
+// at runtime; fall back to process.cwd(), which is the workspace root when the
+// deployment command runs as "node artifacts/api-server/dist/index.cjs" from
+// the repo root (as configured in .replit), or the package dir when run via
+// pnpm scripts — both are valid starting points for the upward walk.
+const MIGRATIONS_FOLDER = (() => {
+  const startDir = import.meta.url
+    ? path.dirname(fileURLToPath(import.meta.url))
+    : process.cwd();
+  return path.join(findWorkspaceRoot(startDir), "lib/db/migrations");
+})();
 
 export async function runStartupMigrations() {
   const client = await pool.connect();
@@ -34,8 +55,7 @@ export async function runStartupMigrations() {
     for (const entry of journal.entries) {
       if (trackedTimestamps.has(entry.when)) continue;
 
-      // 0000 uses plain CREATE TABLE; baseline it on existing databases so
-      // Drizzle does not attempt to re-run it.
+      // 0000 uses plain CREATE TABLE; baseline it when tables already exist.
       if (entry.idx === 0) {
         const { rows } = await client.query<{ exists: boolean }>(`
           SELECT EXISTS (
@@ -53,8 +73,8 @@ export async function runStartupMigrations() {
           console.log(`[migrate] Baselined existing migration: ${entry.tag}`);
         }
       }
-      // 0001 uses CREATE INDEX IF NOT EXISTS throughout — safe to run on any
-      // database, so no baselining is needed; Drizzle's migrate() handles it.
+      // 0001 uses CREATE INDEX IF NOT EXISTS throughout — Drizzle's migrate()
+      // runs it safely on any database without pre-baselining.
     }
 
     const db = drizzle(client);
