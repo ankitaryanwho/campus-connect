@@ -1,5 +1,16 @@
+import { getTransformedUrl } from "./cloudinary";
+
 // Field whitelists for user objects returned in API responses.
 // Keeps payloads lean by omitting internal flags and rarely-used columns.
+
+function transformAvatar(avatar: string | null): string | null {
+  if (!avatar) return null;
+  // If it's a Cloudinary public ID (doesn't start with http/data:)
+  if (avatar && !avatar.startsWith("http") && !avatar.startsWith("data:")) {
+    return getTransformedUrl(avatar, "thumbnail");
+  }
+  return avatar;
+}
 
 // For post authors and comment authors — the full public display shape.
 // Matches spec: id, name, avatar, college, program, year, verified,
@@ -9,7 +20,7 @@ export function pickPublicUser(user: any): any {
   return {
     id: user.id,
     name: user.name,
-    avatar: user.avatar ?? null,
+    avatar: transformAvatar(user.avatar),
     college: user.college ?? null,
     program: user.program ?? null,
     year: user.year ?? null,
@@ -26,7 +37,7 @@ export function pickConversationUser(user: any): any {
   return {
     id: user.id,
     name: user.name,
-    avatar: user.avatar ?? null,
+    avatar: transformAvatar(user.avatar),
     college: user.college ?? null,
     program: user.program ?? null,
   };
@@ -38,7 +49,7 @@ export function pickMessageSender(user: any): { id: string; name: string; avatar
   return {
     id: user.id,
     name: user.name ?? "",
-    avatar: user.avatar ?? null,
+    avatar: transformAvatar(user.avatar),
   };
 }
 
@@ -46,5 +57,8 @@ export function pickMessageSender(user: any): { id: string; name: string; avatar
 export function pickFullUser(user: any): any {
   if (!user) return null;
   const { passwordHash: _, ...rest } = user;
-  return rest;
+  return {
+    ...rest,
+    avatar: transformAvatar(rest.avatar)
+  };
 }

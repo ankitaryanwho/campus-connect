@@ -4,6 +4,7 @@ import compression from "compression";
 import http2 from "node:http2";
 import path from "path";
 import type { Socket } from "net";
+import { rateLimit } from "express-rate-limit";
 import * as Sentry from "@sentry/node";
 import router from "./routes";
 
@@ -139,6 +140,51 @@ app.use("/api", (req, res, next) => {
   });
   next();
 });
+
+// ─── Rate Limiting ──────────────────────────────────────────────────────────
+const isTest = process.env.NODE_ENV === "test";
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () => isTest,
+  message: {
+    error: "TooManyRequests",
+    message: "Too many login attempts, please try again after 15 minutes",
+  },
+});
+
+const batchLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () => isTest,
+  message: {
+    error: "TooManyRequests",
+    message: "Too many batch requests, please try again in a minute",
+  },
+});
+
+const chatLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  limit: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () => isTest,
+  message: {
+    error: "TooManyRequests",
+    message: "Too many chat requests, please try again in a minute",
+  },
+});
+
+app.use("/api/auth/login", loginLimiter);
+app.use("/api/auth/send-otp", loginLimiter);
+app.use("/api/batch", batchLimiter);
+app.use("/api/chat", chatLimiter);
+// ─────────────────────────────────────────────────────────────────────────────
 
 app.use("/api", router);
 

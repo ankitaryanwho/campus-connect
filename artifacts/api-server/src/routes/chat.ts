@@ -5,7 +5,7 @@ import { eq, or, and, desc, lt, gte, inArray } from "drizzle-orm";
 import { authMiddleware } from "../lib/auth";
 import { generateId } from "../lib/id";
 import { pickConversationUser, pickMessageSender } from "../lib/userFields";
-import { chatroomsCache, messagesPageCache, dmPageKey, chatroomPageKey, dmInvalidationPrefix, chatroomInvalidationPrefix } from "../lib/cache";
+import { chatroomsCache, messagesPageCache, dmPageKey, chatroomPageKey, dmInvalidationPrefix, chatroomInvalidationPrefix, publish, subscribe } from "../lib/cache";
 
 const router = Router();
 
@@ -16,18 +16,24 @@ const conversationClients = new Map<string, Set<any>>();
 const chatroomClients     = new Map<string, Set<any>>();
 
 function pushSSE(map: Map<string, Set<any>>, channelId: string, payload: object) {
+  // 1. Local fan-out (always keep for dev/single-node fallback)
   const clients = map.get(channelId);
-  if (!clients?.size) return;
-  const frame = `data: ${JSON.stringify(payload)}\n\n`;
-  for (const client of clients) {
-    try {
-      client.write(frame);
-    } catch {
-      // Remove stale/closed connections immediately
-      clients.delete(client);
+  if (clients?.size) {
+    const frame = `data: ${JSON.stringify(payload)}\n\n`;
+    for (const client of clients) {
+      try {
+        client.write(frame);
+      } catch {
+        clients.delete(client);
+      }
     }
+    if (!clients.size) map.delete(channelId);
   }
-  if (!clients.size) map.delete(channelId);
+
+  // 2. Redis fan-out
+  const isDM = map === conversationClients;
+  const channel = isDM ? `cc:chat:dm:${channelId}` : `cc:chat:room:${channelId}`;
+  publish(channel, payload);
 }
 
 // ─── Shared Helpers ──────────────────────────────────────────────────────────
@@ -180,10 +186,11 @@ router.post("/conversations", authMiddleware, async (req, res) => {
       const realSelf = usersMap.get(userId);
       const other = pickConversationUser(usersMap.get(participantId) || null);
       const anonSelf = buildAnonUser(realSelf);
-      return res.json({
+      res.json({
         id: conv.id, isAnonymous: true, anonymousPostId,
         participants: [anonSelf, other], lastMessage: null, unreadCount: 0, updatedAt: conv.updatedAt,
       });
+      return;
     }
 
     const existing = await db.select().from(conversationsTable)
@@ -279,12 +286,21 @@ router.get("/conversations/:conversationId/stream", authMiddleware, async (req, 
   if (!conversationClients.has(conversationId)) conversationClients.set(conversationId, new Set());
   conversationClients.get(conversationId)!.add(res);
 
+  const redisUnsub = subscribe(`cc:chat:dm:${conversationId}`, (payload) => {
+    try {
+      res.write(`data: ${JSON.stringify(payload)}\n\n`);
+    } catch {
+      // client likely closed
+    }
+  });
+
   const heartbeat = setInterval(() => {
     try { res.write(": ping\n\n"); } catch { clearInterval(heartbeat); }
   }, 25_000);
 
   req.on("close", () => {
     clearInterval(heartbeat);
+    redisUnsub();
     const s = conversationClients.get(conversationId);
     if (s) { s.delete(res); if (!s.size) conversationClients.delete(conversationId); }
   });
@@ -530,12 +546,21 @@ router.get("/chatrooms/:chatroomId/stream", authMiddleware, async (req, res) => 
   if (!chatroomClients.has(chatroomId)) chatroomClients.set(chatroomId, new Set());
   chatroomClients.get(chatroomId)!.add(res);
 
+  const redisUnsub = subscribe(`cc:chat:room:${chatroomId}`, (payload) => {
+    try {
+      res.write(`data: ${JSON.stringify(payload)}\n\n`);
+    } catch {
+      // client likely closed
+    }
+  });
+
   const heartbeat = setInterval(() => {
     try { res.write(": ping\n\n"); } catch { clearInterval(heartbeat); }
   }, 25_000);
 
   req.on("close", () => {
     clearInterval(heartbeat);
+    redisUnsub();
     const s = chatroomClients.get(chatroomId);
     if (s) { s.delete(res); if (!s.size) chatroomClients.delete(chatroomId); }
   });

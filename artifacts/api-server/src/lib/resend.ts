@@ -27,7 +27,7 @@ async function getCredentials(): Promise<{ apiKey: string; fromEmail: string }> 
       }
     )
       .then((res) => res.json())
-      .then((data) => data.items?.[0])
+      .then((data: any) => data.items?.[0])
       .catch(() => null);
 
     if (item?.settings?.api_key) {

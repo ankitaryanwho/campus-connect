@@ -12,7 +12,7 @@ if (!dbUrl) {
   );
 }
 
-export const pool = new Pool({ connectionString: dbUrl });
+export const pool = new Pool({ connectionString: dbUrl, max: 25 });
 export const db = drizzle(pool, { schema });
 
 export * from "./schema";

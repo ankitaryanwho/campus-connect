@@ -22,9 +22,60 @@ const redisClient: Redis | null = REDIS_URL
   ? new Redis(REDIS_URL, { maxRetriesPerRequest: 3, enableReadyCheck: false, lazyConnect: false })
   : null;
 
+const subClient: Redis | null = REDIS_URL
+  ? new Redis(REDIS_URL, { maxRetriesPerRequest: null, enableReadyCheck: false, lazyConnect: false })
+  : null;
+
 redisClient?.on("error", (err: Error) => {
   if (IS_DEV) console.warn("[redis] Connection error:", err.message);
 });
+
+subClient?.on("error", (err: Error) => {
+  if (IS_DEV) console.warn("[redis-sub] Connection error:", err.message);
+});
+
+/** 
+ * Publish a payload to a Redis channel. 
+ * Falls back to no-op if Redis is absent.
+ */
+export async function publish(channel: string, payload: object): Promise<void> {
+  if (!redisClient) return;
+  try {
+    await redisClient.publish(channel, JSON.stringify(payload));
+  } catch (err) {
+    console.warn(`[redis] publish to ${channel} failed:`, (err as Error).message);
+  }
+}
+
+/** 
+ * Subscribe to a Redis channel and execute a callback on message.
+ * Returns an unsubscribe function.
+ * Falls back to no-op if Redis is absent.
+ */
+export function subscribe(channel: string, cb: (payload: any) => void): () => void {
+  if (!subClient) return () => {};
+
+  const onMessage = (chan: string, msg: string) => {
+    if (chan === channel) {
+      try {
+        cb(JSON.parse(msg));
+      } catch (err) {
+        console.warn(`[redis] subscribe parse failed on ${channel}:`, (err as Error).message);
+      }
+    }
+  };
+
+  subClient.subscribe(channel).catch(err => {
+    console.warn(`[redis] subscribe to ${channel} failed:`, err.message);
+  });
+  
+  subClient.on("message", onMessage);
+
+  return () => {
+    subClient.off("message", onMessage);
+    subClient.unsubscribe(channel).catch(() => {});
+  };
+}
 
 // ─── Shared interface ─────────────────────────────────────────────────────────
 

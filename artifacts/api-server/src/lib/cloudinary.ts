@@ -45,10 +45,26 @@ async function processImage(input: string | Buffer, folder: string): Promise<str
   return `data:image/webp;base64,${webpBuffer.toString("base64")}`;
 }
 
+export function getTransformedUrl(publicId: string, variant: 'thumbnail' | 'medium' | 'full'): string {
+  const { cloudName } = getConfig();
+  const baseUrl = `https://res.cloudinary.com/${cloudName}/image/upload`;
+  
+  switch (variant) {
+    case 'thumbnail':
+      return `${baseUrl}/w_150,h_150,c_fill,f_auto,q_auto/${publicId}`;
+    case 'medium':
+      return `${baseUrl}/w_600,h_400,c_limit,f_auto,q_auto/${publicId}`;
+    case 'full':
+    default:
+      return `${baseUrl}/f_auto,q_auto/${publicId}`;
+  }
+}
+
 export async function uploadImage(
   input: string | Buffer,
   folder = "campusconnect",
-): Promise<string> {
+  eager: any[] = []
+): Promise<{ secure_url: string; public_id: string }> {
   const { cloudName, apiKey, apiSecret } = getConfig();
 
   cloudinary.config({ cloud_name: cloudName, api_key: apiKey, api_secret: apiSecret });
@@ -58,7 +74,14 @@ export async function uploadImage(
   const result = await cloudinary.uploader.upload(dataUri, {
     folder,
     resource_type: "image",
+    eager: eager.length > 0 ? eager : [
+      { width: 150, height: 150, crop: 'fill' },
+      { width: 600, height: 400, crop: 'limit' }
+    ]
   });
 
-  return result.secure_url;
+  return {
+    secure_url: result.secure_url,
+    public_id: result.public_id
+  };
 }

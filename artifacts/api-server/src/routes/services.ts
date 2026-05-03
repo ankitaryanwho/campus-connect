@@ -311,7 +311,7 @@ router.post("/assignments", authMiddleware, async (req, res) => {
 router.post("/assignments/:id/book", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { id } = req.params;
+    const id = req.params["id"] as string;
     const rows = await db.select().from(assignmentsTable).where(eq(assignmentsTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].posterId === userId) { res.status(400).json({ error: "Cannot book your own listing" }); return; }
@@ -362,7 +362,7 @@ router.post("/assignments/:id/book", authMiddleware, async (req, res) => {
 router.post("/assignments/:id/accept", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { id } = req.params;
+    const id = req.params["id"] as string;
     const rows = await db.select().from(assignmentsTable).where(eq(assignmentsTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].posterId !== userId) { res.status(403).json({ error: "Only the provider can accept" }); return; }
@@ -377,7 +377,7 @@ router.post("/assignments/:id/accept", authMiddleware, async (req, res) => {
 router.post("/assignments/:id/progress", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { id } = req.params;
+    const id = req.params["id"] as string;
     const rows = await db.select().from(assignmentsTable).where(eq(assignmentsTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].posterId !== userId) { res.status(403).json({ error: "Only the provider can update progress" }); return; }
@@ -395,7 +395,7 @@ router.post("/assignments/:id/progress", authMiddleware, async (req, res) => {
 router.post("/assignments/:id/confirm", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { id } = req.params;
+    const id = req.params["id"] as string;
     const rows = await db.select().from(assignmentsTable).where(eq(assignmentsTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].status !== "completed") { res.status(400).json({ error: "Must be completed first" }); return; }
@@ -482,7 +482,7 @@ router.post("/certifications", authMiddleware, async (req, res) => {
 router.post("/certifications/:id/book", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { id } = req.params;
+    const id = req.params["id"] as string;
     const rows = await db.select().from(certificationsTable).where(eq(certificationsTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].posterId === userId) { res.status(400).json({ error: "Cannot book your own listing" }); return; }
@@ -529,7 +529,7 @@ router.post("/certifications/:id/book", authMiddleware, async (req, res) => {
 router.post("/certifications/:id/accept", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { id } = req.params;
+    const id = req.params["id"] as string;
     const rows = await db.select().from(certificationsTable).where(eq(certificationsTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].posterId !== userId) { res.status(403).json({ error: "Only the provider can accept" }); return; }
@@ -544,7 +544,7 @@ router.post("/certifications/:id/accept", authMiddleware, async (req, res) => {
 router.post("/certifications/:id/progress", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { id } = req.params;
+    const id = req.params["id"] as string;
     const rows = await db.select().from(certificationsTable).where(eq(certificationsTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].posterId !== userId) { res.status(403).json({ error: "Only the provider can update progress" }); return; }
@@ -562,7 +562,7 @@ router.post("/certifications/:id/progress", authMiddleware, async (req, res) => 
 router.post("/certifications/:id/confirm", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { id } = req.params;
+    const id = req.params["id"] as string;
     const rows = await db.select().from(certificationsTable).where(eq(certificationsTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].status !== "completed") { res.status(400).json({ error: "Must be completed first" }); return; }
@@ -608,7 +608,7 @@ router.patch("/outlet-items/:id", authMiddleware, async (req, res) => {
     const userId = (req as any).userId;
     const me = await currentUser(userId);
     if (me?.role !== "admin") { res.status(403).json({ error: "Admin only" }); return; }
-    const { id } = req.params;
+    const id = req.params["id"] as string;
     const { name, price, available } = req.body;
     const updates: any = {};
     if (name !== undefined) updates.name = name;
@@ -627,7 +627,7 @@ router.delete("/outlet-items/:id", authMiddleware, async (req, res) => {
     const userId = (req as any).userId;
     const me = await currentUser(userId);
     if (me?.role !== "admin") { res.status(403).json({ error: "Admin only" }); return; }
-    await db.delete(outletItemsTable).where(eq(outletItemsTable.id, req.params.id));
+    await db.delete(outletItemsTable).where(eq(outletItemsTable.id, req.params["id"] as string));
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: "ServerError", message: "Failed to delete outlet item" });
@@ -736,7 +736,7 @@ router.post("/deliveries", authMiddleware, async (req, res) => {
 router.get("/deliveries/:id", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { id } = req.params;
+    const id = req.params["id"] as string;
     const rows = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     const d = rows[0];
@@ -755,7 +755,7 @@ router.get("/deliveries/:id", authMiddleware, async (req, res) => {
 router.post("/deliveries/:id/accept", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { id } = req.params;
+    const id = req.params["id"] as string;
     const rows = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].requesterId === userId) { res.status(400).json({ error: "Cannot accept your own request" }); return; }
@@ -785,7 +785,7 @@ router.post("/deliveries/:id/accept", authMiddleware, async (req, res) => {
 router.post("/deliveries/:id/progress", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { id } = req.params;
+    const id = req.params["id"] as string;
     const rows = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].deliveryAgentId !== userId) { res.status(403).json({ error: "Only the delivery agent can update status" }); return; }
@@ -842,7 +842,7 @@ router.post("/deliveries/:id/progress", authMiddleware, async (req, res) => {
 router.post("/deliveries/:id/confirm", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { id } = req.params;
+    const id = req.params["id"] as string;
     const rows = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].requesterId !== userId) { res.status(403).json({ error: "Only the requester can confirm delivery" }); return; }
@@ -939,7 +939,7 @@ router.post("/deliveries/:id/confirm", authMiddleware, async (req, res) => {
 
 router.post("/deliveries/:id/reject", authMiddleware, async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = req.params["id"] as string;
     const updated = await db.update(deliveriesTable).set({ status: "pending", deliveryAgentId: null }).where(eq(deliveriesTable.id, id)).returning();
     res.json({ ...updated[0], requester: await safeUser(updated[0].requesterId), deliveryAgent: null });
   } catch (err) {
@@ -950,7 +950,7 @@ router.post("/deliveries/:id/reject", authMiddleware, async (req, res) => {
 router.post("/deliveries/:id/mark-paid", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { id } = req.params;
+    const id = req.params["id"] as string;
     const rows = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].requesterId !== userId) { res.status(403).json({ error: "Only the requester can mark as paid" }); return; }
@@ -976,7 +976,7 @@ router.post("/deliveries/:id/mark-paid", authMiddleware, async (req, res) => {
 router.post("/deliveries/:id/confirm-payment", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { id } = req.params;
+    const id = req.params["id"] as string;
     const rows = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].deliveryAgentId !== userId) { res.status(403).json({ error: "Only the delivery agent can confirm payment" }); return; }
@@ -999,7 +999,7 @@ router.post("/deliveries/:id/confirm-payment", authMiddleware, async (req, res) 
 router.post("/deliveries/:id/reject-payment", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { id } = req.params;
+    const id = req.params["id"] as string;
     const rows = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].deliveryAgentId !== userId) { res.status(403).json({ error: "Only the delivery agent can reject payment" }); return; }
@@ -1022,7 +1022,7 @@ router.post("/deliveries/:id/reject-payment", authMiddleware, async (req, res) =
 router.post("/deliveries/:id/payment-screenshot", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { id } = req.params;
+    const id = req.params["id"] as string;
     const { paymentScreenshotUrl } = req.body;
     if (!paymentScreenshotUrl) { res.status(400).json({ error: "paymentScreenshotUrl is required" }); return; }
     const rows = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
@@ -1048,7 +1048,7 @@ router.post("/deliveries/:id/payment-screenshot", authMiddleware, async (req, re
 router.post("/deliveries/:id/complete", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { id } = req.params;
+    const id = req.params["id"] as string;
     const rows = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].deliveryAgentId !== userId) { res.status(403).json({ error: "Only the delivery agent can mark complete" }); return; }
@@ -1081,7 +1081,7 @@ router.post("/deliveries/:id/complete", authMiddleware, async (req, res) => {
 router.post("/deliveries/:id/cancel", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { id } = req.params;
+    const id = req.params["id"] as string;
     const rows = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].requesterId !== userId) { res.status(403).json({ error: "Only the requester can cancel" }); return; }
@@ -1096,7 +1096,7 @@ router.post("/deliveries/:id/cancel", authMiddleware, async (req, res) => {
 router.post("/deliveries/:id/selfie", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { id } = req.params;
+    const id = req.params["id"] as string;
     const { selfieUrl } = req.body;
     if (!selfieUrl) { res.status(400).json({ error: "selfieUrl is required" }); return; }
     const rows = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
@@ -1112,7 +1112,7 @@ router.post("/deliveries/:id/selfie", authMiddleware, async (req, res) => {
 router.post("/deliveries/:id/location-photo", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { id } = req.params;
+    const id = req.params["id"] as string;
     const { locationPhotoUrl } = req.body;
     if (!locationPhotoUrl) { res.status(400).json({ error: "locationPhotoUrl is required" }); return; }
     const rows = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
@@ -1151,7 +1151,7 @@ router.post("/deliveries/:id/location-photo", authMiddleware, async (req, res) =
 router.post("/deliveries/:id/qr", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { id } = req.params;
+    const id = req.params["id"] as string;
     const { qrImageUrl } = req.body;
     if (!qrImageUrl) { res.status(400).json({ error: "qrImageUrl is required" }); return; }
     const rows = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
@@ -1177,7 +1177,7 @@ router.post("/deliveries/:id/qr", authMiddleware, async (req, res) => {
 router.post("/deliveries/:id/pay-delivery-charge", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { id } = req.params;
+    const id = req.params["id"] as string;
     const rows = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].requesterId !== userId) { res.status(403).json({ error: "Only the requester can pay the delivery charge" }); return; }
@@ -1218,7 +1218,7 @@ router.post("/deliveries/:id/pay-delivery-charge", authMiddleware, async (req, r
 router.post("/deliveries/:id/rate", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { id } = req.params;
+    const id = req.params["id"] as string;
     const { ratingHappiness, ratingHandling, ratingOnTime, ratingComment } = req.body;
     const rows = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
@@ -1273,7 +1273,7 @@ router.post("/tasks", authMiddleware, async (req, res) => {
 router.post("/tasks/:id/reject", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { id } = req.params;
+    const id = req.params["id"] as string;
     const rows = await db.select().from(tasksTable).where(eq(tasksTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].posterId !== userId) { res.status(403).json({ error: "Only the poster can reject" }); return; }
@@ -1291,7 +1291,7 @@ router.post("/tasks/:id/reject", authMiddleware, async (req, res) => {
 router.post("/tasks/:taskId/apply", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { taskId } = req.params;
+    const taskId = req.params["taskId"] as string;
     const existing = await db.select().from(taskApplicationsTable)
       .where(and(eq(taskApplicationsTable.taskId, taskId), eq(taskApplicationsTable.applicantId, userId)))
       .limit(1);
@@ -1441,7 +1441,7 @@ router.post("/projects", authMiddleware, async (req, res) => {
 router.post("/projects/:id/book", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { id } = req.params;
+    const id = req.params["id"] as string;
     const rows = await db.select().from(projectsTable).where(eq(projectsTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].posterId === userId) { res.status(400).json({ error: "Cannot book your own listing" }); return; }
@@ -1488,7 +1488,7 @@ router.post("/projects/:id/book", authMiddleware, async (req, res) => {
 router.post("/projects/:id/accept", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { id } = req.params;
+    const id = req.params["id"] as string;
     const rows = await db.select().from(projectsTable).where(eq(projectsTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].posterId !== userId) { res.status(403).json({ error: "Only the provider can accept" }); return; }
@@ -1503,7 +1503,7 @@ router.post("/projects/:id/accept", authMiddleware, async (req, res) => {
 router.post("/projects/:id/progress", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { id } = req.params;
+    const id = req.params["id"] as string;
     const rows = await db.select().from(projectsTable).where(eq(projectsTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].posterId !== userId) { res.status(403).json({ error: "Only the provider can update progress" }); return; }
@@ -1521,7 +1521,7 @@ router.post("/projects/:id/progress", authMiddleware, async (req, res) => {
 router.post("/projects/:id/confirm", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { id } = req.params;
+    const id = req.params["id"] as string;
     const rows = await db.select().from(projectsTable).where(eq(projectsTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].status !== "completed") { res.status(400).json({ error: "Must be completed first" }); return; }
@@ -1759,7 +1759,7 @@ router.get("/my-history", authMiddleware, async (req, res) => {
 router.post("/bookings/:id/accept", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { id } = req.params;
+    const id = req.params["id"] as string;
     const rows = await db.select().from(serviceBookingsTable).where(eq(serviceBookingsTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     const listing = await getListing(rows[0].serviceType, rows[0].listingId);
@@ -1785,7 +1785,7 @@ router.post("/bookings/:id/accept", authMiddleware, async (req, res) => {
 router.post("/bookings/:id/reject", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { id } = req.params;
+    const id = req.params["id"] as string;
     const rows = await db.select().from(serviceBookingsTable).where(eq(serviceBookingsTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     const listing = await getListing(rows[0].serviceType, rows[0].listingId);
@@ -1816,7 +1816,7 @@ router.post("/bookings/:id/reject", authMiddleware, async (req, res) => {
 router.post("/bookings/:id/progress", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { id } = req.params;
+    const id = req.params["id"] as string;
     const rows = await db.select().from(serviceBookingsTable).where(eq(serviceBookingsTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     const listing = await getListing(rows[0].serviceType, rows[0].listingId);
@@ -1850,7 +1850,7 @@ router.post("/bookings/:id/progress", authMiddleware, async (req, res) => {
 router.post("/bookings/:id/confirm", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { id } = req.params;
+    const id = req.params["id"] as string;
     const rows = await db.select().from(serviceBookingsTable).where(eq(serviceBookingsTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].studentId !== userId) { res.status(403).json({ error: "Only the student can confirm" }); return; }
@@ -1891,7 +1891,7 @@ router.post("/bookings/:id/confirm", authMiddleware, async (req, res) => {
 router.post("/assignments/:id/dismiss", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { id } = req.params;
+    const id = req.params["id"] as string;
     const rows = await db.select().from(assignmentsTable).where(eq(assignmentsTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].bookedById !== userId) { res.status(403).json({ error: "Only the booked student can dismiss" }); return; }
@@ -1904,7 +1904,7 @@ router.post("/assignments/:id/dismiss", authMiddleware, async (req, res) => {
 router.post("/certifications/:id/dismiss", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { id } = req.params;
+    const id = req.params["id"] as string;
     const rows = await db.select().from(certificationsTable).where(eq(certificationsTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].bookedById !== userId) { res.status(403).json({ error: "Only the booked student can dismiss" }); return; }
@@ -1917,7 +1917,7 @@ router.post("/certifications/:id/dismiss", authMiddleware, async (req, res) => {
 router.post("/projects/:id/dismiss", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { id } = req.params;
+    const id = req.params["id"] as string;
     const rows = await db.select().from(projectsTable).where(eq(projectsTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].bookedById !== userId) { res.status(403).json({ error: "Only the booked student can dismiss" }); return; }
@@ -1930,7 +1930,7 @@ router.post("/projects/:id/dismiss", authMiddleware, async (req, res) => {
 router.post("/bookings/:id/dismiss-rejection", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { id } = req.params;
+    const id = req.params["id"] as string;
     const rows = await db.select().from(serviceBookingsTable).where(eq(serviceBookingsTable.id, id)).limit(1);
     if (!rows.length) { res.status(404).json({ error: "NotFound" }); return; }
     if (rows[0].studentId !== userId) { res.status(403).json({ error: "Only the student can dismiss" }); return; }

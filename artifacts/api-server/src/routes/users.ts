@@ -11,7 +11,7 @@ const router = Router();
 router.get("/:userId", authMiddleware, async (req, res) => {
   try {
     const currentUserId = (req as any).userId;
-    const { userId } = req.params;
+    const userId = req.params["userId"] as string;
 
     // Cache only the user profile (not isFollowing — that is viewer-specific)
     let u = await usersCache.get(userId) as ReturnType<typeof pickFullUser> | undefined;
@@ -36,7 +36,7 @@ router.get("/:userId", authMiddleware, async (req, res) => {
 router.post("/:userId/follow", authMiddleware, async (req, res) => {
   try {
     const currentUserId = (req as any).userId;
-    const { userId } = req.params;
+    const userId = req.params["userId"] as string;
 
     if (currentUserId === userId) {
       res.status(400).json({ error: "BadRequest", message: "Cannot follow yourself" });
@@ -74,7 +74,7 @@ router.post("/:userId/follow", authMiddleware, async (req, res) => {
 router.get("/:userId/posts", authMiddleware, async (req, res) => {
   try {
     const requestingUserId = (req as any).userId;
-    const { userId } = req.params;
+    const userId = req.params["userId"] as string;
     const isOwnProfile = requestingUserId === userId;
 
     // For other users' profiles, hide anonymous posts AND hidden posts.

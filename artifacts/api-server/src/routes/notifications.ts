@@ -72,7 +72,7 @@ router.get("/", authMiddleware, async (req, res) => {
 
 router.post("/:notificationId/read", authMiddleware, async (req, res) => {
   try {
-    const { notificationId } = req.params;
+    const notificationId = req.params["notificationId"] as string;
     await db.update(notificationsTable).set({ isRead: true }).where(eq(notificationsTable.id, notificationId));
     res.json({ success: true });
   } catch (err) {

@@ -15,7 +15,8 @@ router.post("/sync/import", async (req, res) => {
   const { secret, userMap, newUsers, tableData } = req.body;
 
   if (secret !== SYNC_SECRET) {
-    return res.status(403).json({ error: "Unauthorized" });
+    res.status(403).json({ error: "Unauthorized" });
+    return;
   }
 
   const results: Record<string, any> = { errors: [] };

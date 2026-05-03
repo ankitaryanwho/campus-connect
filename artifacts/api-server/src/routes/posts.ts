@@ -1,11 +1,12 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { postsTable, usersTable, likesTable, commentsTable, notificationsTable } from "@workspace/db/schema";
-import { eq, desc, lt, and, or, ne, sql, inArray } from "drizzle-orm";
+import { eq, desc, lt, and, or, ne, sql, inArray, getTableColumns } from "drizzle-orm";
 import { authMiddleware } from "../lib/auth";
 import { generateId } from "../lib/id";
 import { pickPublicUser } from "../lib/userFields";
 import { postsCache } from "../lib/cache";
+import { getTransformedUrl } from "../lib/cloudinary";
 
 const router = Router();
 
@@ -38,7 +39,107 @@ function buildAnonAuthor(realAuthor: any) {
   };
 }
 
-// ─── Batch formatter: 2 queries for any number of posts ──────────────────────
+// ─── Visibility filter ────────────────────────────────────────────────────────
+
+function visibilityFilter(userId: string) {
+  return or(eq(postsTable.hidden, false), eq(postsTable.authorId, userId));
+}
+
+// ─── Batch formatter: Optimized single-query pattern ──────────────────────────
+
+async function getFormattedPosts(requestingUserId: string, limit: number, cursor?: string) {
+  let whereClause = visibilityFilter(requestingUserId);
+
+  if (cursor) {
+    const cursorPost = await db.select({ createdAt: postsTable.createdAt }).from(postsTable).where(eq(postsTable.id, cursor)).limit(1);
+    if (cursorPost.length) {
+      whereClause = and(lt(postsTable.createdAt, cursorPost[0].createdAt), whereClause);
+    }
+  }
+
+    const posts = await db.select({
+      id: postsTable.id,
+      content: postsTable.content,
+      mediaUrls: postsTable.mediaUrls,
+      authorId: postsTable.authorId,
+      isAnonymous: postsTable.isAnonymous,
+      category: postsTable.category,
+      likesCount: postsTable.likesCount,
+      commentsCount: postsTable.commentsCount,
+      hidden: postsTable.hidden,
+      editedAt: postsTable.editedAt,
+      createdAt: postsTable.createdAt,
+      authorName: usersTable.name,
+      authorAvatar: usersTable.avatar,
+      authorCollege: usersTable.college,
+      authorProgram: usersTable.program,
+      authorYear: usersTable.year,
+      authorGender: usersTable.gender,
+      authorVerified: usersTable.verified,
+      authorVerificationBadge: usersTable.verificationBadge,
+      isLiked: sql<boolean>`EXISTS (SELECT 1 FROM ${likesTable} WHERE ${likesTable.postId} = ${postsTable.id} AND ${likesTable.userId} = ${requestingUserId})`.as('is_liked'),
+    })
+    .from(postsTable)
+    .leftJoin(usersTable, eq(postsTable.authorId, usersTable.id))
+    .where(whereClause)
+    .orderBy(desc(postsTable.createdAt))
+    .limit(limit + 1);
+
+  const hasMore = posts.length > limit;
+  const data = posts.slice(0, limit);
+
+  const formattedPosts = data.map(post => {
+    const isOwnPost = post.authorId === requestingUserId;
+    const rawAuthor = {
+      id: post.authorId,
+      name: post.authorName,
+      avatar: post.authorAvatar,
+      college: post.authorCollege,
+      program: post.authorProgram,
+      year: post.authorYear,
+      gender: post.authorGender,
+      verified: post.authorVerified,
+      verificationBadge: post.authorVerificationBadge,
+    };
+
+    const parsedMedia: string[] = JSON.parse(post.mediaUrls || "[]");
+
+    const author = (post.isAnonymous && !isOwnPost)
+      ? buildAnonAuthor(rawAuthor)
+      : pickPublicUser(rawAuthor);
+
+    const mediaUrls = parsedMedia.map((m: string) => {
+      if (m && !m.startsWith("http") && !m.startsWith("data:")) {
+        return getTransformedUrl(m, "medium");
+      }
+      return m;
+    });
+
+    const result: any = {
+      ...post,
+      authorName: undefined,
+      authorAvatar: undefined,
+      authorCollege: undefined,
+      authorProgram: undefined,
+      authorYear: undefined,
+      authorGender: undefined,
+      authorVerified: undefined,
+      authorVerificationBadge: undefined,
+      authorId: undefined,
+      author,
+      isOwnPost,
+      isLiked: post.isLiked,
+    };
+    if (mediaUrls.length) result.mediaUrls = mediaUrls;
+    else delete result.mediaUrls;
+    return result;
+  });
+
+  return {
+    posts: formattedPosts,
+    nextCursor: hasMore ? data[data.length - 1].id : null,
+  };
+}
 
 async function formatPosts(posts: any[], requestingUserId: string): Promise<any[]> {
   if (!posts.length) return [];
@@ -63,6 +164,12 @@ async function formatPosts(posts: any[], requestingUserId: string): Promise<any[
       ? buildAnonAuthor(rawAuthor)
       : pickPublicUser(rawAuthor);
     const parsedMedia: string[] = JSON.parse(post.mediaUrls || "[]");
+    const mediaUrls = parsedMedia.map(m => {
+      if (m && !m.startsWith("http") && !m.startsWith("data:")) {
+        return getTransformedUrl(m, "medium");
+      }
+      return m;
+    });
     const result: any = {
       ...post,
       authorId: undefined,
@@ -70,7 +177,7 @@ async function formatPosts(posts: any[], requestingUserId: string): Promise<any[
       isOwnPost,
       isLiked: likedSet.has(post.id),
     };
-    if (parsedMedia.length) result.mediaUrls = parsedMedia;
+    if (mediaUrls.length) result.mediaUrls = mediaUrls;
     else delete result.mediaUrls;
     return result;
   });
@@ -80,12 +187,6 @@ async function formatPosts(posts: any[], requestingUserId: string): Promise<any[
 async function formatPost(post: any, requestingUserId: string) {
   const [formatted] = await formatPosts([post], requestingUserId);
   return formatted;
-}
-
-// ─── Visibility filter ────────────────────────────────────────────────────────
-
-function visibilityFilter(userId: string) {
-  return or(eq(postsTable.hidden, false), eq(postsTable.authorId, userId));
 }
 
 // ─── Routes ──────────────────────────────────────────────────────────────────
@@ -103,24 +204,7 @@ router.get("/", authMiddleware, async (req, res) => {
       return;
     }
 
-    let query = db.select().from(postsTable)
-      .where(visibilityFilter(userId))
-      .orderBy(desc(postsTable.createdAt)).limit(limit + 1);
-    if (cursor) {
-      const cursorPost = await db.select().from(postsTable).where(eq(postsTable.id, cursor)).limit(1);
-      if (cursorPost.length) {
-        query = db.select().from(postsTable)
-          .where(and(lt(postsTable.createdAt, cursorPost[0].createdAt), visibilityFilter(userId)))
-          .orderBy(desc(postsTable.createdAt)).limit(limit + 1);
-      }
-    }
-
-    const posts = await query;
-    const hasMore = posts.length > limit;
-    const data = posts.slice(0, limit);
-    const formattedPosts = await formatPosts(data, userId);
-
-    const payload = { posts: formattedPosts, nextCursor: hasMore ? data[data.length - 1].id : null };
+    const payload = await getFormattedPosts(userId, limit, cursor);
     await postsCache.set(cacheKey, payload);
     res.json(payload);
   } catch (err) {
@@ -156,8 +240,8 @@ router.post("/", authMiddleware, async (req, res) => {
     });
     await db.update(usersTable).set({ postsCount: sql`${usersTable.postsCount} + 1` }).where(eq(usersTable.id, userId));
 
-    const post = await db.select().from(postsTable).where(eq(postsTable.id, postId)).limit(1);
-    const formatted = await formatPost(post[0], userId);
+    const postRows = await db.select().from(postsTable).where(eq(postsTable.id, postId)).limit(1);
+    const formatted = await formatPost(postRows[0], userId);
     await postsCache.clear();
     res.status(201).json(formatted);
   } catch (err) {
@@ -169,7 +253,7 @@ router.post("/", authMiddleware, async (req, res) => {
 router.get("/:postId", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { postId } = req.params;
+    const postId = req.params["postId"] as string;
     const posts = await db.select().from(postsTable).where(eq(postsTable.id, postId)).limit(1);
     if (!posts.length) {
       res.status(404).json({ error: "NotFound", message: "Post not found" });
@@ -189,7 +273,7 @@ router.get("/:postId", authMiddleware, async (req, res) => {
 router.patch("/:postId", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { postId } = req.params;
+    const postId = req.params["postId"] as string;
     const { content } = req.body;
     if (!content || !content.trim()) {
       res.status(400).json({ error: "ValidationError", message: "Content is required" });
@@ -219,7 +303,7 @@ router.patch("/:postId", authMiddleware, async (req, res) => {
 router.post("/:postId/hide", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { postId } = req.params;
+    const postId = req.params["postId"] as string;
     const posts = await db.select().from(postsTable).where(eq(postsTable.id, postId)).limit(1);
     if (!posts.length || posts[0].authorId !== userId) {
       res.status(403).json({ error: "Forbidden", message: "Cannot hide this post" });
@@ -236,7 +320,7 @@ router.post("/:postId/hide", authMiddleware, async (req, res) => {
 router.post("/:postId/unhide", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { postId } = req.params;
+    const postId = req.params["postId"] as string;
     const posts = await db.select().from(postsTable).where(eq(postsTable.id, postId)).limit(1);
     if (!posts.length || posts[0].authorId !== userId) {
       res.status(403).json({ error: "Forbidden", message: "Cannot unhide this post" });
@@ -253,7 +337,7 @@ router.post("/:postId/unhide", authMiddleware, async (req, res) => {
 router.delete("/:postId", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { postId } = req.params;
+    const postId = req.params["postId"] as string;
     const posts = await db.select().from(postsTable).where(eq(postsTable.id, postId)).limit(1);
     if (!posts.length || posts[0].authorId !== userId) {
       res.status(403).json({ error: "Forbidden", message: "Cannot delete this post" });
@@ -274,7 +358,7 @@ router.delete("/:postId", authMiddleware, async (req, res) => {
 router.post("/:postId/like", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { postId } = req.params;
+    const postId = req.params["postId"] as string;
     const targetRows = await db.select().from(postsTable).where(eq(postsTable.id, postId)).limit(1);
     if (!targetRows.length || (targetRows[0].hidden && targetRows[0].authorId !== userId)) {
       res.status(404).json({ error: "NotFound", message: "Post not found" });
@@ -316,7 +400,7 @@ router.post("/:postId/like", authMiddleware, async (req, res) => {
 router.get("/:postId/comments", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { postId } = req.params;
+    const postId = req.params["postId"] as string;
 
     const postRows = await db.select().from(postsTable).where(eq(postsTable.id, postId)).limit(1);
     const post = postRows[0];
@@ -360,7 +444,7 @@ router.get("/:postId/comments", authMiddleware, async (req, res) => {
 router.post("/:postId/comments", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { postId } = req.params;
+    const postId = req.params["postId"] as string;
     const { content, parentId } = req.body;
     if (!content || !content.trim()) {
       res.status(400).json({ error: "ValidationError", message: "Content is required" });

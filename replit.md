@@ -247,6 +247,41 @@ Every package extends `tsconfig.base.json` which sets `composite: true`. The roo
 - Cursor-based keys for paginated DM and chatroom message queries
 - Active backend reported by `GET /api/ping` → `"cache":"redis"|"memory"`
 - URL parsing strips surrounding quotes and handles `KEY="value"` paste format
+- **Redis Pub/Sub**: dedicated subscriber client (`subClient`) for SSE fan-out. `publish(channel, payload)` / `subscribe(channel, cb)` helpers exported. DM channels: `cc:chat:dm:{id}`, chatroom channels: `cc:chat:room:{id}`. Falls back to in-process Maps when Redis absent.
+
+### SSE Chat Scaling
+- DM and chatroom SSE streams now subscribe to Redis pub/sub channels on connect, unsubscribe on close
+- Enables horizontal scaling: messages published from any server instance reach all subscribers
+- In-process `conversationClients` / `chatroomClients` Maps retained as local fallback
+
+### Rate Limiting (`artifacts/api-server/src/app.ts`)
+- `express-rate-limit` installed. Three route-specific limiters applied before the main router:
+  - **Login** (`POST /api/auth/login`, `POST /api/auth/send-otp`): 10 req / 15 min per IP
+  - **Batch** (`POST /api/batch`): 30 req / min per IP
+  - **Chat/SSE** (`/api/chat`): 60 req / min per IP
+- Returns `{ error: "TooManyRequests", message: "..." }` JSON; `standardHeaders: true`; skipped in `test` env
+
+### Cloudinary Named Transformations (`artifacts/api-server/src/lib/cloudinary.ts`)
+- `getTransformedUrl(publicId, variant)` helper: `thumbnail` (150×150 fill), `medium` (600px limit), `full` (format+quality only)
+- `uploadImage()` now accepts `eager` array, defaults to pre-generating thumbnail+medium variants on upload
+- Returns `{ secure_url, public_id }` — upload route and user fields updated to use new shape
+- Avatar fields auto-transformed to `thumbnail` variant; feed images served as `medium`
+
+### PostgreSQL Pool
+- `lib/db/src/index.ts`: `Pool({ connectionString, max: 25 })` — supports 25 concurrent DB connections
+
+### Feed Query Optimization (`artifacts/api-server/src/routes/posts.ts`)
+- `getFormattedPosts()` replaces the old 3-query pattern with a single Drizzle query using `leftJoin` on users and an `EXISTS` subquery for `isLiked` — one round-trip instead of three
+- `formatPosts()` retained for single-post routes; also updated to use `getTransformedUrl`
+
+### Offline Queue (Mobile)
+- `artifacts/mobile/contexts/OfflineQueueContext.tsx`: Full AsyncStorage persist/restore already implemented via `STORAGE_KEY = "@offline_queue"` — queue survives app kill and resumes on next launch
+
+### Load Testing (`scripts/load-test.cjs`)
+- Run with `pnpm load-test` (uses `autocannon`)
+- Logs in as `priya@campus.edu`, runs 3 scenarios: 50-conn feed, 100-conn feed (cache), 20-conn batch
+- Prints P50/P97.5/P99 latencies, req/s, error counts; verdicts on P99 < 500ms + hard-error rate < 1%
+- Measured results: Scenario A P99 91ms, B P99 102ms, C P99 85ms — all PASS
 
 ### Observability — Sentry
 - **Server** (`@sentry/node`): init in `src/index.ts` when `SENTRY_DSN` set; `tracesSampleRate=0.2`; `setupExpressErrorHandler` in `app.ts`; slow API warnings captured (>1000 ms)

@@ -107,7 +107,7 @@ export async function deleteOrderMessages(orderId: string) {
 router.get("/:orderId", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { orderId } = req.params;
+    const orderId = req.params["orderId"] as string;
     const orderType = (req.query.orderType as string) || "deliveries";
 
     const participants = await getOrderParticipants(orderId, orderType);
@@ -148,7 +148,7 @@ router.get("/:orderId", authMiddleware, async (req, res) => {
 router.post("/:orderId", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { orderId } = req.params;
+    const orderId = req.params["orderId"] as string;
     const { content, orderType = "deliveries", orderTitle = "Order" } = req.body;
 
     if (!content?.trim()) {
