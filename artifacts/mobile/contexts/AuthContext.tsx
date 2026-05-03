@@ -2,8 +2,9 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import createContextHook from "@nkzw/create-context-hook";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { ApiError } from "@/lib/ApiError";
+import { API_BASE_URL } from "@/lib/config";
 
-export const API_BASE = process.env["EXPO_PUBLIC_API_URL"] || "https://colyx-app.replit.app/api";
+export const API_BASE = API_BASE_URL;
 
 export interface User {
   id: string;

@@ -11,7 +11,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://colyx-app.replit.app/api"
+        "EXPO_PUBLIC_API_URL": "https://colyx-api.onrender.com/api"
       }
     },
     "production": {
@@ -24,7 +24,7 @@
         "simulator": false
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://colyx-app.replit.app/api"
+        "EXPO_PUBLIC_API_URL": "https://colyx-api.onrender.com/api"
       }
     }
   },

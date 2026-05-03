@@ -71,7 +71,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     } catch {}
 
     try {
-      const API_BASE = process.env["EXPO_PUBLIC_API_URL"] || "https://colyx-app.replit.app/api";
+      const { API_BASE_URL: API_BASE } = await import("@/lib/config");
       const res = await fetch(`${API_BASE}/notifications/push-token`, {
         method: "POST",
         headers: {

@@ -9,7 +9,7 @@ import { Feather } from "@expo/vector-icons";
 import { useAuth } from "@/contexts/AuthContext";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 
-const API_BASE = process.env.EXPO_PUBLIC_API_URL || "https://colyx-app.replit.app/api";
+import { API_BASE_URL as API_BASE } from "@/lib/config";
 const PURPLE = "#5B4FE8";
 const CREAM = "#FAF8F4";
 const TEXT = "#1A1A2E";
