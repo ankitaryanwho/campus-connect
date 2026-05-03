@@ -1,0 +1,166 @@
+SECTION 1 — Real Performance Metrics (NO ESTIMATES)
+
+1. What are the actual measured API response times (P50, P95, P99) for:
+   - login
+   - feed load
+   - message fetch
+
+2. What is the Time To First Byte (TTFB) for API responses?
+
+3. What is the average app cold start time and warm start time (in seconds)?
+
+4. What is the average screen load time for:
+   - home feed
+   - chat screen
+   - profile screen
+
+5. What is the average message delivery latency (in ms)?
+
+--------------------------------------------------
+
+SECTION 2 — Database Performance (CRITICAL)
+
+6. Confirm all indexes exist. Provide list of indexes on:
+   - messages
+   - posts
+   - likes
+   - follows
+
+7. What is the average DB query time (ms) after indexing?
+
+8. Are any queries still doing sequential scans? (EXPLAIN ANALYZE output)
+
+9. What is the number of DB queries per request for:
+   - feed
+   - chat
+
+10. Are JOINs used instead of multiple queries? Show example query.
+
+--------------------------------------------------
+
+SECTION 3 — Caching Efficiency
+
+11. What is the cache hit rate (%) for:
+   - posts
+   - users
+   - chatrooms
+
+12. What is the cache TTL currently set for each?
+
+13. Are we using Redis or only in-memory cache?
+
+14. What happens to cache on server restart?
+
+15. Are paginated results cached (cursor-based caching)?
+
+--------------------------------------------------
+
+SECTION 4 — Network Optimization
+
+16. Is HTTP/2 or HTTP/3 enabled?
+
+17. Is keep-alive enabled and configured correctly?
+
+18. Are all responses compressed (Brotli/Gzip)?
+
+19. What is the average payload size before vs after compression?
+
+20. Are API requests batched or still multiple calls?
+
+--------------------------------------------------
+
+SECTION 5 — Real-Time System
+
+21. What is the actual message delivery latency (ms) on stable network?
+
+22. What happens when SSE/WebSocket disconnects?
+
+23. Is there a missed-message recovery mechanism?
+
+24. How many concurrent real-time connections can server handle?
+
+25. Is there any message loss observed under poor network?
+
+--------------------------------------------------
+
+SECTION 6 — Media & CDN
+
+26. Are all images served via Cloudinary CDN?
+
+27. What is the average image size before vs after optimization?
+
+28. Are multiple sizes generated (thumbnail, medium, full)?
+
+29. Is lazy loading working correctly?
+
+30. Are images cached on device (expo-image / FastImage)?
+
+--------------------------------------------------
+
+SECTION 7 — App Performance (Frontend)
+
+31. What is JS thread FPS and UI thread FPS during scroll?
+
+32. Are there any frame drops or jank during feed scroll?
+
+33. What is memory usage of app during normal usage?
+
+34. Are unnecessary re-renders prevented?
+
+35. Is code splitting working correctly?
+
+--------------------------------------------------
+
+SECTION 8 — Offline & Reliability
+
+36. What % of actions succeed on unstable network?
+
+37. What happens when user sends multiple messages offline?
+
+38. Is there any data loss in offline queue?
+
+39. How long does it take to sync after reconnect?
+
+40. Are retries exponential and capped?
+
+--------------------------------------------------
+
+SECTION 9 — Monitoring & Observability
+
+41. Is Sentry fully active (DSN configured)?
+
+42. What are the top 5 slowest API endpoints currently?
+
+43. What is current error rate (%)?
+
+44. What is timeout rate (%)?
+
+45. Are slow queries logged and tracked?
+
+--------------------------------------------------
+
+SECTION 10 — Load & Scaling
+
+46. How many concurrent users can the system handle currently?
+
+47. What happens at 1000 DAU? Any bottlenecks?
+
+48. What is CPU and memory usage under load?
+
+49. Is horizontal scaling supported?
+
+50. What will break first if traffic increases 5x?
+
+--------------------------------------------------
+
+SECTION 11 — Final Assessment
+
+51. What are the top 3 remaining performance bottlenecks?
+
+52. What would improve performance another 2x from current state?
+
+53. Is this system production-ready for 1000+ users?
+
+54. What risks remain in current architecture?
+
+55. What metrics prove that the app is optimized?
