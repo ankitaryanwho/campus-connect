@@ -72,7 +72,7 @@ packages = ["eas-cli"]
 [userenv.shared]
 VITE_API_URL = "https://campus-connect-app.replit.app"
 EXPO_PUBLIC_API_URL = "https://campus-connect-app.replit.app/api"
-PROD_DATABASE_URL = "postgresql://neondb_owner:npg_J6z5ZxCpmley@ep-steep-thunder-anpt35h2-pooler.c-6.us-east-1.aws.neon.tech/neondb?sslmode=require"
+PROD_DATABASE_URL = "postgresql://neondb_owner:npg_J6z5ZxCpmley@ep-morning-pine-anasye4r-pooler.c-6.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
 
 [userenv.production]
 NEON_SOURCE_URL = "postgresql://neondb_owner:npg_2rRPlbeHc1Dt@ep-divine-sky-a4dm30t7.us-east-1.aws.neon.tech/neondb?sslmode=require"
