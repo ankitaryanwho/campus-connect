@@ -122,7 +122,7 @@ export default function EditProfileScreen() {
         if (base64DataUri.startsWith("data:image/")) {
           const uploadRes = await apiRequest("/upload", {
             method: "POST",
-            body: JSON.stringify({ base64: base64DataUri, folder: "campusconnect/avatars" }),
+            body: JSON.stringify({ base64: base64DataUri, folder: "colyx/avatars" }),
           });
           if (uploadRes.ok) {
             const { url } = await uploadRes.json();

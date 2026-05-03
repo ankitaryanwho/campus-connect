@@ -10,7 +10,7 @@ import jwt from "jsonwebtoken";
 
 const router = Router();
 
-const JWT_SECRET = process.env.JWT_SECRET || "campusconnect-secret-key-2024";
+const JWT_SECRET = process.env.JWT_SECRET || "colyx-secret-key-2024";
 
 export const COLLEGES = [
   { id: "bennett", name: "Bennett University (Greater Noida)", domain: "bennett.edu.in" },

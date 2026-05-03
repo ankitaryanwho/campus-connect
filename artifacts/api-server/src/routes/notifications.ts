@@ -28,7 +28,7 @@ router.post("/test", authMiddleware, async (req, res) => {
       }
       const r = await sendFcmNotification(
         row.token,
-        "CampusConnect Test",
+        "Colyx Test",
         "If you see this, push notifications are working!",
         { screen: "/(tabs)/notifications" }
       );

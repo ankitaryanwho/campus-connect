@@ -49,15 +49,15 @@
           "color": "#6366F1",
           "sounds": [],
           "androidMode": "default",
-          "androidCollapsedTitle": "CampusConnect"
+          "androidCollapsedTitle": "Colyx"
         }
       ],
       "expo-updates",
       [
         "expo-media-library",
         {
-          "photosPermission": "Allow CampusConnect to access your photos.",
-          "savePhotosPermission": "Allow CampusConnect to save photos.",
+          "photosPermission": "Allow Colyx to access your photos.",
+          "savePhotosPermission": "Allow Colyx to save photos.",
           "isAccessMediaLocationEnabled": true
         }
       ]

@@ -618,7 +618,7 @@ function ListingCreateSheet({
           const uploadRes = await apiRequest("/upload", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ base64: uri, folder: "campusconnect/marketplace" }),
+            body: JSON.stringify({ base64: uri, folder: "colyx/marketplace" }),
           });
           if (!uploadRes.ok) throw new Error("Failed to upload one or more photos");
           const { url } = await uploadRes.json();

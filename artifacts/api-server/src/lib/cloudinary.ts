@@ -62,7 +62,7 @@ export function getTransformedUrl(publicId: string, variant: 'thumbnail' | 'medi
 
 export async function uploadImage(
   input: string | Buffer,
-  folder = "campusconnect",
+  folder = "colyx",
   eager: any[] = []
 ): Promise<{ secure_url: string; public_id: string }> {
   const { cloudName, apiKey, apiSecret } = getConfig();

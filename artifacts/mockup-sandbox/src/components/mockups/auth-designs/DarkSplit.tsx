@@ -54,7 +54,7 @@ export function DarkSplit() {
 
         {/* Center Branding */}
         <div className="flex flex-col items-center mt-12">
-          <h1 className="text-white font-bold text-[22px] tracking-tight">CampusConnect</h1>
+          <h1 className="text-white font-bold text-[22px] tracking-tight">Colyx</h1>
           <p className="text-white/60 text-[13px] mt-1">Your campus, your community</p>
         </div>
 

@@ -68,7 +68,7 @@ export function MinimalInk() {
             <div className="flex flex-col items-center mb-16">
               <div className="flex items-center gap-1.5 bg-[#5B4FE8]/10 px-3 py-1 rounded-full mb-6">
                 <Layers size={14} className="text-[#5B4FE8]" />
-                <span className="text-[12px] font-semibold text-[#5B4FE8]">CampusConnect</span>
+                <span className="text-[12px] font-semibold text-[#5B4FE8]">Colyx</span>
               </div>
               <h1 className="text-[32px] font-bold mb-2">Welcome back</h1>
               <p className="text-[14px] text-[#1A1A2E]/55 text-center">Enter your details to access your account.</p>

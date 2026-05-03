@@ -11,9 +11,9 @@ async function ensureAdmin() {
   const existing = await db.select().from(usersTable).where(eq(usersTable.id, "admin-001")).limit(1);
   if (!existing.length) {
     await db.insert(usersTable).values({
-      id: "admin-001", name: "Super Admin", email: "admin@campusconnect.edu",
-      passwordHash: await bcrypt.hash("admin-campusconnect-2024", 10),
-      role: "admin", emailVerified: true, college: "CampusConnect", program: "Admin",
+      id: "admin-001", name: "Super Admin", email: "admin@colyx.com",
+      passwordHash: await bcrypt.hash("admin-colyx-2024", 10),
+      role: "admin", emailVerified: true, college: "Colyx", program: "Admin",
     } as any);
     console.log("Admin user seeded.");
   }

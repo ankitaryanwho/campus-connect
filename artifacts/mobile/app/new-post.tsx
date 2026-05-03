@@ -64,7 +64,7 @@ export default function NewPostScreen() {
           if (!uri.startsWith("data:image/")) return uri;
           const uploadRes = await apiRequest("/upload", {
             method: "POST",
-            body: JSON.stringify({ base64: uri, folder: "campusconnect/posts" }),
+            body: JSON.stringify({ base64: uri, folder: "colyx/posts" }),
           });
           if (!uploadRes.ok) throw new Error("Failed to upload one or more images");
           const { url } = await uploadRes.json();

@@ -61,7 +61,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-lg shadow-primary/30">
             <Hexagon className="w-5 h-5 text-white fill-white/20" />
           </div>
-          CampusConnect
+          Colyx
         </div>
       </div>
 
@@ -173,7 +173,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
             <div className="w-6 h-6 rounded bg-gradient-to-br from-primary to-accent flex items-center justify-center">
               <Hexagon className="w-4 h-4 text-white fill-white/20" />
             </div>
-            CampusConnect Admin
+            Colyx Admin
           </div>
         </div>
 

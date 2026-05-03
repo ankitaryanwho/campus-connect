@@ -8,7 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 export default function LoginPage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const [email, setEmail] = useState("admin@campusconnect.edu");
+  const [email, setEmail] = useState("admin@colyx.com");
   const [password, setPassword] = useState("admin123");
 
   const loginMutation = useAdminLogin({
@@ -45,7 +45,7 @@ export default function LoginPage() {
             <Hexagon className="w-8 h-8 text-primary" />
           </div>
           <CardTitle className="text-2xl font-display text-white text-glow">Admin Portal</CardTitle>
-          <p className="text-muted-foreground text-sm mt-2">Sign in to manage CampusConnect</p>
+          <p className="text-muted-foreground text-sm mt-2">Sign in to manage Colyx</p>
         </CardHeader>
         <CardContent className="pt-6 pb-8">
           <form onSubmit={handleSubmit} className="space-y-4">

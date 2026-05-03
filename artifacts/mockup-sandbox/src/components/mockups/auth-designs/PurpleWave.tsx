@@ -65,7 +65,7 @@ export function PurpleWave() {
           <div className="w-16 h-16 rounded-full bg-white/20 flex items-center justify-center mb-4">
             <span className="text-white font-black text-[20px]">CC</span>
           </div>
-          <h1 className="text-white font-bold text-[26px] mb-1">CampusConnect</h1>
+          <h1 className="text-white font-bold text-[26px] mb-1">Colyx</h1>
           <p className="text-white/80 text-[13px] tracking-widest uppercase mb-6 font-medium">Connect · Learn · Earn</p>
         </div>
 

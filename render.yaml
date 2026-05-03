@@ -1,7 +1,7 @@
 services:
   # ── API Server ──────────────────────────────────────────────────────────────
   - type: web
-    name: campusconnect-api
+    name: colyx-api
     runtime: node
     region: oregon
     plan: free
@@ -35,7 +35,7 @@ services:
 
   # ── Admin Panel (Static Site) ───────────────────────────────────────────────
   - type: web
-    name: campusconnect-admin
+    name: colyx-admin
     runtime: static
     region: oregon
     plan: free

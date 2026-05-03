@@ -19,9 +19,9 @@ export async function sendOtpEmail(toEmail: string, code: string): Promise<void>
   const fromEmail = process.env.SMTP_USER!;
 
   await transport.sendMail({
-    from: `"CampusConnect" <${fromEmail}>`,
+    from: `"Colyx" <${fromEmail}>`,
     to: toEmail,
-    subject: "Your CampusConnect verification code",
+    subject: "Your Colyx verification code",
     html: `
       <div style="font-family: Inter, -apple-system, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px; background: #f8f8fb;">
         <div style="background: #fff; border-radius: 20px; padding: 36px; box-shadow: 0 2px 16px rgba(91,79,232,0.08);">
@@ -29,12 +29,12 @@ export async function sendOtpEmail(toEmail: string, code: string): Promise<void>
             <div style="display: inline-block; background: #EDE9FE; border-radius: 16px; padding: 14px 20px; margin-bottom: 16px;">
               <span style="font-size: 28px;">🎓</span>
             </div>
-            <h1 style="margin: 0 0 8px; font-size: 22px; font-weight: 700; color: #1a1a2e;">CampusConnect</h1>
+            <h1 style="margin: 0 0 8px; font-size: 22px; font-weight: 700; color: #1a1a2e;">Colyx</h1>
             <p style="margin: 0; color: #6b7280; font-size: 14px;">Email Verification</p>
           </div>
 
           <p style="color: #374151; font-size: 15px; line-height: 1.6; margin-bottom: 24px;">
-            Hi there! Use the code below to verify your college email and complete your CampusConnect registration.
+            Hi there! Use the code below to verify your college email and complete your Colyx registration.
           </p>
 
           <div style="background: #f3f0ff; border: 2px solid #5B4FE8; border-radius: 16px; padding: 28px; text-align: center; margin: 24px 0;">
@@ -49,6 +49,6 @@ export async function sendOtpEmail(toEmail: string, code: string): Promise<void>
         </div>
       </div>
     `,
-    text: `Your CampusConnect verification code is: ${code}\n\nThis code expires in 10 minutes.\n\nIf you didn't request this, ignore this email.`,
+    text: `Your Colyx verification code is: ${code}\n\nThis code expires in 10 minutes.\n\nIf you didn't request this, ignore this email.`,
   });
 }

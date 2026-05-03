@@ -336,7 +336,7 @@ function printDbSection(dbStats, tableStats, indexStats, unusedIdx, slowQ) {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
-  header("CampusConnect — Load Test & DB Diagnostics");
+  header("Colyx — Load Test & DB Diagnostics");
   console.log(`  Target : ${BASE_URL}`);
   console.log(`  Date   : ${new Date().toISOString()}`);
 

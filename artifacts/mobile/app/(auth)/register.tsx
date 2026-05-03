@@ -9,7 +9,7 @@ import { Feather } from "@expo/vector-icons";
 import { useAuth } from "@/contexts/AuthContext";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 
-const API_BASE = process.env.EXPO_PUBLIC_API_URL || "https://campus-connect-app.replit.app/api";
+const API_BASE = process.env.EXPO_PUBLIC_API_URL || "https://colyx-app.replit.app/api";
 const PURPLE = "#5B4FE8";
 const CREAM = "#FAF8F4";
 const TEXT = "#1A1A2E";
@@ -308,7 +308,7 @@ export default function RegisterScreen() {
                 <Feather name="layers" size={28} color="#fff" />
               </View>
               <View style={s.titleRow}>
-                <Text style={s.appName}>CampusConnect</Text>
+                <Text style={s.appName}>Colyx</Text>
                 <Text style={s.version}>v2.0</Text>
               </View>
 

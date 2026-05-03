@@ -16,7 +16,7 @@ export function ChatOrder() {
             <Bot size={20} />
           </div>
           <div>
-            <h1 className="font-semibold text-[15px] leading-tight text-[#1A1A2E]">CampusConnect Bot</h1>
+            <h1 className="font-semibold text-[15px] leading-tight text-[#1A1A2E]">Colyx Bot</h1>
             <p className="text-[12px] text-[#1A1A2E]/60">Delivery Assistant</p>
           </div>
         </div>

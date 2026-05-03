@@ -66,7 +66,7 @@ export function WarmBlobs() {
               <Layers className="w-7 h-7 text-white" />
             </div>
             <div className="flex items-baseline gap-1">
-              <h1 className="text-[20px] font-bold text-[#1A1A2E]">CampusConnect</h1>
+              <h1 className="text-[20px] font-bold text-[#1A1A2E]">Colyx</h1>
               <span className="text-[10px] font-semibold text-gray-400">v2.0</span>
             </div>
             

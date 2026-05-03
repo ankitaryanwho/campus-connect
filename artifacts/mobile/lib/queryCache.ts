@@ -12,14 +12,14 @@ export const CACHE_TTL_MS = 5 * 60 * 1000;
  * AsyncStorage key used by the AsyncStorage persister.
  * Must match the `key` option in createAsyncStoragePersister.
  */
-export const PERSISTED_CACHE_STORAGE_KEY = "campusconnect-query-cache";
+export const PERSISTED_CACHE_STORAGE_KEY = "colyx-query-cache";
 
 /**
  * AsyncStorage key that records which user ID owns the persisted cache.
  * Written after each successful batch; checked on startup to prevent one
  * account's data being shown to another account.
  */
-export const CACHE_OWNER_KEY = "@campusconnect-cache-owner";
+export const CACHE_OWNER_KEY = "@colyx-cache-owner";
 
 /**
  * Query keys for startup batch data that should be persisted to AsyncStorage.

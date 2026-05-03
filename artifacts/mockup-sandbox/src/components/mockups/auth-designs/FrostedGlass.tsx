@@ -62,7 +62,7 @@ export function FrostedGlass() {
             <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center mb-3">
               <Layers className="text-white w-6 h-6" />
             </div>
-            <h1 className="text-white font-bold text-[20px] mb-6">CampusConnect</h1>
+            <h1 className="text-white font-bold text-[20px] mb-6">Colyx</h1>
 
             {/* Mode Toggle */}
             <div className="bg-white/15 p-1 rounded-full flex w-full">

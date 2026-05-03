@@ -26,7 +26,7 @@ router.post("/", authMiddleware, async (req, res) => {
       return;
     }
 
-    const { secure_url: url } = await uploadImage(base64, folder || "campusconnect");
+    const { secure_url: url } = await uploadImage(base64, folder || "colyx");
     res.json({ url });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to upload image";

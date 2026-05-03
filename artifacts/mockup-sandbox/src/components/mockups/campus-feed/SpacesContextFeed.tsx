@@ -162,7 +162,7 @@ export default function SpacesContextFeed() {
       <header className="sticky top-0 z-20 bg-[#0F172A]/90 backdrop-blur-md border-b border-white/5 px-4 pt-12 pb-0">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h1 className="text-lg font-black tracking-tight text-[#F1F5F9]">CampusConnect</h1>
+            <h1 className="text-lg font-black tracking-tight text-[#F1F5F9]">Colyx</h1>
             <p className="text-[11px]" style={{ color: space.color }}>
               {space.members.toLocaleString()} members in this space
             </p>

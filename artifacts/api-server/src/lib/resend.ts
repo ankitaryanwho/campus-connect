@@ -5,7 +5,7 @@ async function getCredentials(): Promise<{ apiKey: string; fromEmail: string }> 
   if (directKey) {
     return {
       apiKey: directKey,
-      fromEmail: process.env.RESEND_FROM_EMAIL || "CampusConnect <onboarding@resend.dev>",
+      fromEmail: process.env.RESEND_FROM_EMAIL || "Colyx <onboarding@resend.dev>",
     };
   }
 
@@ -33,7 +33,7 @@ async function getCredentials(): Promise<{ apiKey: string; fromEmail: string }> 
     if (item?.settings?.api_key) {
       return {
         apiKey: item.settings.api_key as string,
-        fromEmail: (item.settings.from_email as string | undefined) || "CampusConnect <onboarding@resend.dev>",
+        fromEmail: (item.settings.from_email as string | undefined) || "Colyx <onboarding@resend.dev>",
       };
     }
   }
@@ -57,7 +57,7 @@ export async function sendOtpEmail(toEmail: string, code: string): Promise<void>
   await client.emails.send({
     from: fromEmail,
     to: toEmail,
-    subject: "Your CampusConnect verification code",
+    subject: "Your Colyx verification code",
     html: `
       <div style="font-family: Inter, -apple-system, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px; background: #f8f8fb;">
         <div style="background: #fff; border-radius: 20px; padding: 36px; box-shadow: 0 2px 16px rgba(91,79,232,0.08);">
@@ -65,7 +65,7 @@ export async function sendOtpEmail(toEmail: string, code: string): Promise<void>
             <div style="display: inline-block; background: #EDE9FE; border-radius: 16px; padding: 14px 20px; margin-bottom: 16px;">
               <span style="font-size: 28px;">🎓</span>
             </div>
-            <h1 style="margin: 0 0 8px; font-size: 22px; font-weight: 700; color: #1a1a2e;">CampusConnect</h1>
+            <h1 style="margin: 0 0 8px; font-size: 22px; font-weight: 700; color: #1a1a2e;">Colyx</h1>
             <p style="margin: 0; color: #6b7280; font-size: 14px;">Email Verification</p>
           </div>
 

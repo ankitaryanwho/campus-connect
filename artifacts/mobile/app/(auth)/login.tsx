@@ -65,7 +65,7 @@ export default function LoginScreen() {
               <Feather name="layers" size={28} color="#fff" />
             </View>
             <View style={s.titleRow}>
-              <Text style={s.appName}>CampusConnect</Text>
+              <Text style={s.appName}>Colyx</Text>
               <Text style={s.version}>v2.0</Text>
             </View>
 

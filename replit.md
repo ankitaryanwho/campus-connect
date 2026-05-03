@@ -1,14 +1,14 @@
-# CampusConnect Workspace
+# Colyx Workspace
 
 ## Overview
 
-A production-ready college social app — **CampusConnect** — built as a pnpm monorepo with TypeScript. Includes a React Native (Expo) mobile app, an Express 5 API server, a PostgreSQL database, and a **React + Vite Admin Panel**.
+A production-ready college social app — **Colyx** — built as a pnpm monorepo with TypeScript. Includes a React Native (Expo) mobile app, an Express 5 API server, a PostgreSQL database, and a **React + Vite Admin Panel**.
 
 ## Admin Panel (`artifacts/admin` → `/admin/`)
 
 Dark professional admin dashboard with full CRUD control over the platform.
 
-**Login:** `admin@campusconnect.edu` / `admin123` (role must be `admin` or `super_admin`)
+**Login:** `admin@colyx.com` / `admin123` (role must be `admin` or `super_admin`)
 
 **Pages:**
 - **Dashboard** — real-time stat cards + 4 Recharts charts (revenue/day, user growth, orders/day, revenue by service)
@@ -91,7 +91,7 @@ Fully privacy-first anonymous posting with threaded comments, reply system, and 
 - `components/AuthorBadge.tsx` + `constants/badges.ts` — shared `BADGE_META` map and `resolveBadge()` helper. Renders a small icon next to the author's name everywhere (feed, comments, post detail, profile, public profile).
 - Posts display `EDITED` and `HIDDEN` pills above the content when applicable. Hidden posts are still visible to the owner with the HIDDEN pill.
 
-**API base for mobile**: `EXPO_PUBLIC_API_URL` env var, falling back to the deployed Replit app URL (`https://campus-connect-app.replit.app/api`). Backend changes therefore require redeploying the API server before OTA updates of the mobile bundle will exercise them.
+**API base for mobile**: `EXPO_PUBLIC_API_URL` env var, falling back to the deployed app URL (`https://colyx-app.replit.app/api`). Backend changes therefore require redeploying the API server before OTA updates of the mobile bundle will exercise them.
 
 ## HTTP/2
 
@@ -165,7 +165,7 @@ artifacts-monorepo/
 └── package.json
 ```
 
-## CampusConnect Features
+## Colyx Features
 
 ### Mobile App (`artifacts/mobile`)
 - **Authentication**: Login / Register with JWT, demo account (priya@campus.edu / password123). Auth screens use "Warm Blobs" design: cream (#FAF8F4) background with purple blob decorations, white rounded card, pill tab switcher, cream inputs with purple icon circles, orange error box, purple CTA button.
@@ -292,7 +292,7 @@ Every package extends `tsconfig.base.json` which sets `composite: true`. The roo
 ## Development Notes
 
 - Mobile API URL: Set via `artifacts/mobile/.env.local` (`EXPO_PUBLIC_API_URL`)
-- JWT secret: `campusconnect-secret-key-2024` (set JWT_SECRET env var for production)
+- JWT secret: `colyx-secret-key-2024` (set JWT_SECRET env var for production)
 - Database seeding: auto-runs on API server startup if no users exist
 - Chat polling interval: 3 seconds
 - `react-native-haptic-feedback` removed (web incompatible); using `expo-haptics` instead

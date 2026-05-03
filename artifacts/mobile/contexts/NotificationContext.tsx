@@ -71,7 +71,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     } catch {}
 
     try {
-      const API_BASE = process.env["EXPO_PUBLIC_API_URL"] || "https://campus-connect-app.replit.app/api";
+      const API_BASE = process.env["EXPO_PUBLIC_API_URL"] || "https://colyx-app.replit.app/api";
       const res = await fetch(`${API_BASE}/notifications/push-token`, {
         method: "POST",
         headers: {
@@ -232,7 +232,7 @@ async function registerForPushNotificationsAsync(): Promise<RegisterResult> {
   if (Platform.OS === "android") {
     try {
       await Notifications.setNotificationChannelAsync("default", {
-        name: "CampusConnect",
+        name: "Colyx",
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: "#6366F1",
@@ -252,7 +252,7 @@ async function registerForPushNotificationsAsync(): Promise<RegisterResult> {
   }
 
   if (finalStatus !== "granted") {
-    return { ok: false, token: null, reason: "Notification permission denied. Open phone settings → Apps → CampusConnect → Notifications and turn ON." };
+    return { ok: false, token: null, reason: "Notification permission denied. Open phone settings → Apps → Colyx → Notifications and turn ON." };
   }
 
   try {
