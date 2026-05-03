@@ -37,7 +37,8 @@ services:
         sync: false
 
   # ── Admin Panel (Static Site) ───────────────────────────────────────────────
-  - type: static
+  - type: web
+    runtime: static
     name: colyx-admin
     rootDir: .
     buildCommand: >-
