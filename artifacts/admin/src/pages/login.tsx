@@ -9,7 +9,7 @@ export default function LoginPage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [email, setEmail] = useState("admin@colyx.com");
-  const [password, setPassword] = useState("admin123");
+  const [password, setPassword] = useState("admin-colyx-2024");
 
   const loginMutation = useAdminLogin({
     mutation: {
