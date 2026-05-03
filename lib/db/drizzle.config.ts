@@ -1,10 +1,10 @@
 import { defineConfig } from "drizzle-kit";
 import path from "path";
 
-const dbUrl = process.env.PROD_DATABASE_URL || process.env.DATABASE_URL;
+const dbUrl = process.env.PROD_DATABASE_URL;
 
 if (!dbUrl) {
-  throw new Error("DATABASE_URL, ensure the database is provisioned");
+  throw new Error("PROD_DATABASE_URL must be set. Ensure the database is configured.");
 }
 
 export default defineConfig({
