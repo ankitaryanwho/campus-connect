@@ -79,4 +79,4 @@ NEON_IMPORT_SECRET = "cc-import-2024-secret"
 PROD_DATABASE_URL = "postgresql://neondb_owner:npg_J6z5ZxCpmley@ep-steep-thunder-anpt35h2-pooler.c-6.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
 
 [userenv.development]
-PROD_DATABASE_URL = "postgresql://neondb_owner:npg_J6z5ZxCpmley@ep-morning-pine-anasye4r-pooler.c-6.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+DEV_DATABASE_URL = "postgresql://neondb_owner:npg_J6z5ZxCpmley@ep-morning-pine-anasye4r-pooler.c-6.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
