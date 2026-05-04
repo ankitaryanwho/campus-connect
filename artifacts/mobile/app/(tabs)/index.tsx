@@ -815,7 +815,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20,
     borderWidth: 1.5, flexDirection: "row", alignItems: "center", alignSelf: "flex-start",
   },
-  chipText: { fontSize: 12, fontFamily: "Inter_600SemiBold", flexShrink: 0 },
+  chipText: { fontSize: 12, fontWeight: "600", flexShrink: 0, paddingRight: 1 },
 
   // Create box
   createBox: {
