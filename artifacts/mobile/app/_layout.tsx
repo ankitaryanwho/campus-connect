@@ -76,10 +76,10 @@ function RootLayoutNav() {
   // For logged-out users useBatchStartup sets isReady = true synchronously,
   // so the splash hides as soon as auth finishes loading — same as before.
   useEffect(() => {
-    if (!isLoading && isReady) {
+    if (!isLoading) {
       SplashScreen.hideAsync().catch(() => {});
     }
-  }, [isLoading, isReady]);
+  }, [isLoading]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -91,10 +91,9 @@ function RootLayoutNav() {
     }
   }, [user, isLoading, segments]);
 
-  // While a returning user's batch is in flight, render nothing — the splash
-  // screen is still covering the app so there is no blank-screen flash.
-  // Logged-out users and users whose batch has completed render normally.
-  if (user && !isReady) return null;
+  // Batch startup now runs as an optional warm-up in the background.
+  // Do not block first paint on network prefetch; screens render with
+  // skeletons/placeholders and refresh as data arrives.
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
