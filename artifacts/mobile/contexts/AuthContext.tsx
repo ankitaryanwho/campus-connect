@@ -129,14 +129,22 @@ const [AuthProvider, useAuth] = createContextHook<AuthState>(() => {
 
   const login = useCallback(async (email: string, password: string) => {
     let res: Response;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
     try {
       res = await fetch(`${API_BASE}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
+        signal: controller.signal,
       });
     } catch (e: any) {
+      if (e?.name === "AbortError") {
+        throw new Error("Login timed out. Please check your internet connection and try again.");
+      }
       throw new Error(`Network error: ${e?.message || "Cannot reach server"}. URL: ${API_BASE}`);
+    } finally {
+      clearTimeout(timeoutId);
     }
     let data: any;
     try {

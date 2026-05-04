@@ -717,7 +717,10 @@ export default function FeedScreen() {
                   },
                 ]}
               >
-                <Text style={[styles.chipText, { color: active ? cat.accent : mutedCol }]}>
+                <Text
+                  allowFontScaling={false}
+                  style={[styles.chipText, { color: active ? cat.accent : mutedCol }]}
+                >
                   {cat.emoji} {cat.label}
                 </Text>
               </Pressable>
