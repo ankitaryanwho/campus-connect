@@ -5,7 +5,7 @@ import { Icon, Label, NativeTabs } from "expo-router/unstable-native-tabs";
 import { SymbolView } from "expo-symbols";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import React from "react";
-import { Platform, StyleSheet, View, useColorScheme } from "react-native";
+import { Platform, StyleSheet, Text, View, useColorScheme } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Colors from "@/constants/colors";
 
@@ -60,7 +60,6 @@ function ClassicTabLayout() {
           ...(isWeb ? { height: 84 } : {}),
         },
         tabBarAllowFontScaling: false,
-        tabBarLabelStyle: { fontFamily: "Inter_500Medium", fontSize: 9, marginBottom: 1 },
         tabBarBackground: () =>
           isIOS ? (
             <BlurView intensity={100} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
@@ -73,6 +72,7 @@ function ClassicTabLayout() {
         name="index"
         options={{
           title: "Feed",
+          tabBarLabel: ({ color }) => <Text allowFontScaling={false} style={{ fontFamily: "Inter_500Medium", fontSize: 10, color }}>{"Feed"}</Text>,
           tabBarIcon: ({ color }) =>
             isIOS ? <SymbolView name="house" tintColor={color} size={23} /> : <Feather name="home" size={22} color={color} />,
         }}
@@ -81,6 +81,7 @@ function ClassicTabLayout() {
         name="services"
         options={{
           title: "Services",
+          tabBarLabel: ({ color }) => <Text allowFontScaling={false} style={{ fontFamily: "Inter_500Medium", fontSize: 10, color }}>{"Services"}</Text>,
           tabBarIcon: ({ color }) =>
             isIOS ? <SymbolView name="briefcase" tintColor={color} size={23} /> : <Feather name="briefcase" size={22} color={color} />,
         }}
@@ -89,6 +90,7 @@ function ClassicTabLayout() {
         name="chat"
         options={{
           title: "Chat",
+          tabBarLabel: ({ color }) => <Text allowFontScaling={false} style={{ fontFamily: "Inter_500Medium", fontSize: 10, color }}>{"Chat"}</Text>,
           tabBarIcon: ({ color }) =>
             isIOS ? <SymbolView name="bubble.left" tintColor={color} size={23} /> : <Feather name="message-circle" size={22} color={color} />,
         }}
@@ -97,6 +99,7 @@ function ClassicTabLayout() {
         name="wallet"
         options={{
           title: "Wallet",
+          tabBarLabel: ({ color }) => <Text allowFontScaling={false} style={{ fontFamily: "Inter_500Medium", fontSize: 10, color }}>{"Wallet"}</Text>,
           tabBarIcon: ({ color }) =>
             isIOS ? <SymbolView name="creditcard" tintColor={color} size={23} /> : <Feather name="credit-card" size={22} color={color} />,
         }}
@@ -105,6 +108,7 @@ function ClassicTabLayout() {
         name="profile"
         options={{
           title: "Profile",
+          tabBarLabel: ({ color }) => <Text allowFontScaling={false} style={{ fontFamily: "Inter_500Medium", fontSize: 10, color }}>{"Profile"}</Text>,
           tabBarIcon: ({ color }) =>
             isIOS ? <SymbolView name="person" tintColor={color} size={23} /> : <Feather name="user" size={22} color={color} />,
         }}
