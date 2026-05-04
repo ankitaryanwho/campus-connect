@@ -13,7 +13,7 @@ import { CACHE_TTL_MS, PERSISTED_CACHE_STORAGE_KEY, STARTUP_QUERY_KEYS } from "@
 import { router, Stack, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import * as Updates from "expo-updates";
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -69,6 +69,7 @@ function RootLayoutNav() {
   const { user, isLoading } = useAuth();
   const { isReady } = useBatchStartup();
   const segments = useSegments();
+  const [startupFallbackReady, setStartupFallbackReady] = useState(false);
 
   // Keep the splash screen visible while:
   //   1. Auth is still loading from storage  (isLoading = true), OR
@@ -76,10 +77,19 @@ function RootLayoutNav() {
   // For logged-out users useBatchStartup sets isReady = true synchronously,
   // so the splash hides as soon as auth finishes loading — same as before.
   useEffect(() => {
-    if (!isLoading && isReady) {
+    if (!isLoading && (isReady || startupFallbackReady)) {
       SplashScreen.hideAsync().catch(() => {});
     }
-  }, [isLoading, isReady]);
+  }, [isLoading, isReady, startupFallbackReady]);
+
+  useEffect(() => {
+    if (isLoading || isReady || !user) return;
+    const id = setTimeout(() => {
+      console.warn("[startup] Batch startup taking too long; continuing without preloaded feed cache.");
+      setStartupFallbackReady(true);
+    }, 20000);
+    return () => clearTimeout(id);
+  }, [isLoading, isReady, user]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -94,7 +104,7 @@ function RootLayoutNav() {
   // While a returning user's batch is in flight, render nothing — the splash
   // screen is still covering the app so there is no blank-screen flash.
   // Logged-out users and users whose batch has completed render normally.
-  if (user && !isReady) return null;
+  if (user && !isReady && !startupFallbackReady) return null;
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
