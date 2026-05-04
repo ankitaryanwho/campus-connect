@@ -13,7 +13,7 @@ import { CACHE_TTL_MS, PERSISTED_CACHE_STORAGE_KEY, STARTUP_QUERY_KEYS } from "@
 import { router, Stack, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import * as Updates from "expo-updates";
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -69,6 +69,7 @@ function RootLayoutNav() {
   const { user, isLoading } = useAuth();
   const { isReady } = useBatchStartup();
   const segments = useSegments();
+  const [startupFallbackReady, setStartupFallbackReady] = useState(false);
 
   // Keep the splash screen visible while:
   //   1. Auth is still loading from storage  (isLoading = true), OR
