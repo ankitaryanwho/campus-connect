@@ -36,10 +36,10 @@ export interface ImportResult {
 }
 
 export async function runProductionImport(forceOverride?: boolean): Promise<ImportResult> {
-  const sourceUrl = process.env.NEON_SOURCE_URL;
+  const sourceUrl = process.env.NEON_SOURCE_URL || process.env.PROD_DATABASE_URL;
   if (!sourceUrl) {
-    console.log("[import] NEON_SOURCE_URL not set — skipping.");
-    return { success: true, skipped: true, reason: "NEON_SOURCE_URL not set" };
+    console.log("[import] Source DB URL not set (NEON_SOURCE_URL or PROD_DATABASE_URL) — skipping.");
+    return { success: true, skipped: true, reason: "Source DB URL not set" };
   }
 
   const force = forceOverride ?? (process.env.NEON_FORCE_IMPORT === "true");
