@@ -8,30 +8,51 @@ function createTransport() {
     throw new Error("SMTP_USER and SMTP_PASS environment variables are required for email sending");
   }
 
+  const host = process.env.SMTP_HOST || "smtp.gmail.com";
+  const port = Number(process.env.SMTP_PORT || 587);
+  const secure = process.env.SMTP_SECURE === "true" || port === 465;
+
   return nodemailer.createTransport({
-    host: "smtp.gmail.com",
-    port: 587,
-    secure: false,
+    host,
+    port,
+    secure,
     auth: { user, pass },
-    family: 4,
-    connectionTimeout: 12000,
-    greetingTimeout: 12000,
-    socketTimeout: 15000,
+    connectionTimeout: Number(process.env.SMTP_CONNECTION_TIMEOUT_MS || 10000),
+    greetingTimeout: Number(process.env.SMTP_GREETING_TIMEOUT_MS || 10000),
+    socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT_MS || 12000),
+    requireTLS: true,
     tls: {
       minVersion: "TLSv1.2",
+      rejectUnauthorized: true,
     },
   });
 }
 
+async function tryResendFallback(toEmail: string, code: string): Promise<boolean> {
+  const hasResend = !!process.env.RESEND_API_KEY || !!process.env.REPLIT_CONNECTORS_HOSTNAME;
+  if (!hasResend) return false;
+
+  try {
+    const { sendOtpEmail: sendViaResend } = await import("./resend");
+    await sendViaResend(toEmail, code);
+    console.warn("[mailer] SMTP failed; OTP sent via Resend fallback.");
+    return true;
+  } catch (fallbackErr) {
+    console.error("[mailer] Resend fallback also failed:", fallbackErr);
+    return false;
+  }
+}
+
 export async function sendOtpEmail(toEmail: string, code: string): Promise<void> {
   const transport = createTransport();
-  const fromEmail = process.env.SMTP_USER!;
+  const fromEmail = process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER!;
 
-  await transport.sendMail({
-    from: `"Colyx" <${fromEmail}>`,
-    to: toEmail,
-    subject: "Your Colyx verification code",
-    html: `
+  try {
+    await transport.sendMail({
+      from: `"Colyx" <${fromEmail}>`,
+      to: toEmail,
+      subject: "Your Colyx verification code",
+      html: `
       <div style="font-family: Inter, -apple-system, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px; background: #f8f8fb;">
         <div style="background: #fff; border-radius: 20px; padding: 36px; box-shadow: 0 2px 16px rgba(91,79,232,0.08);">
           <div style="text-align: center; margin-bottom: 28px;">
@@ -58,6 +79,13 @@ export async function sendOtpEmail(toEmail: string, code: string): Promise<void>
         </div>
       </div>
     `,
-    text: `Your Colyx verification code is: ${code}\n\nThis code expires in 10 minutes.\n\nIf you didn't request this, ignore this email.`,
-  });
+      text: `Your Colyx verification code is: ${code}\n\nThis code expires in 10 minutes.\n\nIf you didn't request this, ignore this email.`,
+    });
+    return;
+  } catch (smtpErr: any) {
+    console.error("[mailer] SMTP send failed:", smtpErr);
+    const sentViaFallback = await tryResendFallback(toEmail, code);
+    if (sentViaFallback) return;
+    throw smtpErr;
+  }
 }
