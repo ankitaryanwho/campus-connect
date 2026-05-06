@@ -56,6 +56,8 @@ app.use((req, res, next) => {
 });
 // ─────────────────────────────────────────────────────────────────────────────
 
+app.set("trust proxy", 1);
+
 app.use(compression({ threshold: 0 }));
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
@@ -144,12 +146,18 @@ app.use("/api", (req, res, next) => {
 // ─── Rate Limiting ──────────────────────────────────────────────────────────
 const isTest = process.env.NODE_ENV === "test";
 
+const keyGenerator = (req: any, _res: any) => {
+  // Use X-Forwarded-For if available (behind proxy), otherwise use socket IP
+  return req.ip || req.socket.remoteAddress || "unknown";
+};
+
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   limit: 10,
   standardHeaders: true,
   legacyHeaders: false,
   skip: () => isTest,
+  keyGenerator,
   message: {
     error: "TooManyRequests",
     message: "Too many login attempts, please try again after 15 minutes",
@@ -162,6 +170,7 @@ const batchLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skip: () => isTest,
+  keyGenerator,
   message: {
     error: "TooManyRequests",
     message: "Too many batch requests, please try again in a minute",
@@ -174,6 +183,7 @@ const chatLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skip: () => isTest,
+  keyGenerator,
   message: {
     error: "TooManyRequests",
     message: "Too many chat requests, please try again in a minute",

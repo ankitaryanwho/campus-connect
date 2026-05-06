@@ -1,5 +1,7 @@
 import nodemailer from "nodemailer";
 
+let transportInstance: any = null;
+
 function createTransport() {
   const user = process.env.SMTP_USER;
   const pass = process.env.SMTP_PASS;
@@ -12,20 +14,37 @@ function createTransport() {
   const port = Number(process.env.SMTP_PORT || 587);
   const secure = process.env.SMTP_SECURE === "true" || port === 465;
 
-  return nodemailer.createTransport({
+  const opts: any = {
     host,
     port,
     secure,
     auth: { user, pass },
-    connectionTimeout: Number(process.env.SMTP_CONNECTION_TIMEOUT_MS || 10000),
-    greetingTimeout: Number(process.env.SMTP_GREETING_TIMEOUT_MS || 10000),
-    socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT_MS || 12000),
-    requireTLS: true,
+    connectionTimeout: Number(process.env.SMTP_CONNECTION_TIMEOUT_MS || 15000),
+    greetingTimeout: Number(process.env.SMTP_GREETING_TIMEOUT_MS || 15000),
+    socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT_MS || 20000),
+    requireTLS: !secure,
     tls: {
       minVersion: "TLSv1.2",
-      rejectUnauthorized: true,
+      rejectUnauthorized: process.env.NODE_ENV === "production",
     },
-  });
+    pool: {
+      maxConnections: 5,
+      maxMessages: 100,
+      rateDelta: 1000,
+      rateLimit: 14,
+    },
+    logger: process.env.NODE_ENV !== "production",
+    debug: process.env.NODE_ENV !== "production",
+  };
+
+  return nodemailer.createTransport(opts);
+}
+
+function getTransport() {
+  if (!transportInstance) {
+    transportInstance = createTransport();
+  }
+  return transportInstance;
 }
 
 async function tryResendFallback(toEmail: string, code: string): Promise<boolean> {
@@ -43,8 +62,13 @@ async function tryResendFallback(toEmail: string, code: string): Promise<boolean
   }
 }
 
-export async function sendOtpEmail(toEmail: string, code: string): Promise<void> {
-  const transport = createTransport();
+async function sendOtpEmailWithRetry(
+  toEmail: string,
+  code: string,
+  attempt = 1,
+  maxAttempts = 3
+): Promise<void> {
+  const transport = getTransport();
   const fromEmail = process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER!;
 
   try {
@@ -81,11 +105,28 @@ export async function sendOtpEmail(toEmail: string, code: string): Promise<void>
     `,
       text: `Your Colyx verification code is: ${code}\n\nThis code expires in 10 minutes.\n\nIf you didn't request this, ignore this email.`,
     });
+    console.log(`[mailer] OTP sent successfully to ${toEmail}`);
     return;
   } catch (smtpErr: any) {
-    console.error("[mailer] SMTP send failed:", smtpErr);
+    console.error(
+      `[mailer] SMTP send failed (attempt ${attempt}/${maxAttempts}):`,
+      smtpErr.message,
+      smtpErr.code
+    );
+
+    if (attempt < maxAttempts && smtpErr.code === "ETIMEDOUT") {
+      const backoffMs = Math.min(1000 * Math.pow(2, attempt - 1), 8000);
+      console.log(`[mailer] Retrying in ${backoffMs}ms...`);
+      await new Promise(resolve => setTimeout(resolve, backoffMs));
+      return sendOtpEmailWithRetry(toEmail, code, attempt + 1, maxAttempts);
+    }
+
     const sentViaFallback = await tryResendFallback(toEmail, code);
     if (sentViaFallback) return;
     throw smtpErr;
   }
+}
+
+export async function sendOtpEmail(toEmail: string, code: string): Promise<void> {
+  return sendOtpEmailWithRetry(toEmail, code);
 }
