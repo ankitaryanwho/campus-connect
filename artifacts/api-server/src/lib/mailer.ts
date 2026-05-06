@@ -1,4 +1,8 @@
 import nodemailer from "nodemailer";
+import * as dns from "dns";
+
+// Force IPv4-only DNS resolution to avoid IPv6 connectivity issues
+dns.setDefaultResultOrder("ipv4first");
 
 let transportInstance: any = null;
 
@@ -19,19 +23,19 @@ function createTransport() {
     port,
     secure,
     auth: { user, pass },
-    connectionTimeout: Number(process.env.SMTP_CONNECTION_TIMEOUT_MS || 15000),
-    greetingTimeout: Number(process.env.SMTP_GREETING_TIMEOUT_MS || 15000),
-    socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT_MS || 20000),
+    connectionTimeout: Number(process.env.SMTP_CONNECTION_TIMEOUT_MS || 20000),
+    greetingTimeout: Number(process.env.SMTP_GREETING_TIMEOUT_MS || 20000),
+    socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT_MS || 25000),
     requireTLS: !secure,
     tls: {
       minVersion: "TLSv1.2",
       rejectUnauthorized: process.env.NODE_ENV === "production",
     },
     pool: {
-      maxConnections: 5,
-      maxMessages: 100,
+      maxConnections: 3,
+      maxMessages: 50,
       rateDelta: 1000,
-      rateLimit: 14,
+      rateLimit: 10,
     },
     logger: process.env.NODE_ENV !== "production",
     debug: process.env.NODE_ENV !== "production",
@@ -108,21 +112,29 @@ async function sendOtpEmailWithRetry(
     console.log(`[mailer] OTP sent successfully to ${toEmail}`);
     return;
   } catch (smtpErr: any) {
+    const errorCode = smtpErr.code || smtpErr.message;
+    const isRetryable = ["ETIMEDOUT", "ENETUNREACH", "ECONNREFUSED", "ENOTFOUND"].includes(
+      errorCode
+    );
+
     console.error(
       `[mailer] SMTP send failed (attempt ${attempt}/${maxAttempts}):`,
       smtpErr.message,
-      smtpErr.code
+      `(code: ${errorCode})`
     );
 
-    if (attempt < maxAttempts && smtpErr.code === "ETIMEDOUT") {
-      const backoffMs = Math.min(1000 * Math.pow(2, attempt - 1), 8000);
-      console.log(`[mailer] Retrying in ${backoffMs}ms...`);
-      await new Promise(resolve => setTimeout(resolve, backoffMs));
+    if (isRetryable && attempt < maxAttempts) {
+      const backoffMs = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
+      console.log(`[mailer] Retrying in ${backoffMs}ms due to ${errorCode}...`);
+      await new Promise((resolve) => setTimeout(resolve, backoffMs));
       return sendOtpEmailWithRetry(toEmail, code, attempt + 1, maxAttempts);
     }
 
+    console.warn("[mailer] SMTP attempts exhausted, attempting Resend fallback...");
     const sentViaFallback = await tryResendFallback(toEmail, code);
     if (sentViaFallback) return;
+
+    console.error("[mailer] All sending methods failed");
     throw smtpErr;
   }
 }
