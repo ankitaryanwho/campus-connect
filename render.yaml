@@ -7,7 +7,8 @@ services:
     plan: free
     rootDir: .
     buildCommand: >-
-      npm install -g pnpm@10.26.1 &&
+      corepack enable &&
+      pnpm --version &&
       pnpm install --frozen-lockfile &&
       pnpm --filter @workspace/api-server run build
     startCommand: node artifacts/api-server/dist/index.cjs
@@ -44,7 +45,8 @@ services:
     plan: free
     rootDir: .
     buildCommand: >-
-      npm install -g pnpm@10.26.1 &&
+      corepack enable &&
+      pnpm --version &&
       pnpm install --frozen-lockfile &&
       pnpm --filter @workspace/admin run build
     staticPublishPath: artifacts/admin/dist

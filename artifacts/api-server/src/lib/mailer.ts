@@ -1,4 +1,9 @@
 import nodemailer from "nodemailer";
+import { setDefaultResultOrder } from "node:dns";
+
+setDefaultResultOrder("ipv4first");
+
+let transportInstance: nodemailer.Transporter | null = null;
 
 function createTransport() {
   const user = process.env.SMTP_USER;
@@ -8,21 +13,70 @@ function createTransport() {
     throw new Error("SMTP_USER and SMTP_PASS environment variables are required for email sending");
   }
 
+  const host = process.env.SMTP_HOST || "smtp.gmail.com";
+  const port = Number(process.env.SMTP_PORT || 587);
+  const secure = process.env.SMTP_SECURE === "true" || port === 465;
+
   return nodemailer.createTransport({
-    service: "gmail",
+    host,
+    port,
+    secure,
     auth: { user, pass },
+    connectionTimeout: Number(process.env.SMTP_CONNECTION_TIMEOUT_MS || 20000),
+    greetingTimeout: Number(process.env.SMTP_GREETING_TIMEOUT_MS || 20000),
+    socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT_MS || 25000),
+    requireTLS: !secure,
+    tls: {
+      minVersion: "TLSv1.2",
+      rejectUnauthorized: process.env.NODE_ENV === "production",
+    },
+    pool: true,
+    maxConnections: 3,
+    maxMessages: 50,
+    rateDelta: 1000,
+    rateLimit: 10,
+    logger: process.env.NODE_ENV !== "production",
+    debug: process.env.NODE_ENV !== "production",
   });
 }
 
-export async function sendOtpEmail(toEmail: string, code: string): Promise<void> {
-  const transport = createTransport();
-  const fromEmail = process.env.SMTP_USER!;
+function getTransport() {
+  if (!transportInstance) {
+    transportInstance = createTransport();
+  }
+  return transportInstance;
+}
 
-  await transport.sendMail({
-    from: `"Colyx" <${fromEmail}>`,
-    to: toEmail,
-    subject: "Your Colyx verification code",
-    html: `
+async function tryResendFallback(toEmail: string, code: string): Promise<boolean> {
+  const hasResend = !!process.env.RESEND_API_KEY || !!process.env.REPLIT_CONNECTORS_HOSTNAME;
+  if (!hasResend) return false;
+
+  try {
+    const { sendOtpEmail: sendViaResend } = await import("./resend");
+    await sendViaResend(toEmail, code);
+    console.warn("[mailer] SMTP failed; OTP sent via Resend fallback.");
+    return true;
+  } catch (fallbackErr) {
+    console.error("[mailer] Resend fallback also failed:", fallbackErr);
+    return false;
+  }
+}
+
+async function sendOtpEmailWithRetry(
+  toEmail: string,
+  code: string,
+  attempt = 1,
+  maxAttempts = 3,
+): Promise<void> {
+  const transport = getTransport();
+  const fromEmail = process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER!;
+
+  try {
+    await transport.sendMail({
+      from: `"Colyx" <${fromEmail}>`,
+      to: toEmail,
+      subject: "Your Colyx verification code",
+      html: `
       <div style="font-family: Inter, -apple-system, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px; background: #f8f8fb;">
         <div style="background: #fff; border-radius: 20px; padding: 36px; box-shadow: 0 2px 16px rgba(91,79,232,0.08);">
           <div style="text-align: center; margin-bottom: 28px;">
@@ -49,6 +103,36 @@ export async function sendOtpEmail(toEmail: string, code: string): Promise<void>
         </div>
       </div>
     `,
-    text: `Your Colyx verification code is: ${code}\n\nThis code expires in 10 minutes.\n\nIf you didn't request this, ignore this email.`,
-  });
+      text: `Your Colyx verification code is: ${code}\n\nThis code expires in 10 minutes.\n\nIf you didn't request this, ignore this email.`,
+    });
+    console.log(`[mailer] OTP sent successfully to ${toEmail}`);
+    return;
+  } catch (smtpErr: any) {
+    const errorCode = smtpErr.code || smtpErr.message;
+    const isRetryable = ["ETIMEDOUT", "ENETUNREACH", "ECONNREFUSED", "ENOTFOUND"].includes(errorCode);
+
+    console.error(
+      `[mailer] SMTP send failed (attempt ${attempt}/${maxAttempts}):`,
+      smtpErr.message,
+      `(code: ${errorCode})`,
+    );
+
+    if (isRetryable && attempt < maxAttempts) {
+      const backoffMs = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
+      console.log(`[mailer] Retrying in ${backoffMs}ms due to ${errorCode}...`);
+      await new Promise((resolve) => setTimeout(resolve, backoffMs));
+      return sendOtpEmailWithRetry(toEmail, code, attempt + 1, maxAttempts);
+    }
+
+    console.warn("[mailer] SMTP attempts exhausted, attempting Resend fallback...");
+    const sentViaFallback = await tryResendFallback(toEmail, code);
+    if (sentViaFallback) return;
+
+    console.error("[mailer] All sending methods failed");
+    throw smtpErr;
+  }
+}
+
+export async function sendOtpEmail(toEmail: string, code: string): Promise<void> {
+  return sendOtpEmailWithRetry(toEmail, code);
 }
