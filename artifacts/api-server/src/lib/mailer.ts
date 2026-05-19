@@ -23,38 +23,29 @@ function createTransport() {
     process.env.SMTP_SECURE === "true" || port === 465;
 
   const transporter = nodemailer.createTransport({
-    host,
-    port,
-    secure,
+  host: process.env.SMTP_HOST,
+  port: Number(process.env.SMTP_PORT),
 
-    // VERY IMPORTANT FOR RENDER
-    family: 4,
+  // 465 = true
+  // 587 = false
+  secure: Number(process.env.SMTP_PORT) === 465,
 
-    auth: {
-      user,
-      pass,
-    },
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
 
-    // Timeouts
-    connectionTimeout: Number(
-      process.env.SMTP_CONNECTION_TIMEOUT_MS || 20000
-    ),
-    greetingTimeout: Number(
-      process.env.SMTP_GREETING_TIMEOUT_MS || 20000
-    ),
-    socketTimeout: Number(
-      process.env.SMTP_SOCKET_TIMEOUT_MS || 25000
-    ),
+  // FORCE IPV4
+  family: 4,
 
-    // TLS
-    requireTLS: !secure,
+  // Stability
+  connectionTimeout: 10000,
+  greetingTimeout: 10000,
+  socketTimeout: 10000,
 
-    tls: {
-      minVersion: "TLSv1.2",
-
-      // TEMPORARY FIX FOR RENDER/GMAIL TLS ISSUES
-      rejectUnauthorized: false,
-    },
+  tls: {
+    rejectUnauthorized: false,
+  },
 
     // Correct pool config
     pool: true,
